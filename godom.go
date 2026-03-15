@@ -164,11 +164,11 @@ func (a *App) Start() error {
 			return
 		}
 
-		pool.add(conn)
+		wc := pool.add(conn)
 
-		if err := handleInit(conn, ci); err != nil {
+		if err := handleInit(wc, ci); err != nil {
 			log.Printf("godom: failed to compute init: %v", err)
-			pool.remove(conn)
+			pool.remove(wc)
 			conn.Close()
 			return
 		}
@@ -177,7 +177,7 @@ func (a *App) Start() error {
 		for {
 			var msg wsMessage
 			if err := conn.ReadJSON(&msg); err != nil {
-				pool.remove(conn)
+				pool.remove(wc)
 				conn.Close()
 				return
 			}
@@ -217,22 +217,38 @@ type wsMessage struct {
 	Scope  string            `json:"scope,omitempty"` // "forGID:idx" for child components
 }
 
+// wsConn wraps a WebSocket connection with a write mutex.
+// gorilla/websocket does not allow concurrent writes, so each
+// connection needs its own lock.
+type wsConn struct {
+	conn *websocket.Conn
+	wmu  sync.Mutex
+}
+
+func (wc *wsConn) writeJSON(msg interface{}) error {
+	wc.wmu.Lock()
+	defer wc.wmu.Unlock()
+	return wc.conn.WriteJSON(msg)
+}
+
 // connPool manages WebSocket connections for broadcasting.
 type connPool struct {
 	mu    sync.RWMutex
-	conns []*websocket.Conn
+	conns []*wsConn
 }
 
-func (p *connPool) add(conn *websocket.Conn) {
+func (p *connPool) add(conn *websocket.Conn) *wsConn {
+	wc := &wsConn{conn: conn}
 	p.mu.Lock()
-	p.conns = append(p.conns, conn)
+	p.conns = append(p.conns, wc)
 	p.mu.Unlock()
+	return wc
 }
 
-func (p *connPool) remove(conn *websocket.Conn) {
+func (p *connPool) remove(wc *wsConn) {
 	p.mu.Lock()
 	for i, c := range p.conns {
-		if c == conn {
+		if c == wc {
 			p.conns = append(p.conns[:i], p.conns[i+1:]...)
 			break
 		}
@@ -242,17 +258,17 @@ func (p *connPool) remove(conn *websocket.Conn) {
 
 func (p *connPool) broadcast(msg interface{}) {
 	p.mu.RLock()
-	snapshot := make([]*websocket.Conn, len(p.conns))
+	snapshot := make([]*wsConn, len(p.conns))
 	copy(snapshot, p.conns)
 	p.mu.RUnlock()
 
-	for _, conn := range snapshot {
-		conn.WriteJSON(msg)
+	for _, wc := range snapshot {
+		wc.writeJSON(msg)
 	}
 }
 
 // handleInit sends the initial state to a newly connected client.
-func handleInit(conn *websocket.Conn, ci *componentInfo) error {
+func handleInit(wc *wsConn, ci *componentInfo) error {
 	ci.mu.Lock()
 	ci.value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{}))
 	initMsg, err := computeInitMessage(ci.pb, ci)
@@ -260,7 +276,7 @@ func handleInit(conn *websocket.Conn, ci *componentInfo) error {
 	if err != nil {
 		return err
 	}
-	return conn.WriteJSON(initMsg)
+	return wc.writeJSON(initMsg)
 }
 
 // handleCall processes a method call message from the bridge.
