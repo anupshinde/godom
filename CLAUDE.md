@@ -1,6 +1,6 @@
 # godom
 
-Local GUI apps in Go using the browser as the rendering engine. No JS authoring required.
+Local GUI apps in Go using the browser as the rendering engine. Minimal JS — most apps need none, plugins bridge JS libraries when needed.
 
 ## Project scope
 - All file edits must stay within this project directory (and `/tmp` if needed)

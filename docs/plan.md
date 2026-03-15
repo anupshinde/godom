@@ -1,7 +1,7 @@
 # godom — Plan
 
 > Build local GUI apps in Go using the browser as the rendering engine.
-> Write HTML for the UI, Go for the logic. No JavaScript authoring required.
+> Write HTML for the UI, Go for the logic. Minimal JavaScript — most apps need none, plugins bridge JS libraries when needed.
 
 ---
 
@@ -62,28 +62,33 @@ Two working examples:
 
 ---
 
-## Layer 6: JS Library Integration
+## Layer 6: JS Library Integration — done
 
-Use JS libraries (charts, maps, editors) without writing JS.
+Use JS libraries (charts, maps, editors) with a thin bridge adapter.
 
-### 6.1 Plugin system
-- Go sends data + config, bridge delegates to a JS library
-- Example: `godom.Chart("line", labels, values)` uses Chart.js internally
+### 6.1 Plugin system — done
+- `app.Plugin(name, scripts...)` registers a plugin with one or more JS scripts
+- `g-plugin:name="Field"` directive sends Go struct data to the plugin
+- Plugin JS calls `godom.register(name, {init, update})` to handle data
+- Scripts injected in order before `bridge.js` — library first, then adapter
+- Plugin state tracked per element for init vs update
 
-### 6.2 Charts
-- Chart.js (or similar) behind a Go API
-- Data updates via state change trigger chart re-render
+### 6.2 Charts (Chart.js) — done
+- `plugins/chartjs/` — embeds Chart.js 4.4.8 + thin bridge adapter (~20 lines JS)
+- Go struct `chartjs.Chart` with `map[string]interface{}` for datasets and options — any Chart.js property passes through
+- `chartjs.Register(app)` registers the plugin and embeds the library
+- Example: `examples/system-monitor-chartjs/` — live CPU, memory, disk, swap, load charts
 
 ---
 
-## Layer 7: Complex App (Dashboard) — partially done
+## Layer 7: Complex App (Dashboard) — done
 
 Prove the system works for real applications.
 
 - ~~Stats cards~~ — done (`examples/monitor/`)
 - ~~Real-time data updates from goroutines~~ — done via `Refresh()`
 - ~~Presentational components~~ — done (`stat-card`)
-- Charts (requires plugin system — see Layer 6)
+- ~~Charts~~ — done (`examples/system-monitor-chartjs/` — line, doughnut, multi-dataset)
 - Tables
 - Routing between views
 

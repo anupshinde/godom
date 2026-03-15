@@ -5,10 +5,11 @@ build:
 	go build ./...
 
 # Build examples (compile check only)
-# monitor has its own go.mod, so it's built separately
+# monitor and system-monitor-chartjs have their own go.mod, so they're built separately
 build-examples:
 	go build ./examples/counter ./examples/clock ./examples/todolist ./examples/todolist-stateful
 	cd examples/monitor && go build .
+	cd examples/system-monitor-chartjs && go build .
 
 # Run all tests
 test:

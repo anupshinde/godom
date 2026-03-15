@@ -10,6 +10,7 @@
 /examples/todolist/todolist
 /examples/todolist-stateful/todolist-stateful
 /examples/monitor/monitor
+/examples/system-monitor-chartjs/system-monitor-chartjs
 
 # Test binary
 *.test

@@ -6,9 +6,9 @@
 
 > **Experimental — work in progress.** APIs may change without notice.
 
-godom is a framework for building **local apps** in Go that use the browser as the UI layer. It is not a web framework — there are no API endpoints, no frontend/backend split, no JavaScript to write. You build a Go struct, bind HTML to it with directives, and `go build` gives you a single binary. Run it, and the UI appears in your browser.
+godom is a framework for building **local apps** in Go that use the browser as the UI layer. It is not a web framework — there are no API endpoints, no frontend/backend split, no JavaScript to author for typical use. You build a Go struct, bind HTML to it with directives, and `go build` gives you a single binary. Run it, and the UI appears in your browser.
 
-The browser is just a rendering engine. All state and logic live in your Go process. The JS bridge is a thin command executor that the framework injects — you never touch it.
+The browser is the rendering engine. All state and logic live in your Go process. The JS bridge is a thin command executor that the framework injects. For most apps, you never touch JS — but when you need to integrate a JS library (charts, maps, editors), the plugin system lets you bridge Go data to any JS library.
 
 godom also works as a local network service: run the binary on a headless machine and access the UI from any browser on the network. See [docs/why.md](docs/why.md) for the full rationale and how godom differs from Electron, Tauri, and Wails.
 
@@ -87,6 +87,7 @@ Requires Go 1.21+ and a web browser.
 | `g-if` | `g-if="HasItems"` | Same as `g-show` (conditional display) |
 | `g-class:name` | `g-class:done="todo.Done"` | Add/remove a CSS class conditionally |
 | `g-attr:name` | `g-attr:transform="Rotation"` | Set any HTML/SVG attribute from a field |
+| `g-plugin:name` | `g-plugin:chartjs="MyChart"` | Send field data to a registered JS plugin |
 
 ### Events
 
@@ -178,11 +179,12 @@ Key differences from presentational components:
 ### App
 
 ```go
-app := godom.New()           // Create a new app
-app.Port = 8081              // Set port (0 = random)
-app.Component("tag", &T{})   // Register a stateful component (tag must contain a hyphen)
-app.Mount(&MyApp{}, fsys)    // Mount root component with embedded filesystem
-app.Start()                  // Start server, open browser, block forever
+app := godom.New()                       // Create a new app
+app.Port = 8081                          // Set port (0 = random)
+app.Component("tag", &T{})              // Register a stateful component (tag must contain a hyphen)
+app.Plugin("chartjs", libJS, bridgeJS)   // Register a plugin with one or more JS scripts
+app.Mount(&MyApp{}, fsys)               // Mount root component with embedded filesystem
+app.Start()                             // Start server, open browser, block forever
 ```
 
 ### Component
@@ -228,6 +230,28 @@ func (t *TodoItem) Remove() {
 }
 ```
 
+### Plugins
+
+Integrate JS libraries (charts, maps, editors) without authoring JS yourself. A plugin is a thin JS adapter that receives Go data via the `g-plugin:name` directive:
+
+```html
+<canvas g-plugin:chartjs="MyChart"></canvas>
+```
+
+```go
+app.Plugin("chartjs", libraryJS, bridgeJS)  // register with one or more JS scripts
+```
+
+The plugin JS calls `godom.register(name, {init, update})` to handle data from Go. Scripts are injected in order — typically the library first, then the bridge. See `plugins/chartjs/` for a complete example.
+
+godom ships a Chart.js plugin (`godom/plugins/chartjs`) that embeds Chart.js and provides a minimal Go struct for chart data. Charts are configured using plain `map[string]interface{}` — any Chart.js property passes straight through:
+
+```go
+import "godom/plugins/chartjs"
+
+chartjs.Register(app)  // registers plugin + embeds Chart.js library
+```
+
 ## Examples
 
 - [examples/counter/](examples/counter/) — minimal example (the one shown above)
@@ -235,6 +259,7 @@ func (t *TodoItem) Remove() {
 - [examples/todolist/](examples/todolist/) — presentational components with prop passing
 - [examples/todolist-stateful/](examples/todolist-stateful/) — stateful components with props and emit
 - [examples/monitor/](examples/monitor/) — live system monitor dashboard with `Refresh()`, `g-attr`, and presentational components
+- [examples/system-monitor-chartjs/](examples/system-monitor-chartjs/) — system monitor with Chart.js plugin (CPU, memory, disk, swap, load charts)
 
 Run any example with:
 
@@ -251,8 +276,8 @@ go build -o counter ./examples/counter
 
 ## Design principles
 
-- **No JavaScript authoring** — the JS bridge (~170 lines) is injected automatically
-- **Dumb bridge** — the JS bridge is intentionally a pure command executor. It does not evaluate expressions, resolve data, diff state, or make decisions. Go computes everything and sends concrete DOM commands (`setText`, `setAttr`, `appendHTML`, etc.). This means all logic is testable in Go, the bridge never drifts out of sync with framework semantics, and debugging stays in one language. This also rules out client-side debouncing or throttling — timing decisions would push logic into JS. Instead, `g-bind` fires on every keystroke with no debounce, keeping two-way binding instant (see [docs/transport.md](docs/transport.md) for why this matters)
+- **Minimal JavaScript** — the JS bridge (~170 lines) is injected automatically. For most apps, you write zero JS. When you need a JS library (charts, maps, editors), the plugin system bridges Go data to it with a thin adapter
+- **Thin bridge** — the JS bridge is a command executor. It does not evaluate expressions, resolve data, diff state, or make decisions. Go computes everything and sends concrete DOM commands (`setText`, `setAttr`, `appendHTML`, etc.). This means all logic is testable in Go, the bridge stays in sync with framework semantics, and debugging stays in one language. Plugins extend the bridge to delegate rendering to JS libraries when needed. `g-bind` fires on every keystroke with no debounce, keeping two-way binding instant (see [docs/transport.md](docs/transport.md) for why this matters)
 - **State in Go** — the browser is a rendering engine, not the source of truth
 - **Fail fast** — all directives validated at startup against your struct
 - **Single binary** — `go build` produces one executable, no node_modules

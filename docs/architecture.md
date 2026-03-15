@@ -2,7 +2,7 @@
 
 ## Overview
 
-godom has three main pieces: a **Go process** that owns all state and logic, a **JS bridge** that executes DOM commands in the browser, and a **WebSocket** that connects the two. The Go process is the application. The browser is a dumb terminal.
+godom has three main pieces: a **Go process** that owns all state and logic, a **JS bridge** that executes DOM commands in the browser, and a **WebSocket** that connects the two. The Go process is the application. The browser handles rendering. Plugins can extend the bridge to integrate JS libraries (charts, maps, editors) while keeping Go as the source of truth for data.
 
 ```
 ┌─────────────────────────────────┐       WebSocket        ┌──────────────────────┐
@@ -43,7 +43,7 @@ log.Fatal(app.Start())                    // serve, open browser, block
 `Start()` then:
 
 1. Wires the `Refresh()` callback (needs the connection pool, which only exists at start time)
-2. Injects `bridge.js` before `</body>`
+2. Injects scripts before `</body>`: first the `godom.register()` global (if plugins exist), then plugin scripts in order, then `bridge.js`
 3. Starts an HTTP server on the configured port
 4. Opens the default browser
 5. Blocks forever, handling WebSocket connections
@@ -58,6 +58,7 @@ log.Fatal(app.Start())                    // serve, open browser, block
 | `parser.go` | HTML parsing, gid assignment, binding extraction, template expansion, component expansion |
 | `validate.go` | Startup directive validation against struct types via reflection |
 | `bridge.js` | Browser-side command executor (injected, never authored by the developer) |
+| `plugins/chartjs/` | Chart.js plugin — embeds library + thin bridge adapter |
 
 ## Data flow
 
@@ -141,11 +142,25 @@ The bridge is ~250 lines of vanilla JS with no dependencies. It:
 
 - Connects to `/ws` and auto-reconnects on disconnect
 - Caches elements by `data-gid` for O(1) lookup
-- Executes commands: `text`, `value`, `checked`, `display`, `class`, `attr`, `list`, `list-append`, `list-truncate`, `re-event`
+- Executes commands: `text`, `value`, `checked`, `display`, `class`, `attr`, `plugin`, `list`, `list-append`, `list-truncate`, `re-event`
 - Registers event listeners that send pre-built messages back over the WebSocket
 - Manages `g-for` anchor comments to insert/remove list items
 
 It does not: evaluate expressions, access component state, make timing decisions, batch or debounce anything. Every decision is made in Go and sent as a concrete command.
+
+## Plugin system
+
+Plugins extend the bridge to delegate rendering to JS libraries. A plugin is registered with `app.Plugin(name, scripts...)` — one or more JS scripts injected in order before `bridge.js`.
+
+The last script should call `godom.register(name, {init, update})`. When the bridge encounters a `plugin` command (from `g-plugin:name="Field"` in HTML), it calls `init(element, data)` on first render and `update(element, data)` on subsequent updates. The data is the JSON-serialized value of the Go struct field.
+
+```
+Go struct field  ──JSON──►  bridge.js  ──plugin op──►  plugin handler  ──►  JS library
+```
+
+Plugins can embed the JS library itself (e.g., `plugins/chartjs/` embeds Chart.js minified) so the user doesn't need a CDN `<script>` tag. The `Plugin()` method accepts variadic scripts — typically the library first, then the bridge adapter.
+
+The plugin state is tracked per element by `data-gid`. The bridge calls `init` once per element and `update` for all subsequent renders.
 
 ## Wire protocol
 
