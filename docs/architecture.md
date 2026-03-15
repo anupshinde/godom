@@ -138,7 +138,7 @@ For `g-for` lists, each item is individually JSON-marshaled and compared against
 
 ## The bridge (bridge.js)
 
-The bridge is ~250 lines of vanilla JS with no dependencies. It:
+The bridge is vanilla JS with no dependencies. It:
 
 - Connects to `/ws` and auto-reconnects on disconnect
 - Caches elements by `data-gid` for O(1) lookup

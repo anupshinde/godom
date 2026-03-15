@@ -74,7 +74,7 @@ Use JS libraries (charts, maps, editors) with a thin bridge adapter.
 - Plugin state tracked per element for init vs update
 
 ### 6.2 Charts (Chart.js) — done
-- `plugins/chartjs/` — embeds Chart.js 4.4.8 + thin bridge adapter (~20 lines JS)
+- `plugins/chartjs/` — embeds Chart.js 4.4.8 + thin bridge adapter
 - Go struct `chartjs.Chart` with `map[string]interface{}` for datasets and options — any Chart.js property passes through
 - `chartjs.Register(app)` registers the plugin and embeds the library
 - Example: `examples/system-monitor-chartjs/` — live CPU, memory, disk, swap, load charts
