@@ -1,0 +1,22 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+# Example binaries (but not the source dirs)
+/cmd/todolist/todolist
+/cmd/todolist-stateful/todolist-stateful
+
+# Test binary
+*.test
+
+# Go build cache
+*.out
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
