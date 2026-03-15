@@ -244,7 +244,7 @@ app.Plugin("chartjs", libraryJS, bridgeJS)  // register with one or more JS scri
 
 The plugin JS calls `godom.register(name, {init, update})` to handle data from Go. Scripts are injected in order — typically the library first, then the bridge. See `plugins/chartjs/` for a complete example.
 
-See [docs/plugins.md](docs/plugins.md) for a detailed guide on creating your own plugin for any JS library.
+See [docs/javascript-libraries.md](docs/javascript-libraries.md) for a detailed guide on using any JS library — with or without a plugin package.
 
 godom ships a Chart.js plugin (`godom/plugins/chartjs`) that embeds Chart.js and provides a minimal Go struct for chart data. Charts are configured using plain `map[string]interface{}` — any Chart.js property passes straight through:
 
@@ -262,6 +262,7 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 - [examples/todolist-stateful/](examples/todolist-stateful/) — stateful components with props and emit
 - [examples/system-monitor/](examples/system-monitor/) — live system monitor dashboard with `Refresh()`, `g-attr`, and presentational components
 - [examples/system-monitor-chartjs/](examples/system-monitor-chartjs/) — system monitor with Chart.js plugin (CPU, memory, disk, swap, load charts)
+- [examples/charts-without-plugin/](examples/charts-without-plugin/) — ApexCharts with inline bridge adapter (no plugin package)
 
 Run any example with:
 

@@ -10,6 +10,7 @@
 /examples/todolist/todolist
 /examples/todolist-stateful/todolist-stateful
 /examples/system-monitor/system-monitor
+/examples/charts-without-plugin/charts-without-plugin
 /examples/system-monitor-chartjs/system-monitor-chartjs
 
 # Test binary

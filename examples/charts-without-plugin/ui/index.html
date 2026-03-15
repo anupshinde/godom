@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ApexCharts Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.54.1"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0b0e14;
+            color: #e0e0e0;
+            padding: 2rem 3rem;
+        }
+        h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+        .subtitle {
+            color: #555;
+            font-size: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+        .charts {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+        }
+        .chart-card {
+            background: linear-gradient(135deg, #131926 0%, #0f1520 100%);
+            border: 1px solid rgba(255,255,255,0.04);
+            border-radius: 10px;
+            padding: 1.25rem 1.5rem;
+        }
+        .chart-card h2 {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #4a5568;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        @media (max-width: 800px) {
+            body { padding: 1rem; }
+            .charts { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <h1>ApexCharts Demo</h1>
+    <p class="subtitle">Using a JS library without a plugin package — inline bridge adapter in Go</p>
+
+    <div class="charts">
+        <div class="chart-card">
+            <h2>Temperature Sensor</h2>
+            <div g-plugin:apexcharts="TempChart"></div>
+        </div>
+        <div class="chart-card">
+            <h2>Random Stock Price</h2>
+            <div g-plugin:apexcharts="StockChart"></div>
+        </div>
+    </div>
+</body>
+</html>
