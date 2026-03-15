@@ -1,5 +1,9 @@
 # godom
 
+[![Tests](https://github.com/anupshinde/godom/actions/workflows/test.yml/badge.svg)](https://github.com/anupshinde/godom/actions/workflows/test.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/anupshinde/godom)](https://goreportcard.com/report/github.com/anupshinde/godom)
+[![Go Reference](https://pkg.go.dev/badge/github.com/anupshinde/godom.svg)](https://pkg.go.dev/github.com/anupshinde/godom)
+
 > **Experimental — work in progress.** APIs may change without notice.
 
 godom is a framework for building **local apps** in Go that use the browser as the UI layer. It is not a web framework — there are no API endpoints, no frontend/backend split, no JavaScript to write. You build a Go struct, bind HTML to it with directives, and `go build` gives you a single binary. Run it, and the UI appears in your browser.

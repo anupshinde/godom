@@ -15,6 +15,9 @@
 # Go build cache
 *.out
 
+# Coverage
+coverage.html
+
 # OS files
 .DS_Store
 Thumbs.db
