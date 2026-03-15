@@ -270,10 +270,17 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 - [examples/charts-without-plugin/](examples/charts-without-plugin/) — ApexCharts with inline bridge adapter (no plugin package)
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 
-Run any example with:
+Run any example:
 
 ```
 go run ./examples/counter
+```
+
+The `system-monitor` and `system-monitor-chartjs` examples have their own `go.mod` (for platform-specific dependencies), so run them from their directory:
+
+```
+cd examples/system-monitor && go run .
+cd examples/system-monitor-chartjs && go run .
 ```
 
 This starts the server and opens your browser. To build a standalone binary instead:
