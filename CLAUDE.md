@@ -3,7 +3,7 @@
 Local GUI apps in Go using the browser as the rendering engine. No JS authoring required.
 
 ## Project scope
-- All file edits must stay within `/Users/anup/mycode/newstuff/godom/` (and `/tmp` if needed)
+- All file edits must stay within this project directory (and `/tmp` if needed)
 - Do not modify files outside this project directory
 
 ## Architecture
