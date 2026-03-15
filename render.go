@@ -196,6 +196,9 @@ func singleCmd(b binding, state map[string]interface{}, ctx map[string]interface
 		if strings.HasPrefix(b.Dir, "attr:") {
 			return command{Op: "attr", ID: b.GID, Name: b.Dir[5:], Val: val}
 		}
+		if strings.HasPrefix(b.Dir, "plugin:") {
+			return command{Op: "plugin", ID: b.GID, Name: b.Dir[7:], Val: val}
+		}
 		return command{Op: "text", ID: b.GID, Val: val}
 	}
 }

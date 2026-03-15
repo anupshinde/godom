@@ -237,6 +237,8 @@ func (p *htmlParser) extractBindings(n *html.Node, gid string, out *[]binding) {
 			dir = a.Key[2:] // "class:done"
 		case strings.HasPrefix(a.Key, "g-attr:"):
 			dir = a.Key[2:] // "attr:transform"
+		case strings.HasPrefix(a.Key, "g-plugin:"):
+			dir = a.Key[2:] // "plugin:chartjs"
 		}
 		if dir != "" {
 			*out = append(*out, binding{GID: gid, Dir: dir, Expr: a.Val})

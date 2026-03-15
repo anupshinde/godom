@@ -35,6 +35,7 @@ type App struct {
 	Port       int // 0 = random available port
 	comp       *componentInfo
 	components map[string]*componentReg // tag name → registered component
+	plugins    map[string][]string       // plugin name → JS scripts
 }
 
 // embedsComponent checks if a struct type embeds godom.Component.
@@ -51,7 +52,15 @@ func embedsComponent(t reflect.Type) bool {
 func New() *App {
 	return &App{
 		components: make(map[string]*componentReg),
+		plugins:    make(map[string][]string),
 	}
+}
+
+// Plugin registers a named plugin with one or more JS scripts.
+// Scripts are injected in order. The last script should call
+// godom.register(name, {init, update}) to handle plugin commands.
+func (a *App) Plugin(name string, scripts ...string) {
+	a.plugins[name] = scripts
 }
 
 // Component registers a stateful component struct for a custom element tag.
@@ -159,9 +168,19 @@ func (a *App) Start() error {
 
 	mux := http.NewServeMux()
 
-	// Inject bridge script before </body>
+	// Inject godom global (for plugin registration), then plugin JS,
+	// then bridge script before </body>
+	var pluginScripts string
+	if len(a.plugins) > 0 {
+		pluginScripts = "<script>window.godom={_plugins:{},register:function(n,h){this._plugins[n]=h}};</script>\n"
+		for _, scripts := range a.plugins {
+			for _, js := range scripts {
+				pluginScripts += "<script>" + js + "</script>\n"
+			}
+		}
+	}
 	pageHTML := strings.Replace(ci.htmlBody, "</body>",
-		"<script>"+bridgeJS+"</script>\n</body>", 1)
+		pluginScripts+"<script>"+bridgeJS+"</script>\n</body>", 1)
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {

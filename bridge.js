@@ -3,6 +3,7 @@
     var gidMap = {};    // data-gid → DOM element cache
     var anchorMap = {}; // g-for id → {start, end} comment nodes
     var eventMap = {};  // "gid:event" → latest event config (for dedup)
+    var pluginState = {}; // gid → true if init has been called
 
     function connect() {
         ws = new WebSocket("ws://" + location.host + "/ws");
@@ -102,6 +103,17 @@
                             break;
                         case "attr":
                             el.setAttribute(c.name, c.val != null ? String(c.val) : "");
+                            break;
+                        case "plugin":
+                            var handler = window.godom && window.godom._plugins && window.godom._plugins[c.name];
+                            if (handler) {
+                                if (!pluginState[c.id]) {
+                                    handler.init(el, c.val);
+                                    pluginState[c.id] = true;
+                                } else {
+                                    handler.update(el, c.val);
+                                }
+                            }
                             break;
                     }
             }
