@@ -238,3 +238,13 @@ go build -o counter ./examples/counter
 - **Fail fast** — all directives validated at startup against your struct
 - **Single binary** — `go build` produces one executable, no node_modules
 - **Local apps** — designed for local use and trusted networks, not the public internet. No auth, no HTTPS, no deployment ceremony. Also runs as a service on headless machines ([why?](docs/why.md))
+
+## AI disclosure
+
+This project was **coded with the help of [Claude](https://claude.ai)** (Anthropic). The architecture, design decisions, and all code were produced through human-AI collaboration using Claude Code.
+
+> The documentation including this README is also maintained by AI.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
