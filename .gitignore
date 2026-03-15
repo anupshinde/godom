@@ -9,7 +9,7 @@
 /examples/clock/clock
 /examples/todolist/todolist
 /examples/todolist-stateful/todolist-stateful
-/examples/monitor/monitor
+/examples/system-monitor/system-monitor
 /examples/system-monitor-chartjs/system-monitor-chartjs
 
 # Test binary

@@ -85,7 +85,7 @@ Use JS libraries (charts, maps, editors) with a thin bridge adapter.
 
 Prove the system works for real applications.
 
-- ~~Stats cards~~ — done (`examples/monitor/`)
+- ~~Stats cards~~ — done (`examples/system-monitor/`)
 - ~~Real-time data updates from goroutines~~ — done via `Refresh()`
 - ~~Presentational components~~ — done (`stat-card`)
 - ~~Charts~~ — done (`examples/system-monitor-chartjs/` — line, doughnut, multi-dataset)

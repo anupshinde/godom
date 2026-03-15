@@ -258,7 +258,7 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 - [examples/clock/](examples/clock/) — analog clock with `Refresh()` and `g-attr` (server-pushed updates)
 - [examples/todolist/](examples/todolist/) — presentational components with prop passing
 - [examples/todolist-stateful/](examples/todolist-stateful/) — stateful components with props and emit
-- [examples/monitor/](examples/monitor/) — live system monitor dashboard with `Refresh()`, `g-attr`, and presentational components
+- [examples/system-monitor/](examples/system-monitor/) — live system monitor dashboard with `Refresh()`, `g-attr`, and presentational components
 - [examples/system-monitor-chartjs/](examples/system-monitor-chartjs/) — system monitor with Chart.js plugin (CPU, memory, disk, swap, load charts)
 
 Run any example with:

@@ -1,4 +1,4 @@
-module godom/examples/monitor
+module godom/examples/system-monitor
 
 go 1.25.6
 
