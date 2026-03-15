@@ -25,6 +25,7 @@ Everything is a component. A component is a Go struct.
 - Exported methods = event handlers (called from HTML directives)
 - State diffing: before/after JSON snapshots, sends only changed fields
 - Handler dispatch: browser sends `{method, args}`, Go calls via reflection
+- `Refresh()` — push state from background goroutines to all connected browsers
 - Stateful components: `app.Component("tag", &T{})` with props (`godom:"prop"` tags) and `Emit()` for upward communication
 - Presentational components: HTML includes with `:prop="expr"` template variables
 
@@ -32,14 +33,14 @@ Everything is a component. A component is a Go struct.
 
 ## Layer 3: HTML Directives — done
 
-Implemented: `g-text`, `g-bind`, `g-click`, `g-keydown`, `g-for`, `g-if`, `g-show`, `g-checked`, `g-class:name`.
+Implemented: `g-text`, `g-bind`, `g-click`, `g-keydown`, `g-for`, `g-if`, `g-show`, `g-checked`, `g-class:name`, `g-attr:name`.
 
 - All expressions resolved in Go (bridge is a pure command executor)
 - Per-item diffing for g-for lists (append/truncate/update, no full re-render)
 - Startup validation: all directives validated against struct at Mount() time
 - Expression support: field access, dotted paths, loop variables, literals
 
-Not yet implemented: `g-attr:key`, `g-style:prop`.
+Not yet implemented: `g-style:prop`.
 
 ---
 
@@ -109,7 +110,7 @@ Prove the system works for real applications.
 
 - **Component lifecycle:** Init/Mount/Unmount hooks?
 - **Computed properties:** Methods that derive from state (like `Remaining() int`)? Auto-called on render?
-- **Concurrency:** Goroutines pushing state changes (timers, background tasks)?
+- **Concurrency:** ~~Goroutines pushing state changes (timers, background tasks)?~~ — done via `Refresh()`
 - **Routing:** Single page with dynamic content, or URL-based routing?
 - **Persistence:** Optional state save to disk?
 - **Testing:** How to test components without a browser? (Unit tests exist for parsing, rendering, validation, and components — but no integration tests yet)

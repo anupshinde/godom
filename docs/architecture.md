@@ -38,12 +38,15 @@ log.Fatal(app.Start())                    // serve, open browser, block
 3. **Validate directives** — every `g-*` attribute is checked against the component struct via reflection. Unknown fields or methods cause `log.Fatal`. This happens at startup, not at runtime
 4. **Parse HTML** — assign `data-gid` identifiers to every element with a directive, extract bindings and events into lookup tables, replace `g-for` elements with anchor comments
 
+`Mount()` also wires up the embedded `Component` struct's internal pointer (`ci`) so that `Refresh()` and `Emit()` work even if a goroutine starts before `Start()` is called.
+
 `Start()` then:
 
-1. Injects `bridge.js` before `</body>`
-2. Starts an HTTP server on the configured port
-3. Opens the default browser
-4. Blocks forever, handling WebSocket connections
+1. Wires the `Refresh()` callback (needs the connection pool, which only exists at start time)
+2. Injects `bridge.js` before `</body>`
+3. Starts an HTTP server on the configured port
+4. Opens the default browser
+5. Blocks forever, handling WebSocket connections
 
 ## Files
 
@@ -84,6 +87,16 @@ When the user clicks a button with `g-click="AddTodo"`:
 ### Two-way binding
 
 `g-bind="InputText"` creates both a binding (Go → browser: set input value) and an event (browser → Go: send new value on every keystroke). There is no debouncing — every keystroke is a full round trip. See [transport.md](transport.md) for why.
+
+### Server-pushed updates (Refresh)
+
+Not all state changes come from user interaction. Background goroutines (timers, sensors, network listeners) can mutate struct fields and call `Refresh()` to push the new state to all browsers:
+
+1. Go locks the component mutex
+2. Computes update commands for all exported fields
+3. Broadcasts the update to all connected tabs
+
+This uses the same `update` message as user-triggered changes — the bridge doesn't know the difference. The `Refresh()` callback is wired up in `Start()` because it needs the connection pool; before `Start()`, calls to `Refresh()` are no-ops (no clients to send to).
 
 ## Component model
 
@@ -128,7 +141,7 @@ The bridge is ~250 lines of vanilla JS with no dependencies. It:
 
 - Connects to `/ws` and auto-reconnects on disconnect
 - Caches elements by `data-gid` for O(1) lookup
-- Executes commands: `text`, `value`, `checked`, `display`, `class`, `list`, `list-append`, `list-truncate`, `re-event`
+- Executes commands: `text`, `value`, `checked`, `display`, `class`, `attr`, `list`, `list-append`, `list-truncate`, `re-event`
 - Registers event listeners that send pre-built messages back over the WebSocket
 - Manages `g-for` anchor comments to insert/remove list items
 

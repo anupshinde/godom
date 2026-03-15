@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clock</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            font-family: monospace;
+        }
+        svg {
+            width: 300px;
+            height: 300px;
+        }
+        .digital {
+            font-size: 2rem;
+            margin-top: 1.5rem;
+            letter-spacing: 0.1em;
+        }
+    </style>
+</head>
+<body>
+    <svg viewBox="0 0 100 100">
+        <!-- Face -->
+        <circle cx="50" cy="50" r="48" fill="#16213e" stroke="#e0e0e0" stroke-width="1.5"/>
+        <!-- Hour markers -->
+        <line x1="50" y1="5"  x2="50" y2="10" stroke="#e0e0e0" stroke-width="1.5" transform="rotate(0 50 50)"/>
+        <line x1="50" y1="5"  x2="50" y2="10" stroke="#e0e0e0" stroke-width="1.5" transform="rotate(30 50 50)"/>
+        <line x1="50" y1="5"  x2="50" y2="10" stroke="#e0e0e0" stroke-width="1.5" transform="rotate(60 50 50)"/>
+        <line x1="50" y1="5"  x2="50" y2="10" stroke="#e0e0e0" stroke-width="1.5" transform="rotate(90 50 50)"/>
+        <line x1="50" y1="5"  x2="50" y2="10" stroke="#e0e0e0" stroke-width="1.5" transform="rotate(120 50 50)"/>
+        <line x1="50" y1="5"  x2="50" y2="10" stroke="#e0e0e0" stroke-width="1.5" transform="rotate(150 50 50)"/>
+        <line x1="50" y1="5"  x2="50" y2="10" stroke="#e0e0e0" stroke-width="1.5" transform="rotate(180 50 50)"/>
+        <line x1="50" y1="5"  x2="50" y2="10" stroke="#e0e0e0" stroke-width="1.5" transform="rotate(210 50 50)"/>
+        <line x1="50" y1="5"  x2="50" y2="10" stroke="#e0e0e0" stroke-width="1.5" transform="rotate(240 50 50)"/>
+        <line x1="50" y1="5"  x2="50" y2="10" stroke="#e0e0e0" stroke-width="1.5" transform="rotate(270 50 50)"/>
+        <line x1="50" y1="5"  x2="50" y2="10" stroke="#e0e0e0" stroke-width="1.5" transform="rotate(300 50 50)"/>
+        <line x1="50" y1="5"  x2="50" y2="10" stroke="#e0e0e0" stroke-width="1.5" transform="rotate(330 50 50)"/>
+        <!-- Hour hand -->
+        <line x1="50" y1="50" x2="50" y2="22" stroke="#e0e0e0" stroke-width="2.5" stroke-linecap="round" g-attr:transform="HourHand"/>
+        <!-- Minute hand -->
+        <line x1="50" y1="50" x2="50" y2="14" stroke="#e0e0e0" stroke-width="1.5" stroke-linecap="round" g-attr:transform="MinuteHand"/>
+        <!-- Second hand -->
+        <line x1="50" y1="50" x2="50" y2="10" stroke="#e94560" stroke-width="0.8" stroke-linecap="round" g-attr:transform="SecondHand"/>
+        <!-- Center dot -->
+        <circle cx="50" cy="50" r="2" fill="#e94560"/>
+    </svg>
+    <div class="digital" g-text="Time">00:00:00</div>
+</body>
+</html>

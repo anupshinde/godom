@@ -86,6 +86,7 @@ Requires Go 1.21+ and a web browser.
 | `g-show` | `g-show="IsVisible"` | Toggle `display: none` based on truthiness |
 | `g-if` | `g-if="HasItems"` | Same as `g-show` (conditional display) |
 | `g-class:name` | `g-class:done="todo.Done"` | Add/remove a CSS class conditionally |
+| `g-attr:name` | `g-attr:transform="Rotation"` | Set any HTML/SVG attribute from a field |
 
 ### Events
 
@@ -201,6 +202,22 @@ func (a *MyApp) DoSomething() {
 }
 ```
 
+### Refresh
+
+Push state to all connected browsers from a background goroutine:
+
+```go
+func (a *App) monitor() {
+    for {
+        time.Sleep(1 * time.Second)
+        a.Value = readSensor()
+        a.Refresh()  // broadcast to all browsers
+    }
+}
+```
+
+Call `Refresh()` after mutating fields outside of user-triggered events (clicks, input). This is how you build dashboards, monitors, and live-updating UIs.
+
 ### Emit
 
 For stateful components, send events to parent components:
@@ -214,6 +231,7 @@ func (t *TodoItem) Remove() {
 ## Examples
 
 - [examples/counter/](examples/counter/) — minimal example (the one shown above)
+- [examples/clock/](examples/clock/) — analog clock with `Refresh()` and `g-attr` (server-pushed updates)
 - [examples/todolist/](examples/todolist/) — presentational components with prop passing
 - [examples/todolist-stateful/](examples/todolist-stateful/) — stateful components with props and emit
 

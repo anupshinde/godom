@@ -15,6 +15,18 @@ type Component struct {
 	ci *componentInfo // internal: set by godom when creating instances
 }
 
+// Refresh triggers a re-render and broadcasts the current state to all
+// connected browsers. Call this from a background goroutine after mutating
+// fields to push updates without user interaction.
+func (c Component) Refresh() {
+	if c.ci == nil {
+		return
+	}
+	if c.ci.refreshFn != nil {
+		c.ci.refreshFn()
+	}
+}
+
 // Emit sends a named event up the component tree. Each ancestor with a matching
 // method name gets called, bottom-up. Arguments are passed to the method.
 func (c Component) Emit(method string, args ...interface{}) {
@@ -59,6 +71,9 @@ type componentInfo struct {
 
 	// Registry reference (from App) for creating child instances
 	registry map[string]*componentReg
+
+	// refreshFn is set by Start() to broadcast current state to all clients.
+	refreshFn func()
 }
 
 // propFieldNames returns the set of fields tagged with `godom:"prop"`.
@@ -211,6 +226,18 @@ func (ci *componentInfo) setField(path string, rawValue json.RawMessage) error {
 	}
 	field.Set(ptr.Elem())
 	return nil
+}
+
+// allExportedFieldNames returns the names of all exported fields except Component.
+func allExportedFieldNames(t reflect.Type) []string {
+	var names []string
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if f.IsExported() && f.Type != reflect.TypeOf(Component{}) {
+			names = append(names, f.Name)
+		}
+	}
+	return names
 }
 
 // parseCallExpr parses "MethodName" or "MethodName(arg1, arg2)" into method name and arg strings.

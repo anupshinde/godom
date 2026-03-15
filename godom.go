@@ -130,6 +130,10 @@ func (a *App) Mount(comp interface{}, fsys fs.FS) {
 	ci.pb = pb
 	ci.htmlBody = pb.HTML // use the gid-annotated HTML
 
+	// Set ci on the embedded Component so Refresh()/Emit() work
+	// even if a goroutine starts before Start() is called.
+	ci.value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
+
 	a.comp = ci
 }
 
@@ -141,6 +145,17 @@ func (a *App) Start() error {
 
 	ci := a.comp
 	pool := &connPool{}
+
+	// Wire up Refresh: allow Go code to push state to all browsers.
+	ci.refreshFn = func() {
+		ci.mu.Lock()
+		allFields := allExportedFieldNames(ci.typ)
+		updateMsg := computeUpdateMessage(ci.pb, ci, allFields)
+		ci.mu.Unlock()
+		if updateMsg != nil {
+			pool.broadcast(updateMsg)
+		}
+	}
 
 	mux := http.NewServeMux()
 
@@ -270,7 +285,6 @@ func (p *connPool) broadcast(msg interface{}) {
 // handleInit sends the initial state to a newly connected client.
 func handleInit(wc *wsConn, ci *componentInfo) error {
 	ci.mu.Lock()
-	ci.value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{}))
 	initMsg, err := computeInitMessage(ci.pb, ci)
 	ci.mu.Unlock()
 	if err != nil {

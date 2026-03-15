@@ -100,6 +100,9 @@
                             if (c.val) el.classList.add(c.name);
                             else el.classList.remove(c.name);
                             break;
+                        case "attr":
+                            el.setAttribute(c.name, c.val != null ? String(c.val) : "");
+                            break;
                     }
             }
         }

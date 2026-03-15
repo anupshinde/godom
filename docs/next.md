@@ -46,16 +46,11 @@ Serve images, fonts, CSS from a directory alongside the embedded HTML.
 
 ---
 
-## Attribute & Style Binding
+## Style Binding
 
-- `g-attr:key="expr"` — bind any HTML attribute to state
 - `g-style:prop="expr"` — bind inline style properties
 
----
-
-## Concurrency
-
-Goroutines pushing state changes (timers, background tasks). Requires explicit sync with the main component mutex.
+(`g-attr:name` is implemented; `g-style:prop` is not yet.)
 
 ---
 
