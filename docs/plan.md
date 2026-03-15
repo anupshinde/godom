@@ -46,8 +46,8 @@ Not yet implemented: `g-attr:key`, `g-style:prop`.
 ## Layer 4: Todolist App — done
 
 Two working examples:
-- `cmd/todolist/` — presentational components with prop passing
-- `cmd/todolist-stateful/` — stateful components with `Emit()` for parent communication
+- `examples/todolist/` — presentational components with prop passing
+- `examples/todolist-stateful/` — stateful components with `Emit()` for parent communication
 
 ---
 

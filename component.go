@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -191,6 +192,21 @@ func (ci *componentInfo) setField(path string, rawValue json.RawMessage) error {
 
 	ptr := reflect.New(field.Type())
 	if err := json.Unmarshal(rawValue, ptr.Interface()); err != nil {
+		// HTML inputs always send strings. If the target field is numeric,
+		// unwrap the JSON string and parse the number.
+		var s string
+		if json.Unmarshal(rawValue, &s) == nil {
+			if n, convErr := strconv.ParseInt(s, 10, 64); convErr == nil {
+				rv := reflect.ValueOf(n).Convert(field.Type())
+				field.Set(rv)
+				return nil
+			}
+			if f, convErr := strconv.ParseFloat(s, 64); convErr == nil {
+				rv := reflect.ValueOf(f).Convert(field.Type())
+				field.Set(rv)
+				return nil
+			}
+		}
 		return fmt.Errorf("field %q: %w", path, err)
 	}
 	field.Set(ptr.Elem())

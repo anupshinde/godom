@@ -2,7 +2,11 @@
 
 > **Experimental — work in progress.** APIs may change without notice.
 
-Build local GUI apps in Go using the browser as the rendering engine. Write HTML for the UI, Go for the logic. No JavaScript authoring required.
+godom is a framework for building **local apps** in Go that use the browser as the UI layer. It is not a web framework — there are no API endpoints, no frontend/backend split, no JavaScript to write. You build a Go struct, bind HTML to it with directives, and `go build` gives you a single binary. Run it, and the UI appears in your browser.
+
+The browser is just a rendering engine. All state and logic live in your Go process. The JS bridge is a thin command executor that the framework injects — you never touch it.
+
+godom also works as a local network service: run the binary on a headless machine and access the UI from any browser on the network. See [docs/why.md](docs/why.md) for the full rationale and how godom differs from Electron, Tauri, and Wails.
 
 ```go
 package main
@@ -19,33 +23,43 @@ var ui embed.FS
 type App struct {
     godom.Component
     Count int
+    Step  int
 }
 
 func (a *App) Increment() {
-    a.Count++
+    a.Count += a.Step
+}
+
+func (a *App) Decrement() {
+    a.Count -= a.Step
 }
 
 func main() {
     app := godom.New()
-    app.Mount(&App{}, ui)
+    app.Mount(&App{Step: 1}, ui)
     log.Fatal(app.Start())
 }
 ```
 
 ```html
 <!-- ui/index.html -->
-<h1>Counter: <span g-text="Count">0</span></h1>
-<button g-click="Increment">+1</button>
+<h1><span g-text="Count">0</span></h1>
+<button g-click="Decrement">−</button>
+<button g-click="Increment">+</button>
+<div>
+    Step size: <input type="number" min="1" max="100" g-bind="Step"/>
+</div>
 ```
 
-Run `go build` and you get a single binary that opens the browser and shows a live counter.
+Run `go build` and you get a single binary that opens the browser and shows a live counter. The HTML, CSS, and JS bridge are all embedded into the binary via Go's `embed` package — there are no external files to ship or manage.
 
 ## How it works
 
 - Your Go struct holds all application state
 - HTML templates use `g-*` directives to bind to struct fields and methods
 - A WebSocket bridge keeps the browser in sync — no page reloads
-- State lives in the Go process and survives browser close/reopen
+- State lives in the Go process and survives browser close/reopen — close the tab, reopen it, and you're back where you left off
+- Open the same app in multiple browser tabs and they stay in sync — type in one, see the update in the other. This falls out naturally from the architecture: Go owns the state and pushes DOM commands to every connected tab
 - All directives are validated at startup — typos in field/method names cause `log.Fatal`, not silent runtime bugs
 
 ## Install
@@ -195,7 +209,22 @@ func (t *TodoItem) Remove() {
 
 ## Examples
 
-See [cmd/todolist/](cmd/todolist/) for presentational components and [cmd/todolist-stateful/](cmd/todolist-stateful/) for stateful components with props and emit.
+- [examples/counter/](examples/counter/) — minimal example (the one shown above)
+- [examples/todolist/](examples/todolist/) — presentational components with prop passing
+- [examples/todolist-stateful/](examples/todolist-stateful/) — stateful components with props and emit
+
+Run any example with:
+
+```
+go run ./examples/counter
+```
+
+This starts the server and opens your browser. To build a standalone binary instead:
+
+```
+go build -o counter ./examples/counter
+./counter
+```
 
 ## Design principles
 
@@ -204,4 +233,4 @@ See [cmd/todolist/](cmd/todolist/) for presentational components and [cmd/todoli
 - **State in Go** — the browser is a rendering engine, not the source of truth
 - **Fail fast** — all directives validated at startup against your struct
 - **Single binary** — `go build` produces one executable, no node_modules
-- **Local apps** — this is not a web framework, it's for desktop-style local GUIs
+- **Local apps** — designed for local use and trusted networks, not the public internet. No auth, no HTTPS, no deployment ceremony. Also runs as a service on headless machines ([why?](docs/why.md))
