@@ -30,6 +30,39 @@
             border-radius: 10px;
             border: 1px solid rgba(255,255,255,0.05);
         }
+        .viewport {
+            display: flex;
+            gap: 0.8rem;
+            align-items: stretch;
+        }
+        .bodies {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+        .bodies button {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #aaa;
+            padding: 0.4rem 0.7rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-family: inherit;
+            text-align: left;
+            white-space: nowrap;
+        }
+        .bodies button:hover {
+            background: rgba(255,255,255,0.15);
+            color: #ddd;
+        }
+        .bodies .label {
+            color: #555;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.3rem 0 0.1rem;
+        }
         .controls {
             display: flex;
             gap: 0.5rem;
@@ -62,7 +95,26 @@
       g-keydown="ArrowUp:PanUp;ArrowDown:PanDown;ArrowLeft:RotateLeft;ArrowRight:RotateRight;+:ZoomIn;-:ZoomOut">
     <h1>Solar System</h1>
     <p class="subtitle">3D engine in Go, Canvas 2D rendering — no JS libraries</p>
-    <canvas g-plugin:canvas3d="SolarSystem"></canvas>
+    <div class="viewport">
+        <div class="bodies">
+            <div class="label">View from</div>
+            <button g-click="Follow('Free')">Free Camera</button>
+            <button g-click="Follow('Sun')">Sun</button>
+            <button g-click="Follow('Mercury')">Mercury</button>
+            <button g-click="Follow('Venus')">Venus</button>
+            <button g-click="Follow('Earth')">Earth</button>
+            <button g-click="Follow('Moon')">Moon</button>
+            <button g-click="Follow('Mars')">Mars</button>
+            <button g-click="Follow('Jupiter')">Jupiter</button>
+            <button g-click="Follow('Io')">Io</button>
+            <button g-click="Follow('Europa')">Europa</button>
+            <button g-click="Follow('Saturn')">Saturn</button>
+            <button g-click="Follow('Titan')">Titan</button>
+        </div>
+        <canvas g-plugin:canvas3d="SolarSystem"
+                g-mousedown="MouseDown" g-mousemove="MouseMove" g-mouseup="MouseUp"
+                g-wheel="Wheel"></canvas>
+    </div>
     <div class="controls">
         <button g-click="ZoomIn">+ Zoom In</button>
         <button g-click="ZoomOut">− Zoom Out</button>
@@ -71,6 +123,6 @@
         <button g-click="RotateLeft">← Rotate</button>
         <button g-click="RotateRight">→ Rotate</button>
     </div>
-    <p class="hint">Arrow keys to pan/rotate, +/− to zoom</p>
+    <p class="hint">Arrow keys to pan/rotate, +/− to zoom, drag to orbit, scroll to zoom</p>
 </body>
 </html>

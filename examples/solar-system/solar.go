@@ -98,3 +98,20 @@ func NewSolarSystem() []*Body {
 		},
 	}
 }
+
+// FindBodyPosition searches for a body by name and returns its world position.
+func FindBodyPosition(bodies []*Body, name string) (Vec3, bool) {
+	origin := Vec3{}
+	for _, b := range bodies {
+		if b.Name == name {
+			return b.Position(origin), true
+		}
+		for _, m := range b.Moons {
+			if m.Name == name {
+				parentPos := b.Position(origin)
+				return m.Position(parentPos), true
+			}
+		}
+	}
+	return Vec3{}, false
+}

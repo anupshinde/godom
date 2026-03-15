@@ -9,7 +9,7 @@
 | [system-monitor](system-monitor/) | Live dashboard with `Refresh()`, `g-attr`, and presentational components |
 | [system-monitor-chartjs](system-monitor-chartjs/) | Chart.js plugin — line, doughnut, and bar charts from Go structs |
 | [charts-without-plugin](charts-without-plugin/) | ApexCharts with an inline JS bridge adapter (no plugin package) |
-| [solar-system](solar-system/) | Go-built 3D engine with Canvas 2D rendering and interactive camera controls |
+| [solar-system](solar-system/) | Go-built 3D engine with Canvas 2D rendering — mouse drag, scroll zoom, follow planets |
 
 Run any example:
 

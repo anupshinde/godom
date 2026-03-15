@@ -4,7 +4,8 @@ import "math"
 
 // Camera defines a perspective projection from a tilted viewpoint.
 type Camera struct {
-	Distance float64 // distance from origin
+	Center   Vec3    // point the camera orbits around (default origin)
+	Distance float64 // distance from center
 	Tilt     float64 // tilt angle in radians (0 = top-down, π/2 = side)
 	Rotation float64 // rotation around Y axis
 	FOV      float64 // field of view factor
@@ -26,18 +27,18 @@ type DrawCmd struct {
 
 // Project converts a 3D position to 2D screen coordinates.
 func (c *Camera) Project(pos Vec3, radius float64) (sx, sy, sr float64, depth float64) {
-	// Camera position
-	camX := c.Distance * math.Sin(c.Rotation) * math.Cos(c.Tilt)
-	camY := c.Distance * math.Sin(c.Tilt)
-	camZ := c.Distance * math.Cos(c.Rotation) * math.Cos(c.Tilt)
+	// Camera position: orbits around Center
+	camX := c.Center.X + c.Distance*math.Sin(c.Rotation)*math.Cos(c.Tilt)
+	camY := c.Center.Y + c.Distance*math.Sin(c.Tilt)
+	camZ := c.Center.Z + c.Distance*math.Cos(c.Rotation)*math.Cos(c.Tilt)
 
 	// Vector from camera to object
 	dx := pos.X - camX
 	dy := pos.Y - camY
 	dz := pos.Z - camZ
 
-	// Camera forward direction (toward origin)
-	fwd := Vec3{-camX, -camY, -camZ}.Normalize()
+	// Camera forward direction (toward center)
+	fwd := Vec3{c.Center.X - camX, c.Center.Y - camY, c.Center.Z - camZ}.Normalize()
 	// Camera right direction (cross of fwd and world up)
 	up := Vec3{0, 1, 0}
 	right := Vec3{

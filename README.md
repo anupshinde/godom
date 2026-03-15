@@ -97,6 +97,10 @@ Requires Go 1.21+ and a web browser.
 | `g-click` | `g-click="Remove(i)"` | Call with arguments resolved from context |
 | `g-keydown` | `g-keydown="Enter:Submit"` | Call method on specific key press |
 | `g-keydown` | `g-keydown="ArrowUp:Up;ArrowDown:Down"` | Multiple key bindings (semicolon-separated) |
+| `g-mousedown` | `g-mousedown="OnDown"` | Mouse button pressed — method receives `(x, y float64)` |
+| `g-mousemove` | `g-mousemove="OnMove"` | Mouse moved — throttled to animation frame, receives `(x, y float64)` |
+| `g-mouseup` | `g-mouseup="OnUp"` | Mouse button released — receives `(x, y float64)` |
+| `g-wheel` | `g-wheel="OnScroll"` | Scroll wheel — receives `(deltaY float64)` |
 
 ### Lists
 
@@ -264,7 +268,7 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 - [examples/system-monitor/](examples/system-monitor/) — live system monitor dashboard with `Refresh()`, `g-attr`, and presentational components
 - [examples/system-monitor-chartjs/](examples/system-monitor-chartjs/) — system monitor with Chart.js plugin (CPU, memory, disk, swap, load charts)
 - [examples/charts-without-plugin/](examples/charts-without-plugin/) — ApexCharts with inline bridge adapter (no plugin package)
-- [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (camera controls, orbital mechanics)
+- [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 
 Run any example with:
 

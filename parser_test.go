@@ -199,6 +199,33 @@ func TestParsePageHTML_KeydownMultipleBindings(t *testing.T) {
 	}
 }
 
+func TestParsePageHTML_MouseEvents(t *testing.T) {
+	html := `<html><body><canvas g-mousedown="Down" g-mousemove="Move" g-mouseup="Up" g-wheel="Scroll"></canvas></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(pb.Events) != 4 {
+		t.Fatalf("expected 4 events, got %d", len(pb.Events))
+	}
+
+	expected := []struct{ event, method string }{
+		{"mousedown", "Down"},
+		{"mousemove", "Move"},
+		{"mouseup", "Up"},
+		{"wheel", "Scroll"},
+	}
+	for i, exp := range expected {
+		if pb.Events[i].Event != exp.event {
+			t.Errorf("event[%d] = %q, want %q", i, pb.Events[i].Event, exp.event)
+		}
+		if pb.Events[i].Method != exp.method {
+			t.Errorf("event[%d] method = %q, want %q", i, pb.Events[i].Method, exp.method)
+		}
+	}
+}
+
 func TestParsePageHTML_BindGeneratesInputEvent(t *testing.T) {
 	html := `<html><body><input g-bind="Name" /></body></html>`
 	pb, err := parsePageHTML(html)

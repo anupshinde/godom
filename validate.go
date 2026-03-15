@@ -9,7 +9,7 @@ import (
 )
 
 // directiveRe matches g-* attributes in HTML.
-var directiveRe = regexp.MustCompile(`g-(text|bind|click|keydown|for|if|show|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+)\s*=\s*"([^"]*)"`)
+var directiveRe = regexp.MustCompile(`g-(text|bind|click|keydown|mousedown|mousemove|mouseup|wheel|for|if|show|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+)\s*=\s*"([^"]*)"`)
 
 // gForRe matches g-for attributes to extract loop variable names.
 var gForRe = regexp.MustCompile(`g-for\s*=\s*"([^"]*)"`)
@@ -50,6 +50,12 @@ func validateDirectives(htmlStr string, ci *componentInfo) error {
 			}
 		case "keydown":
 			if err := validateKeydownExpr(expr, ci, loopVars); err != nil {
+				if !validateAgainstChildren(dirType, expr, childCIs) {
+					return err
+				}
+			}
+		case "mousedown", "mousemove", "mouseup", "wheel":
+			if err := validateMethodRef("g-"+dirType, expr, ci, loopVars); err != nil {
 				if !validateAgainstChildren(dirType, expr, childCIs) {
 					return err
 				}

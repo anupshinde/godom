@@ -273,6 +273,17 @@ func (p *htmlParser) extractEvents(n *html.Node, gid string, out *[]eventBinding
 					GID: gid, Event: "keydown", Key: key, Method: name, Args: args,
 				})
 			}
+		case a.Key == "g-mousedown" || a.Key == "g-mousemove" || a.Key == "g-mouseup":
+			event := a.Key[2:] // "mousedown", "mousemove", "mouseup"
+			name, args := parseCallExpr(a.Val)
+			*out = append(*out, eventBinding{
+				GID: gid, Event: event, Method: name, Args: args,
+			})
+		case a.Key == "g-wheel":
+			name, args := parseCallExpr(a.Val)
+			*out = append(*out, eventBinding{
+				GID: gid, Event: "wheel", Method: name, Args: args,
+			})
 		case a.Key == "g-bind":
 			// Two-way binding: also register an input event
 			*out = append(*out, eventBinding{

@@ -218,7 +218,12 @@
             var el = getEl(e.id);
             if (!el) continue;
 
+            // For keydown with key filter, include the key in the map key
+            // so multiple bindings (ArrowUp:Up, ArrowDown:Down) coexist.
             var key = e.id + ":" + e.on;
+            if (e.on === "keydown" && e.key) {
+                key += ":" + e.key;
+            }
             eventMap[key] = e; // store/update latest config
 
             // Only add the listener once per gid+event pair.
@@ -238,13 +243,55 @@
                     });
                 })(key, el);
             } else if (e.on === "keydown") {
-                (function(k, elem) {
+                (function(gid, elem) {
                     elem.addEventListener("keydown", function(ke) {
-                        var ev = eventMap[k];
+                        // Look up by key-specific entry first, then unfiltered
+                        var ev = eventMap[gid + ":keydown:" + ke.key]
+                              || eventMap[gid + ":keydown"];
                         if (!ev) return;
-                        if (ev.key && ke.key !== ev.key) return;
                         ws.send(JSON.stringify(ev.msg));
                     });
+                })(e.id, el);
+            } else if (e.on === "mousedown" || e.on === "mouseup") {
+                (function(k, elem) {
+                    elem.addEventListener(e.on, function(me) {
+                        var ev = eventMap[k];
+                        if (!ev) return;
+                        var m = JSON.parse(JSON.stringify(ev.msg));
+                        m.args = [me.offsetX, me.offsetY];
+                        ws.send(JSON.stringify(m));
+                    });
+                })(key, el);
+            } else if (e.on === "mousemove") {
+                (function(k, elem) {
+                    var pending = null;
+                    var scheduled = false;
+                    elem.addEventListener("mousemove", function(me) {
+                        var ev = eventMap[k];
+                        if (!ev) return;
+                        // Throttle: only send once per animation frame
+                        pending = me;
+                        if (scheduled) return;
+                        scheduled = true;
+                        requestAnimationFrame(function() {
+                            var m = JSON.parse(JSON.stringify(ev.msg));
+                            m.args = [pending.offsetX, pending.offsetY];
+                            ws.send(JSON.stringify(m));
+                            pending = null;
+                            scheduled = false;
+                        });
+                    });
+                })(key, el);
+            } else if (e.on === "wheel") {
+                (function(k, elem) {
+                    elem.addEventListener("wheel", function(we) {
+                        we.preventDefault();
+                        var ev = eventMap[k];
+                        if (!ev) return;
+                        var m = JSON.parse(JSON.stringify(ev.msg));
+                        m.args = [we.deltaY];
+                        ws.send(JSON.stringify(m));
+                    }, {passive: false});
                 })(key, el);
             } else {
                 (function(k, elem) {

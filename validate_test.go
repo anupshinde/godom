@@ -19,9 +19,11 @@ type valTestTodo struct {
 	Done bool
 }
 
-func (v *valTestComp) Save()        {}
-func (v *valTestComp) Toggle(i int) {}
-func (v *valTestComp) Remove(i int) {}
+func (v *valTestComp) Save()                      {}
+func (v *valTestComp) Toggle(i int)                {}
+func (v *valTestComp) Remove(i int)                {}
+func (v *valTestComp) HandleMouse(x, y float64)    {}
+func (v *valTestComp) HandleWheel(deltaY float64)  {}
 
 func newValTestCI() *componentInfo {
 	comp := &valTestComp{}
@@ -127,6 +129,22 @@ func TestValidateDirectives_KeydownMultipleInvalid(t *testing.T) {
 	ci := newValTestCI()
 	if err := validateDirectives(html, ci); err == nil {
 		t.Error("expected error for unknown method in multi-binding")
+	}
+}
+
+func TestValidateDirectives_MouseEvents(t *testing.T) {
+	html := `<canvas g-mousedown="HandleMouse" g-mousemove="HandleMouse" g-mouseup="HandleMouse" g-wheel="HandleWheel"></canvas>`
+	ci := newValTestCI()
+	if err := validateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDirectives_MouseEventUnknown(t *testing.T) {
+	html := `<canvas g-mousedown="Unknown"></canvas>`
+	ci := newValTestCI()
+	if err := validateDirectives(html, ci); err == nil {
+		t.Error("expected error for unknown method in g-mousedown")
 	}
 }
 
