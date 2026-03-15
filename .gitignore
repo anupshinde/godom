@@ -12,6 +12,7 @@
 /examples/system-monitor/system-monitor
 /examples/charts-without-plugin/charts-without-plugin
 /examples/system-monitor-chartjs/system-monitor-chartjs
+/examples/solar-system/solar-system
 
 # Test binary
 *.test

@@ -256,15 +256,23 @@ func (p *htmlParser) extractEvents(n *html.Node, gid string, out *[]eventBinding
 				GID: gid, Event: "click", Method: name, Args: args,
 			})
 		case a.Key == "g-keydown":
-			key, method := "", a.Val
-			if idx := strings.Index(a.Val, ":"); idx != -1 {
-				key = a.Val[:idx]
-				method = a.Val[idx+1:]
+			// Support multiple bindings separated by semicolons:
+			// g-keydown="ArrowUp:PanUp;ArrowDown:PanDown;Enter:Submit"
+			for _, part := range strings.Split(a.Val, ";") {
+				part = strings.TrimSpace(part)
+				if part == "" {
+					continue
+				}
+				key, method := "", part
+				if idx := strings.Index(part, ":"); idx != -1 {
+					key = part[:idx]
+					method = part[idx+1:]
+				}
+				name, args := parseCallExpr(method)
+				*out = append(*out, eventBinding{
+					GID: gid, Event: "keydown", Key: key, Method: name, Args: args,
+				})
 			}
-			name, args := parseCallExpr(method)
-			*out = append(*out, eventBinding{
-				GID: gid, Event: "keydown", Key: key, Method: name, Args: args,
-			})
 		case a.Key == "g-bind":
 			// Two-way binding: also register an input event
 			*out = append(*out, eventBinding{

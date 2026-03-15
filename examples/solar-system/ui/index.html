@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Solar System</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #050510;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        h1 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+            color: #f0f0f0;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+        canvas {
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .controls button {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #aaa;
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-family: inherit;
+        }
+        .controls button:hover {
+            background: rgba(255,255,255,0.15);
+            color: #ddd;
+        }
+        .hint {
+            color: #444;
+            font-size: 0.7rem;
+            margin-top: 0.6rem;
+        }
+    </style>
+</head>
+<body tabindex="0"
+      g-keydown="ArrowUp:PanUp;ArrowDown:PanDown;ArrowLeft:RotateLeft;ArrowRight:RotateRight;+:ZoomIn;-:ZoomOut">
+    <h1>Solar System</h1>
+    <p class="subtitle">3D engine in Go, Canvas 2D rendering — no JS libraries</p>
+    <canvas g-plugin:canvas3d="SolarSystem"></canvas>
+    <div class="controls">
+        <button g-click="ZoomIn">+ Zoom In</button>
+        <button g-click="ZoomOut">− Zoom Out</button>
+        <button g-click="PanUp">↑ Tilt Up</button>
+        <button g-click="PanDown">↓ Tilt Down</button>
+        <button g-click="RotateLeft">← Rotate</button>
+        <button g-click="RotateRight">→ Rotate</button>
+    </div>
+    <p class="hint">Arrow keys to pan/rotate, +/− to zoom</p>
+</body>
+</html>

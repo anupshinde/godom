@@ -188,11 +188,20 @@ func validateMethodRef(dirName, expr string, ci *componentInfo, loopVars map[str
 }
 
 func validateKeydownExpr(expr string, ci *componentInfo, loopVars map[string]*loopVarInfo) error {
-	method := expr
-	if idx := strings.Index(expr, ":"); idx != -1 {
-		method = expr[idx+1:]
+	for _, part := range strings.Split(expr, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		method := part
+		if idx := strings.Index(part, ":"); idx != -1 {
+			method = part[idx+1:]
+		}
+		if err := validateMethodRef("g-keydown", method, ci, loopVars); err != nil {
+			return err
+		}
 	}
-	return validateMethodRef("g-keydown", method, ci, loopVars)
+	return nil
 }
 
 func validateFieldExpr(expr string, ci *componentInfo, loopVars map[string]*loopVarInfo) error {

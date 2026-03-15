@@ -114,6 +114,22 @@ func TestValidateDirectives_Keydown(t *testing.T) {
 	}
 }
 
+func TestValidateDirectives_KeydownMultiple(t *testing.T) {
+	html := `<div g-keydown="Enter:Save;Escape:Remove(0)"></div>`
+	ci := newValTestCI()
+	if err := validateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDirectives_KeydownMultipleInvalid(t *testing.T) {
+	html := `<div g-keydown="Enter:Save;Escape:Unknown"></div>`
+	ci := newValTestCI()
+	if err := validateDirectives(html, ci); err == nil {
+		t.Error("expected error for unknown method in multi-binding")
+	}
+}
+
 func TestValidateDirectives_Literals(t *testing.T) {
 	html := `<span g-text="true"></span><span g-text="42"></span><span g-text="'hello'"></span>`
 	ci := newValTestCI()

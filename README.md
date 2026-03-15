@@ -96,6 +96,7 @@ Requires Go 1.21+ and a web browser.
 | `g-click` | `g-click="Save"` | Call a method on click |
 | `g-click` | `g-click="Remove(i)"` | Call with arguments resolved from context |
 | `g-keydown` | `g-keydown="Enter:Submit"` | Call method on specific key press |
+| `g-keydown` | `g-keydown="ArrowUp:Up;ArrowDown:Down"` | Multiple key bindings (semicolon-separated) |
 
 ### Lists
 
@@ -263,6 +264,7 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 - [examples/system-monitor/](examples/system-monitor/) — live system monitor dashboard with `Refresh()`, `g-attr`, and presentational components
 - [examples/system-monitor-chartjs/](examples/system-monitor-chartjs/) — system monitor with Chart.js plugin (CPU, memory, disk, swap, load charts)
 - [examples/charts-without-plugin/](examples/charts-without-plugin/) — ApexCharts with inline bridge adapter (no plugin package)
+- [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (camera controls, orbital mechanics)
 
 Run any example with:
 
