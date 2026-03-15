@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>System Monitor — Chart.js</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0b0e14;
+            color: #e0e0e0;
+            padding: 2rem 3rem;
+            min-height: 100vh;
+        }
+        h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+            color: #f0f0f0;
+        }
+        .subtitle {
+            color: #555;
+            font-size: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+        .host-info {
+            display: flex;
+            gap: 2.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+            padding: 0.9rem 1.5rem;
+            background: linear-gradient(135deg, #131926 0%, #0f1520 100%);
+            border: 1px solid rgba(255,255,255,0.04);
+            border-radius: 10px;
+        }
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+        .info-label {
+            color: #4a5568;
+            text-transform: uppercase;
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+        }
+        .info-value {
+            color: #cbd5e0;
+            font-size: 0.85rem;
+        }
+        .charts {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+        }
+        .chart-card {
+            background: linear-gradient(135deg, #131926 0%, #0f1520 100%);
+            border: 1px solid rgba(255,255,255,0.04);
+            border-radius: 10px;
+            padding: 1.25rem 1.5rem;
+        }
+        .chart-card h2 {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #4a5568;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        .chart-container {
+            position: relative;
+            height: 200px;
+        }
+        .doughnut-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+            margin-top: 1.25rem;
+        }
+        .doughnut-row .chart-container {
+            height: 180px;
+        }
+        @media (max-width: 800px) {
+            body { padding: 1rem; }
+            .charts { grid-template-columns: 1fr; }
+            .doughnut-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <h1>System Monitor</h1>
+    <p class="subtitle">Live system stats pushed from Go via Chart.js</p>
+
+    <div class="host-info">
+        <div class="info-item">
+            <span class="info-label">Hostname</span>
+            <span class="info-value" g-text="Hostname"></span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">OS</span>
+            <span class="info-value" g-text="OS"></span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Platform</span>
+            <span class="info-value" g-text="Platform"></span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Kernel</span>
+            <span class="info-value" g-text="Kernel"></span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Uptime</span>
+            <span class="info-value" g-text="Uptime"></span>
+        </div>
+    </div>
+
+    <div class="charts">
+        <div class="chart-card">
+            <h2>CPU Usage</h2>
+            <div class="chart-container">
+                <canvas g-plugin:chartjs="CPUChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <h2>CPU Per Core</h2>
+            <div class="chart-container">
+                <canvas g-plugin:chartjs="CPUCoreChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <h2>Memory</h2>
+            <div class="chart-container">
+                <canvas g-plugin:chartjs="MemoryChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <h2>System Load</h2>
+            <div class="chart-container">
+                <canvas g-plugin:chartjs="LoadChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="doughnut-row">
+        <div class="chart-card">
+            <h2>Disk Usage (/)</h2>
+            <div class="chart-container">
+                <canvas g-plugin:chartjs="DiskChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <h2>Swap</h2>
+            <div class="chart-container">
+                <canvas g-plugin:chartjs="SwapChart"></canvas>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
