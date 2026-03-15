@@ -244,6 +244,8 @@ app.Plugin("chartjs", libraryJS, bridgeJS)  // register with one or more JS scri
 
 The plugin JS calls `godom.register(name, {init, update})` to handle data from Go. Scripts are injected in order — typically the library first, then the bridge. See `plugins/chartjs/` for a complete example.
 
+See [docs/plugins.md](docs/plugins.md) for a detailed guide on creating your own plugin for any JS library.
+
 godom ships a Chart.js plugin (`godom/plugins/chartjs`) that embeds Chart.js and provides a minimal Go struct for chart data. Charts are configured using plain `map[string]interface{}` — any Chart.js property passes straight through:
 
 ```go
