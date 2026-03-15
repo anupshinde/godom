@@ -24,3 +24,6 @@ jobs:
 
       - name: Test
         run: make test-v
+
+      - name: Build examples
+        run: make build-examples

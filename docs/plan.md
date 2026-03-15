@@ -76,13 +76,15 @@ Use JS libraries (charts, maps, editors) without writing JS.
 
 ---
 
-## Layer 7: Complex App (Dashboard)
+## Layer 7: Complex App (Dashboard) — partially done
 
 Prove the system works for real applications.
 
-- Multiple components on one page
-- Charts, tables, stats cards
-- Real-time data updates from goroutines
+- ~~Stats cards~~ — done (`examples/monitor/`)
+- ~~Real-time data updates from goroutines~~ — done via `Refresh()`
+- ~~Presentational components~~ — done (`stat-card`)
+- Charts (requires plugin system — see Layer 6)
+- Tables
 - Routing between views
 
 ---

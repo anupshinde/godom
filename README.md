@@ -234,6 +234,7 @@ func (t *TodoItem) Remove() {
 - [examples/clock/](examples/clock/) — analog clock with `Refresh()` and `g-attr` (server-pushed updates)
 - [examples/todolist/](examples/todolist/) — presentational components with prop passing
 - [examples/todolist-stateful/](examples/todolist-stateful/) — stateful components with props and emit
+- [examples/monitor/](examples/monitor/) — live system monitor dashboard with `Refresh()`, `g-attr`, and presentational components
 
 Run any example with:
 

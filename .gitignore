@@ -6,8 +6,10 @@
 *.dylib
 # Example binaries (but not the source dirs)
 /examples/counter/counter
+/examples/clock/clock
 /examples/todolist/todolist
 /examples/todolist-stateful/todolist-stateful
+/examples/monitor/monitor
 
 # Test binary
 *.test

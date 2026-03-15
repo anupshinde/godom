@@ -5,8 +5,10 @@ build:
 	go build ./...
 
 # Build examples (compile check only)
+# monitor has its own go.mod, so it's built separately
 build-examples:
-	go build ./examples/...
+	go build ./examples/counter ./examples/clock ./examples/todolist ./examples/todolist-stateful
+	cd examples/monitor && go build .
 
 # Run all tests
 test:
