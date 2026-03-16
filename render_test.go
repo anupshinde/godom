@@ -663,6 +663,46 @@ func TestSetChildProps(t *testing.T) {
 	}
 }
 
+func TestSingleCmd_Draggable(t *testing.T) {
+	b := binding{GID: "g9", Dir: "draggable", Expr: "i"}
+	ctx := map[string]interface{}{"i": 3}
+
+	cmd := singleCmd(b, nil, ctx)
+	if cmd.Op != "draggable" || cmd.Id != "g9" || cmd.GetStrVal() != "3" {
+		t.Errorf("got op=%q id=%q strVal=%q", cmd.Op, cmd.Id, cmd.GetStrVal())
+	}
+	if cmd.Name != "" {
+		t.Errorf("got name=%q, want empty (no group)", cmd.Name)
+	}
+}
+
+func TestSingleCmd_DraggableWithGroup(t *testing.T) {
+	b := binding{GID: "g10", Dir: "draggable:palette", Expr: "'red'"}
+
+	cmd := singleCmd(b, nil, nil)
+	if cmd.Op != "draggable" || cmd.Name != "palette" || cmd.GetStrVal() != "red" {
+		t.Errorf("got op=%q name=%q strVal=%q", cmd.Op, cmd.Name, cmd.GetStrVal())
+	}
+}
+
+func TestSingleCmd_Dropzone(t *testing.T) {
+	b := binding{GID: "g11", Dir: "dropzone", Expr: "'canvas'"}
+
+	cmd := singleCmd(b, nil, nil)
+	if cmd.Op != "dropzone" || cmd.GetStrVal() != "canvas" {
+		t.Errorf("got op=%q strVal=%q", cmd.Op, cmd.GetStrVal())
+	}
+}
+
+func TestSingleEventCmd_Drop(t *testing.T) {
+	e := eventBinding{GID: "g12", Event: "drop", Key: "palette", Method: "Add"}
+
+	evt := singleEventCmd(e, nil, nil)
+	if evt.On != "drop" || evt.Key != "palette" {
+		t.Errorf("got on=%q key=%q", evt.On, evt.Key)
+	}
+}
+
 func TestValToStr(t *testing.T) {
 	tests := []struct {
 		val  interface{}

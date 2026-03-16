@@ -9,7 +9,7 @@ import (
 )
 
 // directiveRe matches g-* attributes in HTML.
-var directiveRe = regexp.MustCompile(`g-(text|bind|click|keydown|mousedown|mousemove|mouseup|wheel|for|if|show|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|style:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+)\s*=\s*"([^"]*)"`)
+var directiveRe = regexp.MustCompile(`g-(text|bind|click|keydown|mousedown|mousemove|mouseup|wheel|for|if|show|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|style:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+|draggable(?:\.[a-zA-Z0-9_-]+)?|dropzone|drop(?:\.[a-zA-Z0-9_-]+)?)\s*=\s*"([^"]*)"`)
 
 // gForRe matches g-for attributes to extract loop variable names.
 var gForRe = regexp.MustCompile(`g-for\s*=\s*"([^"]*)"`)
@@ -37,7 +37,15 @@ func validateDirectives(htmlStr string, ci *componentInfo) error {
 		dirType := m[1]
 		expr := m[2]
 
-		switch dirType {
+		// Normalize group variants: "drop.canvas" → "drop", "draggable.palette" → "draggable"
+		baseDirType := dirType
+		if strings.HasPrefix(dirType, "drop.") {
+			baseDirType = "drop"
+		} else if strings.HasPrefix(dirType, "draggable.") {
+			baseDirType = "draggable"
+		}
+
+		switch baseDirType {
 		case "for":
 			if err := validateForExpr(expr, ci); err != nil {
 				return err
@@ -56,6 +64,12 @@ func validateDirectives(htmlStr string, ci *componentInfo) error {
 			}
 		case "mousedown", "mousemove", "mouseup", "wheel":
 			if err := validateMethodRef("g-"+dirType, expr, ci, loopVars); err != nil {
+				if !validateAgainstChildren(dirType, expr, childCIs) {
+					return err
+				}
+			}
+		case "drop":
+			if err := validateMethodRef("g-drop", expr, ci, loopVars); err != nil {
 				if !validateAgainstChildren(dirType, expr, childCIs) {
 					return err
 				}
@@ -95,8 +109,8 @@ func validateAgainstChildren(dirType, expr string, childCIs []*componentInfo) bo
 	for _, childCI := range childCIs {
 		childLoopVars := map[string]*loopVarInfo{}
 		switch dirType {
-		case "click":
-			if validateMethodRef("g-click", expr, childCI, childLoopVars) == nil {
+		case "click", "drop":
+			if validateMethodRef("g-"+dirType, expr, childCI, childLoopVars) == nil {
 				return true
 			}
 		case "keydown":

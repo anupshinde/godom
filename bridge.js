@@ -142,20 +142,27 @@
                         case "draggable":
                             el.setAttribute("draggable", "true");
                             el.dataset.gDrag = c.strVal || "";
+                            el.dataset.gDragGroup = c.name || "";
                             if (!el.getAttribute("data-g-dragstart")) {
                                 el.setAttribute("data-g-dragstart", "1");
                                 el.addEventListener("dragstart", function(de) {
                                     de.dataTransfer.effectAllowed = "move";
-                                    de.dataTransfer.setData("text/plain", de.target.closest("[data-g-drag]").dataset.gDrag);
-                                    de.target.closest("[data-g-drag]").classList.add("g-dragging");
+                                    var dragEl = de.target.closest("[data-g-drag]");
+                                    var group = dragEl.dataset.gDragGroup || "";
+                                    de.dataTransfer.setData("application/x-godom-" + group, dragEl.dataset.gDrag);
+                                    dragEl.classList.add("g-dragging");
                                 });
                                 el.addEventListener("dragend", function(de) {
                                     de.target.closest("[data-g-drag]").classList.remove("g-dragging");
-                                    // Clean up any leftover drag-over classes
-                                    var overs = document.querySelectorAll(".g-drag-over");
-                                    for (var j = 0; j < overs.length; j++) overs[j].classList.remove("g-drag-over");
+                                    var overs = document.querySelectorAll(".g-drag-over,.g-drag-over-above,.g-drag-over-below");
+                                    for (var j = 0; j < overs.length; j++) {
+                                        overs[j].classList.remove("g-drag-over", "g-drag-over-above", "g-drag-over-below");
+                                    }
                                 });
                             }
+                            break;
+                        case "dropzone":
+                            el.dataset.gDrop = c.strVal || "";
                             break;
                         case "plugin":
                             var handler = window.godom && window.godom._plugins && window.godom._plugins[c.name];
@@ -348,32 +355,53 @@
                     }, {passive: false});
                 })(key, el);
             } else if (e.on === "drop") {
-                (function(k, elem) {
+                (function(k, elem, group) {
+                    var mimeType = "application/x-godom-" + group;
                     var dragCounter = 0;
+                    function hasMatch(dt) {
+                        for (var t = 0; t < dt.types.length; t++) {
+                            if (dt.types[t] === mimeType) return true;
+                        }
+                        return false;
+                    }
                     elem.addEventListener("dragover", function(de) {
+                        if (!hasMatch(de.dataTransfer)) return;
                         de.preventDefault();
                         de.dataTransfer.dropEffect = "move";
+                        var rect = elem.getBoundingClientRect();
+                        var isAbove = de.clientY < rect.top + rect.height / 2;
+                        elem.classList.remove("g-drag-over-above", "g-drag-over-below");
+                        elem.classList.add("g-drag-over");
+                        elem.classList.add(isAbove ? "g-drag-over-above" : "g-drag-over-below");
                     });
                     elem.addEventListener("dragenter", function(de) {
+                        if (!hasMatch(de.dataTransfer)) return;
                         de.preventDefault();
                         dragCounter++;
-                        elem.classList.add("g-drag-over");
                     });
                     elem.addEventListener("dragleave", function() {
+                        if (dragCounter === 0) return;
                         dragCounter--;
-                        if (dragCounter === 0) elem.classList.remove("g-drag-over");
+                        if (dragCounter === 0) {
+                            elem.classList.remove("g-drag-over", "g-drag-over-above", "g-drag-over-below");
+                        }
                     });
                     elem.addEventListener("drop", function(de) {
-                        de.preventDefault();
                         dragCounter = 0;
-                        elem.classList.remove("g-drag-over");
+                        elem.classList.remove("g-drag-over", "g-drag-over-above", "g-drag-over-below");
+                        if (!hasMatch(de.dataTransfer)) return;
+                        de.preventDefault();
                         var ev = eventMap[k];
                         if (!ev) return;
-                        var fromVal = parseFloat(de.dataTransfer.getData("text/plain"));
-                        var toVal = parseFloat(elem.dataset.gDrag || "0");
-                        sendEnvelope(ev.msg, [fromVal, toVal]);
+                        var fromStr = de.dataTransfer.getData(mimeType);
+                        var toStr = elem.dataset.gDrop || elem.dataset.gDrag || "";
+                        var rect = elem.getBoundingClientRect();
+                        var position = de.clientY < rect.top + rect.height / 2 ? "above" : "below";
+                        function smartVal(s) { var n = Number(s); return s !== "" && !isNaN(n) ? n : s; }
+                        var dropArgs = [smartVal(fromStr), smartVal(toStr), position];
+                        sendEnvelope(ev.msg, null, textEncoder.encode(JSON.stringify(dropArgs)));
                     });
-                })(key, el);
+                })(key, el, e.key || "");
             } else {
                 (function(k, elem) {
                     elem.addEventListener(e.on, function() {

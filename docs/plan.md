@@ -66,6 +66,25 @@ See [protocol.md](protocol.md) for the full rationale and alternatives considere
 
 ---
 
+## Layer 3.5: Drag and Drop — done
+
+HTML5 drag-and-drop with Go-side state management.
+
+- `g-draggable` / `g-draggable.group` — make elements draggable with optional group isolation
+- `g-dropzone` — mark elements as named drop targets
+- `g-drop` / `g-drop.group` — handle drops with group filtering, receives `(from, to, position)`
+- Group isolation via `dataTransfer` MIME types (`application/x-godom-{group}`)
+- Automatic CSS classes: `.g-dragging`, `.g-drag-over`, `.g-drag-over-above`, `.g-drag-over-below`
+- Drop data sent via `Envelope.value` as JSON array, preserving string and numeric types
+- `callMethod` accepts extra args (position is optional)
+
+Examples:
+- `examples/drag-tiles/` — 24 tiles with drag-to-reorder and shine animation
+- `examples/drag-demo/` — groups, dropzones, string data, position detection (palette → canvas → trash)
+- `examples/todolist/` — drag-to-reorder todo items
+
+---
+
 ## Layer 5: Styling
 
 ### 5.1 CSS in HTML files — done

@@ -19,11 +19,14 @@ type valTestTodo struct {
 	Done bool
 }
 
-func (v *valTestComp) Save()                      {}
-func (v *valTestComp) Toggle(i int)                {}
-func (v *valTestComp) Remove(i int)                {}
-func (v *valTestComp) HandleMouse(x, y float64)    {}
-func (v *valTestComp) HandleWheel(deltaY float64)  {}
+func (v *valTestComp) Save()                                  {}
+func (v *valTestComp) Toggle(i int)                            {}
+func (v *valTestComp) Remove(i int)                            {}
+func (v *valTestComp) HandleMouse(x, y float64)                {}
+func (v *valTestComp) HandleWheel(deltaY float64)              {}
+func (v *valTestComp) Reorder(from, to float64)                {}
+func (v *valTestComp) Add(color string)                        {}
+func (v *valTestComp) Drop(from, to float64, position string)  {}
 
 func newValTestCI() *componentInfo {
 	comp := &valTestComp{}
@@ -195,6 +198,62 @@ func TestValidateDirectives_ChildComponentFallback(t *testing.T) {
 	html := `<span g-text="Local"></span>`
 	if err := validateDirectives(html, childCI); err != nil {
 		t.Errorf("unexpected error (should fallback to child): %v", err)
+	}
+}
+
+func TestValidateDirectives_Draggable(t *testing.T) {
+	html := `<li g-for="todo, i in Todos"><span g-draggable="i"></span></li>`
+	ci := newValTestCI()
+	if err := validateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDirectives_DraggableWithGroup(t *testing.T) {
+	html := `<div g-draggable.palette="'red'"></div>`
+	ci := newValTestCI()
+	if err := validateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDirectives_Dropzone(t *testing.T) {
+	html := `<div g-dropzone="'canvas'"></div>`
+	ci := newValTestCI()
+	if err := validateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDirectives_DropEvent(t *testing.T) {
+	html := `<div g-drop="Reorder"></div>`
+	ci := newValTestCI()
+	if err := validateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDirectives_DropEventWithGroup(t *testing.T) {
+	html := `<div g-drop.palette="Add"></div>`
+	ci := newValTestCI()
+	if err := validateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDirectives_DropEventUnknownMethod(t *testing.T) {
+	html := `<div g-drop="Unknown"></div>`
+	ci := newValTestCI()
+	if err := validateDirectives(html, ci); err == nil {
+		t.Error("expected error for unknown method in g-drop")
+	}
+}
+
+func TestValidateDirectives_DraggableUnknownField(t *testing.T) {
+	html := `<div g-draggable="Missing"></div>`
+	ci := newValTestCI()
+	if err := validateDirectives(html, ci); err == nil {
+		t.Error("expected error for unknown field in g-draggable")
 	}
 }
 

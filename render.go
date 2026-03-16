@@ -205,8 +205,15 @@ func singleCmd(b binding, state map[string]interface{}, ctx map[string]interface
 			raw, _ := json.Marshal(val)
 			return &Command{Op: "plugin", Id: b.GID, Name: b.Dir[7:], Val: &Command_RawVal{RawVal: raw}}
 		}
-		if b.Dir == "draggable" {
-			return &Command{Op: "draggable", Id: b.GID, Val: &Command_StrVal{StrVal: valToStr(val)}}
+		if b.Dir == "draggable" || strings.HasPrefix(b.Dir, "draggable:") {
+			group := ""
+			if strings.HasPrefix(b.Dir, "draggable:") {
+				group = b.Dir[len("draggable:"):]
+			}
+			return &Command{Op: "draggable", Id: b.GID, Name: group, Val: &Command_StrVal{StrVal: valToStr(val)}}
+		}
+		if b.Dir == "dropzone" {
+			return &Command{Op: "dropzone", Id: b.GID, Val: &Command_StrVal{StrVal: valToStr(val)}}
 		}
 		return &Command{Op: "text", Id: b.GID, Val: &Command_StrVal{StrVal: valToStr(val)}}
 	}

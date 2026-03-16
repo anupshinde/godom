@@ -241,8 +241,14 @@ func (p *htmlParser) extractBindings(n *html.Node, gid string, out *[]binding) {
 			dir = a.Key[2:] // "style:background-color"
 		case strings.HasPrefix(a.Key, "g-plugin:"):
 			dir = a.Key[2:] // "plugin:chartjs"
-		case a.Key == "g-draggable":
-			dir = "draggable"
+		case a.Key == "g-draggable" || strings.HasPrefix(a.Key, "g-draggable."):
+			if strings.HasPrefix(a.Key, "g-draggable.") {
+				dir = "draggable:" + a.Key[len("g-draggable."):]
+			} else {
+				dir = "draggable"
+			}
+		case a.Key == "g-dropzone":
+			dir = "dropzone"
 		}
 		if dir != "" {
 			*out = append(*out, binding{GID: gid, Dir: dir, Expr: a.Val})
@@ -293,10 +299,14 @@ func (p *htmlParser) extractEvents(n *html.Node, gid string, out *[]eventBinding
 			*out = append(*out, eventBinding{
 				GID: gid, Event: "input", Method: "__bind", Args: []string{a.Val},
 			})
-		case a.Key == "g-drop":
+		case a.Key == "g-drop" || strings.HasPrefix(a.Key, "g-drop."):
+			group := ""
+			if strings.HasPrefix(a.Key, "g-drop.") {
+				group = a.Key[len("g-drop."):]
+			}
 			name, args := parseCallExpr(a.Val)
 			*out = append(*out, eventBinding{
-				GID: gid, Event: "drop", Method: name, Args: args,
+				GID: gid, Event: "drop", Key: group, Method: name, Args: args,
 			})
 		}
 	}

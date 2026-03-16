@@ -149,8 +149,9 @@ The bridge is vanilla JS with no dependencies. It:
 - Connects to `/ws` and auto-reconnects on disconnect (shows a blurred dark overlay with "Disconnected" while retrying)
 - On application crash (panic in a handler), shows an "Application Crashed" overlay with the error message; does not retry
 - Caches elements by `data-gid` for O(1) lookup
-- Executes commands: `text`, `value`, `checked`, `display`, `class`, `attr`, `plugin`, `list`, `list-append`, `list-truncate`
+- Executes commands: `text`, `value`, `checked`, `display`, `class`, `attr`, `style`, `plugin`, `draggable`, `dropzone`, `list`, `list-append`, `list-truncate`
 - Registers event listeners that wrap pre-built protobuf bytes in an Envelope and send over the WebSocket
+- Manages HTML5 drag-and-drop: `draggable` sets up `dragstart`/`dragend` with group-specific MIME types; `dropzone` marks drop targets; `drop` event listeners handle group filtering, visual feedback (`.g-dragging`, `.g-drag-over`, `.g-drag-over-above`/`.g-drag-over-below`), and send drop data (`[from, to, position]`) via `Envelope.value`
 - Manages `g-for` anchor comments to insert/remove list items
 
 It does not: evaluate expressions, access component state, make timing decisions, batch or debounce anything. Every decision is made in Go and sent as a concrete command.
@@ -187,7 +188,7 @@ The bridge wraps events in an `Envelope`:
 
 - `msg` — the pre-built `WSMessage` bytes from the `EventCommand`, forwarded untouched
 - `args` — browser-side doubles (mouse coordinates, wheel delta)
-- `value` — input value for `g-bind` events (JSON-encoded bytes)
+- `value` — JSON-encoded bytes: input value for `g-bind` events, or `[from, to, position]` array for `drop` events
 
 The bridge never inspects `msg`. Go unpacks the `WSMessage` to determine the type (`"call"` or `"bind"`), method name, pre-resolved args, and scope.
 

@@ -513,3 +513,96 @@ func TestFindIndexHTML_NotFound(t *testing.T) {
 		t.Error("expected error when index.html not found")
 	}
 }
+
+func TestParsePageHTML_Draggable(t *testing.T) {
+	html := `<html><body><div g-draggable="i">Drag me</div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pb.Bindings) != 1 {
+		t.Fatalf("expected 1 binding, got %d", len(pb.Bindings))
+	}
+	b := pb.Bindings[0]
+	if b.Dir != "draggable" {
+		t.Errorf("dir = %q, want draggable", b.Dir)
+	}
+	if b.Expr != "i" {
+		t.Errorf("expr = %q, want i", b.Expr)
+	}
+}
+
+func TestParsePageHTML_DraggableWithGroup(t *testing.T) {
+	html := `<html><body><div g-draggable.palette="'red'">Red</div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pb.Bindings) != 1 {
+		t.Fatalf("expected 1 binding, got %d", len(pb.Bindings))
+	}
+	b := pb.Bindings[0]
+	if b.Dir != "draggable:palette" {
+		t.Errorf("dir = %q, want draggable:palette", b.Dir)
+	}
+	if b.Expr != "'red'" {
+		t.Errorf("expr = %q, want 'red'", b.Expr)
+	}
+}
+
+func TestParsePageHTML_Dropzone(t *testing.T) {
+	html := `<html><body><div g-dropzone="'canvas'">Drop here</div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pb.Bindings) != 1 {
+		t.Fatalf("expected 1 binding, got %d", len(pb.Bindings))
+	}
+	b := pb.Bindings[0]
+	if b.Dir != "dropzone" {
+		t.Errorf("dir = %q, want dropzone", b.Dir)
+	}
+}
+
+func TestParsePageHTML_DropEvent(t *testing.T) {
+	html := `<html><body><div g-drop="Reorder">Drop</div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pb.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(pb.Events))
+	}
+	e := pb.Events[0]
+	if e.Event != "drop" {
+		t.Errorf("event = %q, want drop", e.Event)
+	}
+	if e.Method != "Reorder" {
+		t.Errorf("method = %q, want Reorder", e.Method)
+	}
+	if e.Key != "" {
+		t.Errorf("key = %q, want empty (no group)", e.Key)
+	}
+}
+
+func TestParsePageHTML_DropEventWithGroup(t *testing.T) {
+	html := `<html><body><div g-drop.palette="Add">Drop</div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pb.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(pb.Events))
+	}
+	e := pb.Events[0]
+	if e.Event != "drop" {
+		t.Errorf("event = %q, want drop", e.Event)
+	}
+	if e.Key != "palette" {
+		t.Errorf("key = %q, want palette", e.Key)
+	}
+	if e.Method != "Add" {
+		t.Errorf("method = %q, want Add", e.Method)
+	}
+}

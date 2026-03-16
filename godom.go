@@ -400,7 +400,7 @@ func (a *App) Start() error {
 
 			switch wsMsg.Type {
 			case "call":
-				handleCall(ci, wsMsg, env.Args, pool)
+				handleCall(ci, wsMsg, env.Args, env.Value, pool)
 			case "bind":
 				handleBind(ci, wsMsg, env.Value, pool)
 			}
@@ -522,7 +522,7 @@ func handleInit(wc *wsConn, ci *componentInfo) error {
 }
 
 // handleCall processes a method call message from the bridge.
-func handleCall(ci *componentInfo, wsMsg *WSMessage, envArgs []float64, pool *connPool) {
+func handleCall(ci *componentInfo, wsMsg *WSMessage, envArgs []float64, envValue []byte, pool *connPool) {
 	target := ci
 	if wsMsg.Scope != "" {
 		if child := resolveScope(ci, wsMsg.Scope); child != nil {
@@ -540,6 +540,16 @@ func handleCall(ci *componentInfo, wsMsg *WSMessage, envArgs []float64, pool *co
 	for _, a := range envArgs {
 		jsonArg, _ := json.Marshal(a)
 		wsMsg.Args = append(wsMsg.Args, jsonArg)
+	}
+
+	// Merge drop event data (from, to, position) from value field
+	if len(envValue) > 0 {
+		var extraArgs []json.RawMessage
+		if err := json.Unmarshal(envValue, &extraArgs); err == nil {
+			for _, arg := range extraArgs {
+				wsMsg.Args = append(wsMsg.Args, arg)
+			}
+		}
 	}
 
 	// Convert [][]byte to []json.RawMessage for callMethod
