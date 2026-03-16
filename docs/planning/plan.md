@@ -126,8 +126,10 @@ Example: `examples/basic-form-builder/`
 ### 5.1 CSS in HTML files — done
 `<style>` tags in component HTML work naturally (no scoping yet).
 
-### 5.2 Static file serving
-- Serve a directory for images, fonts, external CSS
+### 5.2 Static file serving — done
+- Non-root HTTP paths served from the embedded UI filesystem via `http.FileServer`
+- CSS, images, fonts placed alongside `index.html` work with standard HTML tags (`<link>`, `<img>`, etc.)
+- Example: `examples/stock-ticker/` uses an external `style.css`
 
 ---
 
@@ -158,7 +160,7 @@ Prove the system works for real applications.
 - ~~Real-time data updates from goroutines~~ — done via `Refresh()`
 - ~~Presentational components~~ — done (`stat-card`)
 - ~~Charts~~ — done (`examples/system-monitor-chartjs/` — line, doughnut, multi-dataset)
-- Tables
+- ~~Tables~~ — done (`examples/stock-ticker/` — `g-for` on `<tr>` with 30 live-updating rows)
 - Routing between views
 
 ---

@@ -46,7 +46,7 @@ log.Fatal(app.Start())                    // serve, open browser, block
 2. Generates a random auth token (unless `NoAuth` is set or a fixed `Token` is provided)
 3. Wires the `Refresh()` callback (needs the connection pool, which only exists at start time)
 4. Injects scripts before `</body>`: `protobuf.min.js`, `protocol.js`, then `godom.register()` global (if plugins exist), then plugin scripts in order, then `bridge.js`
-5. Starts an HTTP server on the configured host and port, with token auth middleware on `/` and `/ws`
+5. Starts an HTTP server on the configured host and port, with token auth middleware on `/` and `/ws`. Non-root paths are served as static files from the embedded UI filesystem (CSS, images, fonts, etc.)
 6. Opens the default browser with the token URL
 7. Blocks forever, handling WebSocket connections
 
