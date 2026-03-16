@@ -75,9 +75,9 @@ For godom (localhost-only, fast input binding, potential high-frequency events),
 
 ## Current dependency situation
 
-We currently use `github.com/gorilla/websocket`. This is the one external dependency we'd like to eliminate. Options:
+We use `github.com/gorilla/websocket` for WebSocket and `google.golang.org/protobuf` for the binary wire format. Options for reducing dependencies:
 
-1. **`golang.org/x/net/websocket`** — already in our dependency tree for HTML parsing. Basic but sufficient for godom's needs (send/receive JSON messages). The most pragmatic path.
+1. **`golang.org/x/net/websocket`** — already in our dependency tree for HTML parsing. Basic but sufficient for godom's needs (send/receive binary messages). The most pragmatic path to drop gorilla.
 
 2. **Wait for stdlib WebSocket** — Go may add native WebSocket support in a future release. Monitor this.
 

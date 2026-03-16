@@ -61,7 +61,7 @@ Run `go build` and you get a single binary that opens the browser and shows a li
 
 - Your Go struct holds all application state
 - HTML templates use `g-*` directives to bind to struct fields and methods
-- A WebSocket bridge keeps the browser in sync — no page reloads
+- A binary WebSocket bridge (Protocol Buffers) keeps the browser in sync — no page reloads
 - State lives in the Go process and survives browser close/reopen — close the tab, reopen it, and you're back where you left off
 - Open the same app in multiple browser tabs and they stay in sync — type in one, see the update in the other. This falls out naturally from the architecture: Go owns the state and pushes DOM commands to every connected tab
 - All directives are validated at startup — typos in field/method names cause `log.Fatal`, not silent runtime bugs
@@ -293,7 +293,7 @@ go build -o counter ./examples/counter
 ## Design principles
 
 - **Minimal JavaScript** — the JS bridge is injected automatically. For most apps, you write zero JS. When you need a JS library (charts, maps, editors), the plugin system bridges Go data to it with a thin adapter
-- **Thin bridge** — the JS bridge is a command executor. It does not evaluate expressions, resolve data, diff state, or make decisions. Go computes everything and sends concrete DOM commands (`setText`, `setAttr`, `appendHTML`, etc.). This means all logic is testable in Go, the bridge stays in sync with framework semantics, and debugging stays in one language. Plugins extend the bridge to delegate rendering to JS libraries when needed. `g-bind` fires on every keystroke with no debounce, keeping two-way binding instant (see [docs/transport.md](docs/transport.md) for why this matters)
+- **Thin bridge** — the JS bridge is a command executor. It does not evaluate expressions, resolve data, diff state, or make decisions. Go computes everything and sends concrete DOM commands (`setText`, `setAttr`, `appendHTML`, etc.) as binary Protocol Buffers over WebSocket. This means all logic is testable in Go, the bridge stays in sync with framework semantics, and debugging stays in one language. Plugins extend the bridge to delegate rendering to JS libraries when needed. `g-bind` fires on every keystroke with no debounce, keeping two-way binding instant (see [docs/transport.md](docs/transport.md) for why this matters)
 - **State in Go** — the browser is a rendering engine, not the source of truth
 - **Fail fast** — all directives validated at startup against your struct
 - **Single binary** — `go build` produces one executable, no node_modules

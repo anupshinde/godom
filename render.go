@@ -2,32 +2,31 @@ package godom
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
+
+	"google.golang.org/protobuf/proto"
 )
 
-// --- Wire types: sent over WebSocket to the bridge ---
-
-type command struct {
-	Op    string      `json:"op"`              // "text","value","checked","display","class","list"
-	ID    string      `json:"id"`              // data-gid of target element
-	Val   interface{} `json:"val,omitempty"`    // value to set
-	Name  string      `json:"name,omitempty"`   // class name (for "class" op)
-	Items []listItem  `json:"items"` // for "list" op
-}
-
-type listItem struct {
-	HTML   string         `json:"html"`
-	Cmds   []command      `json:"cmds"`
-	Evts   []eventCommand `json:"evts"`
-}
-
-type eventCommand struct {
-	ID   string          `json:"id"`             // data-gid
-	On   string          `json:"on"`             // "click","keydown","input"
-	Key  string          `json:"key,omitempty"`  // key filter for keydown
-	Msg  json.RawMessage `json:"msg"`            // pre-built message bridge sends back
+// valToStr converts a resolved expression value to a string for text/value/attr commands.
+func valToStr(val interface{}) string {
+	if val == nil {
+		return ""
+	}
+	switch v := val.(type) {
+	case string:
+		return v
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(v)
+	case int:
+		return strconv.Itoa(v)
+	default:
+		return fmt.Sprint(v)
+	}
 }
 
 // --- Expression resolution ---
@@ -106,7 +105,7 @@ func toBool(val interface{}) bool {
 
 // --- Init message: full state → all commands + events ---
 
-func computeInitMessage(pb *pageBindings, ci *componentInfo) (map[string]interface{}, error) {
+func computeInitMessage(pb *pageBindings, ci *componentInfo) (*ServerMessage, error) {
 	state := stateMap(ci)
 
 	cmds := computeBindingCmds(pb.Bindings, state, nil)
@@ -129,19 +128,20 @@ func computeInitMessage(pb *pageBindings, ci *componentInfo) (map[string]interfa
 		ci.prevLists[fl.ListField] = snapshots
 	}
 
-	return map[string]interface{}{
-		"type":     "init",
-		"commands": cmds,
-		"events":   evts,
+	return &ServerMessage{
+		Type:     "init",
+		Commands: cmds,
+		Events:   evts,
 	}, nil
 }
 
 // --- Update message: only changed fields → affected commands ---
 
-func computeUpdateMessage(pb *pageBindings, ci *componentInfo, changed []string) map[string]interface{} {
+func computeUpdateMessage(pb *pageBindings, ci *componentInfo, changed []string) *ServerMessage {
 	state := stateMap(ci)
 
-	var cmds []command
+	var cmds []*Command
+	var evts []*EventCommand
 	for _, field := range changed {
 		if indices, ok := pb.FieldToBindings[field]; ok {
 			for _, idx := range indices {
@@ -151,96 +151,102 @@ func computeUpdateMessage(pb *pageBindings, ci *componentInfo, changed []string)
 		}
 		if indices, ok := pb.FieldToForLoops[field]; ok {
 			for _, idx := range indices {
-				diffCmds := computeListDiff(pb.ForLoops[idx], state, ci)
+				diffCmds, diffEvts := computeListDiff(pb.ForLoops[idx], state, ci)
 				cmds = append(cmds, diffCmds...)
+				evts = append(evts, diffEvts...)
 			}
 		}
 	}
 
-	if len(cmds) == 0 {
+	if len(cmds) == 0 && len(evts) == 0 {
 		return nil
 	}
 
-	return map[string]interface{}{
-		"type":     "update",
-		"commands": cmds,
+	msg := &ServerMessage{Type: "update", Commands: cmds}
+	if len(evts) > 0 {
+		msg.Events = evts
 	}
+	return msg
 }
 
 // --- Binding → command conversion ---
 
-func computeBindingCmds(bindings []binding, state map[string]interface{}, ctx map[string]interface{}) []command {
-	cmds := make([]command, 0, len(bindings))
+func computeBindingCmds(bindings []binding, state map[string]interface{}, ctx map[string]interface{}) []*Command {
+	cmds := make([]*Command, 0, len(bindings))
 	for _, b := range bindings {
 		cmds = append(cmds, singleCmd(b, state, ctx))
 	}
 	return cmds
 }
 
-func singleCmd(b binding, state map[string]interface{}, ctx map[string]interface{}) command {
+func singleCmd(b binding, state map[string]interface{}, ctx map[string]interface{}) *Command {
 	val := resolveExprVal(b.Expr, state, ctx)
 
 	switch {
 	case b.Dir == "text":
-		return command{Op: "text", ID: b.GID, Val: val}
+		return &Command{Op: "text", Id: b.GID, Val: &Command_StrVal{StrVal: valToStr(val)}}
 	case b.Dir == "bind":
-		return command{Op: "value", ID: b.GID, Val: val}
+		return &Command{Op: "value", Id: b.GID, Val: &Command_StrVal{StrVal: valToStr(val)}}
 	case b.Dir == "checked":
-		return command{Op: "checked", ID: b.GID, Val: toBool(val)}
+		return &Command{Op: "checked", Id: b.GID, Val: &Command_BoolVal{BoolVal: toBool(val)}}
 	case b.Dir == "if" || b.Dir == "show":
-		return command{Op: "display", ID: b.GID, Val: toBool(val)}
+		return &Command{Op: "display", Id: b.GID, Val: &Command_BoolVal{BoolVal: toBool(val)}}
 	default:
 		if strings.HasPrefix(b.Dir, "class:") {
-			return command{Op: "class", ID: b.GID, Name: b.Dir[6:], Val: toBool(val)}
+			return &Command{Op: "class", Id: b.GID, Name: b.Dir[6:], Val: &Command_BoolVal{BoolVal: toBool(val)}}
 		}
 		if strings.HasPrefix(b.Dir, "attr:") {
-			return command{Op: "attr", ID: b.GID, Name: b.Dir[5:], Val: val}
+			return &Command{Op: "attr", Id: b.GID, Name: b.Dir[5:], Val: &Command_StrVal{StrVal: valToStr(val)}}
 		}
 		if strings.HasPrefix(b.Dir, "plugin:") {
-			return command{Op: "plugin", ID: b.GID, Name: b.Dir[7:], Val: val}
+			raw, _ := json.Marshal(val)
+			return &Command{Op: "plugin", Id: b.GID, Name: b.Dir[7:], Val: &Command_RawVal{RawVal: raw}}
 		}
-		return command{Op: "text", ID: b.GID, Val: val}
+		return &Command{Op: "text", Id: b.GID, Val: &Command_StrVal{StrVal: valToStr(val)}}
 	}
 }
 
-// --- Event → eventCommand conversion ---
+// --- Event → EventCommand conversion ---
 
-func computeEventCmds(events []eventBinding, state map[string]interface{}, ctx map[string]interface{}) []eventCommand {
-	cmds := make([]eventCommand, 0, len(events))
+func computeEventCmds(events []eventBinding, state map[string]interface{}, ctx map[string]interface{}) []*EventCommand {
+	cmds := make([]*EventCommand, 0, len(events))
 	for _, e := range events {
 		cmds = append(cmds, singleEventCmd(e, state, ctx))
 	}
 	return cmds
 }
 
-func singleEventCmd(e eventBinding, state map[string]interface{}, ctx map[string]interface{}) eventCommand {
+func singleEventCmd(e eventBinding, state map[string]interface{}, ctx map[string]interface{}) *EventCommand {
 	if e.Method == "__bind" {
 		// Two-way binding: bridge sends field + value back
-		msg, _ := json.Marshal(map[string]interface{}{
-			"type":  "bind",
-			"field": e.Args[0],
-		})
-		return eventCommand{ID: e.GID, On: e.Event, Msg: msg}
+		wsMsg := &WSMessage{
+			Type:  "bind",
+			Field: e.Args[0],
+		}
+		msgBytes, _ := proto.Marshal(wsMsg)
+		return &EventCommand{Id: e.GID, On: e.Event, Msg: msgBytes}
 	}
 
-	// Resolve arguments now (Go-side)
-	resolved := make([]interface{}, len(e.Args))
+	// Resolve arguments now (Go-side), each arg JSON-encoded
+	resolved := make([][]byte, len(e.Args))
 	for i, arg := range e.Args {
-		resolved[i] = resolveExprVal(arg, state, ctx)
+		val := resolveExprVal(arg, state, ctx)
+		resolved[i], _ = json.Marshal(val)
 	}
 
-	msg, _ := json.Marshal(map[string]interface{}{
-		"type":   "call",
-		"method": e.Method,
-		"args":   resolved,
-	})
-	return eventCommand{ID: e.GID, On: e.Event, Key: e.Key, Msg: msg}
+	wsMsg := &WSMessage{
+		Type:   "call",
+		Method: e.Method,
+		Args:   resolved,
+	}
+	msgBytes, _ := proto.Marshal(wsMsg)
+	return &EventCommand{Id: e.GID, On: e.Event, Key: e.Key, Msg: msgBytes}
 }
 
 // computeChildUpdateMessage re-renders a single child component instance
 // identified by scope (e.g., "g3:0"). Used when a child method changes child
 // state but not parent state.
-func computeChildUpdateMessage(pb *pageBindings, ci *componentInfo, scope string) map[string]interface{} {
+func computeChildUpdateMessage(pb *pageBindings, ci *componentInfo, scope string) *ServerMessage {
 	parts := strings.SplitN(scope, ":", 2)
 	if len(parts) != 2 {
 		return nil
@@ -269,7 +275,7 @@ func computeChildUpdateMessage(pb *pageBindings, ci *componentInfo, scope string
 	childState := stateMap(child)
 	idxStr := strconv.Itoa(idx)
 
-	var cmds []command
+	var cmds []*Command
 	for _, b := range ft.Bindings {
 		resolved := binding{
 			GID:  strings.ReplaceAll(b.GID, "__IDX__", idxStr),
@@ -283,9 +289,9 @@ func computeChildUpdateMessage(pb *pageBindings, ci *componentInfo, scope string
 		return nil
 	}
 
-	return map[string]interface{}{
-		"type":     "update",
-		"commands": cmds,
+	return &ServerMessage{
+		Type:     "update",
+		Commands: cmds,
 	}
 }
 
@@ -308,10 +314,10 @@ func buildItemCtx(ft *forTemplate, state map[string]interface{}, item interface{
 // resolveItemBindings resolves bindings and events for a single g-for item.
 // For stateful components, it sets child props and resolves against child state.
 // For presentational components, it resolves against parent state + loop context.
-func resolveItemBindings(ft *forTemplate, ci *componentInfo, state map[string]interface{}, item interface{}, idx int) ([]command, []eventCommand) {
+func resolveItemBindings(ft *forTemplate, ci *componentInfo, state map[string]interface{}, item interface{}, idx int) ([]*Command, []*EventCommand) {
 	idxStr := strconv.Itoa(idx)
-	var cmds []command
-	var evts []eventCommand
+	var cmds []*Command
+	var evts []*EventCommand
 
 	if ft.ComponentTag != "" && ci.children[ft.GID] != nil && idx < len(ci.children[ft.GID]) {
 		child := ci.children[ft.GID][idx]
@@ -365,8 +371,8 @@ func resolveItemBindings(ft *forTemplate, ci *componentInfo, state map[string]in
 // --- g-for list rendering ---
 
 // computeListDiff compares previous and current list items and returns targeted
-// commands instead of a full re-render. Returns nil if nothing changed.
-func computeListDiff(ft *forTemplate, state map[string]interface{}, ci *componentInfo) []command {
+// commands and events instead of a full re-render. Returns nil if nothing changed.
+func computeListDiff(ft *forTemplate, state map[string]interface{}, ci *componentInfo) ([]*Command, []*EventCommand) {
 	listVal := state[ft.ListField]
 	items, _ := listVal.([]interface{})
 	if items == nil {
@@ -393,20 +399,21 @@ func computeListDiff(ft *forTemplate, state map[string]interface{}, ci *componen
 
 	// If both empty, nothing to do
 	if oldLen == 0 && newLen == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// First render or list was empty before — full render
 	if oldLen == 0 {
-		return []command{computeListCmd(ft, state, ci)}
+		return []*Command{computeListCmd(ft, state, ci)}, nil
 	}
 
 	// List cleared — full render (empty)
 	if newLen == 0 {
-		return []command{computeListCmd(ft, state, ci)}
+		return []*Command{computeListCmd(ft, state, ci)}, nil
 	}
 
-	var cmds []command
+	var cmds []*Command
+	var evts []*EventCommand
 	minLen := oldLen
 	if newLen < minLen {
 		minLen = newLen
@@ -424,9 +431,7 @@ func computeListDiff(ft *forTemplate, state map[string]interface{}, ci *componen
 		}
 		itemCmds, itemEvts := resolveItemBindings(ft, ci, state, items[idx], idx)
 		cmds = append(cmds, itemCmds...)
-		for _, evt := range itemEvts {
-			cmds = append(cmds, command{Op: "re-event", ID: evt.ID, Val: evt})
-		}
+		evts = append(evts, itemEvts...)
 	}
 
 	// Items removed from the end
@@ -437,37 +442,37 @@ func computeListDiff(ft *forTemplate, state map[string]interface{}, ci *componen
 				ci.children[ft.GID] = ci.children[ft.GID][:newLen]
 			}
 		}
-		cmds = append(cmds, command{
+		cmds = append(cmds, &Command{
 			Op:  "list-truncate",
-			ID:  ft.GID,
-			Val: oldLen - newLen,
+			Id:  ft.GID,
+			Val: &Command_NumVal{NumVal: float64(oldLen - newLen)},
 		})
 	}
 
 	// Items appended at the end
 	if newLen > oldLen {
-		appendItems := make([]listItem, 0, newLen-oldLen)
+		appendItems := make([]*ListItem, 0, newLen-oldLen)
 		for idx := oldLen; idx < newLen; idx++ {
 			idxStr := strconv.Itoa(idx)
 			itemHTML := strings.ReplaceAll(ft.TemplateHTML, "__IDX__", idxStr)
-			itemCmds, evts := resolveItemBindings(ft, ci, state, items[idx], idx)
-			appendItems = append(appendItems, listItem{
-				HTML: itemHTML,
+			itemCmds, itemEvts := resolveItemBindings(ft, ci, state, items[idx], idx)
+			appendItems = append(appendItems, &ListItem{
+				Html: itemHTML,
 				Cmds: itemCmds,
-				Evts: evts,
+				Evts: itemEvts,
 			})
 		}
-		cmds = append(cmds, command{
+		cmds = append(cmds, &Command{
 			Op:    "list-append",
-			ID:    ft.GID,
+			Id:    ft.GID,
 			Items: appendItems,
 		})
 	}
 
-	return cmds
+	return cmds, evts
 }
 
-func computeListCmd(ft *forTemplate, state map[string]interface{}, ci *componentInfo) command {
+func computeListCmd(ft *forTemplate, state map[string]interface{}, ci *componentInfo) *Command {
 	listVal := state[ft.ListField]
 	items, _ := listVal.([]interface{})
 	if items == nil {
@@ -479,19 +484,19 @@ func computeListCmd(ft *forTemplate, state map[string]interface{}, ci *component
 		ensureChildInstances(ft, ci, len(items))
 	}
 
-	listItems := make([]listItem, 0, len(items))
+	listItems := make([]*ListItem, 0, len(items))
 	for idx, item := range items {
 		idxStr := strconv.Itoa(idx)
 		itemHTML := strings.ReplaceAll(ft.TemplateHTML, "__IDX__", idxStr)
-		itemCmds, evts := resolveItemBindings(ft, ci, state, item, idx)
-		listItems = append(listItems, listItem{
-			HTML: itemHTML,
-			Cmds: itemCmds,
-			Evts: evts,
+		itemCmds, itemEvts := resolveItemBindings(ft, ci, state, item, idx)
+		listItems = append(listItems, &ListItem{
+			Html:  itemHTML,
+			Cmds:  itemCmds,
+			Evts:  itemEvts,
 		})
 	}
 
-	return command{Op: "list", ID: ft.GID, Items: listItems}
+	return &Command{Op: "list", Id: ft.GID, Items: listItems}
 }
 
 // ensureChildInstances creates or trims child componentInfo instances for a stateful g-for.
@@ -541,28 +546,33 @@ func setChildProps(child *componentInfo, props map[string]string, parentState ma
 }
 
 // singleScopedEventCmd builds an event command scoped to a child component instance.
-func singleScopedEventCmd(e eventBinding, state map[string]interface{}, ctx map[string]interface{}, forGID string, idx int) eventCommand {
+func singleScopedEventCmd(e eventBinding, state map[string]interface{}, ctx map[string]interface{}, forGID string, idx int) *EventCommand {
+	scope := forGID + ":" + strconv.Itoa(idx)
+
 	if e.Method == "__bind" {
-		msg, _ := json.Marshal(map[string]interface{}{
-			"type":  "bind",
-			"field": e.Args[0],
-			"scope": forGID + ":" + strconv.Itoa(idx),
-		})
-		return eventCommand{ID: e.GID, On: e.Event, Msg: msg}
+		wsMsg := &WSMessage{
+			Type:  "bind",
+			Field: e.Args[0],
+			Scope: scope,
+		}
+		msgBytes, _ := proto.Marshal(wsMsg)
+		return &EventCommand{Id: e.GID, On: e.Event, Msg: msgBytes}
 	}
 
-	resolved := make([]interface{}, len(e.Args))
+	resolved := make([][]byte, len(e.Args))
 	for i, arg := range e.Args {
-		resolved[i] = resolveExprVal(arg, state, ctx)
+		val := resolveExprVal(arg, state, ctx)
+		resolved[i], _ = json.Marshal(val)
 	}
 
-	msg, _ := json.Marshal(map[string]interface{}{
-		"type":   "call",
-		"method": e.Method,
-		"args":   resolved,
-		"scope":  forGID + ":" + strconv.Itoa(idx),
-	})
-	return eventCommand{ID: e.GID, On: e.Event, Key: e.Key, Msg: msg}
+	wsMsg := &WSMessage{
+		Type:   "call",
+		Method: e.Method,
+		Args:   resolved,
+		Scope:  scope,
+	}
+	msgBytes, _ := proto.Marshal(wsMsg)
+	return &EventCommand{Id: e.GID, On: e.Event, Key: e.Key, Msg: msgBytes}
 }
 
 // stateMap returns the component state as map[string]interface{}.

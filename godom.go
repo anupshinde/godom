@@ -15,10 +15,17 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"google.golang.org/protobuf/proto"
 )
 
 //go:embed bridge.js
 var bridgeJS string
+
+//go:embed protobuf.min.js
+var protobufMinJS string
+
+//go:embed protocol.js
+var protocolJS string
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
@@ -159,28 +166,31 @@ func (a *App) Start() error {
 	ci.refreshFn = func() {
 		ci.mu.Lock()
 		allFields := allExportedFieldNames(ci.typ)
-		updateMsg := computeUpdateMessage(ci.pb, ci, allFields)
+		sm := computeUpdateMessage(ci.pb, ci, allFields)
 		ci.mu.Unlock()
-		if updateMsg != nil {
-			pool.broadcast(updateMsg)
+		if sm != nil {
+			data, _ := proto.Marshal(sm)
+			pool.broadcast(data)
 		}
 	}
 
 	mux := http.NewServeMux()
 
-	// Inject godom global (for plugin registration), then plugin JS,
-	// then bridge script before </body>
-	var pluginScripts string
+	// Build injected scripts: protobuf library, protocol definitions,
+	// plugin registration + scripts, then bridge (last).
+	var injectedJS string
+	injectedJS += "<script>" + protobufMinJS + "</script>\n"
+	injectedJS += "<script>" + protocolJS + "</script>\n"
 	if len(a.plugins) > 0 {
-		pluginScripts = "<script>window.godom={_plugins:{},register:function(n,h){this._plugins[n]=h}};</script>\n"
-		for _, scripts := range a.plugins {
-			for _, js := range scripts {
-				pluginScripts += "<script>" + js + "</script>\n"
+		injectedJS += "<script>window.godom={_plugins:{},register:function(n,h){this._plugins[n]=h}};</script>\n"
+		for _, pluginScripts := range a.plugins {
+			for _, js := range pluginScripts {
+				injectedJS += "<script>" + js + "</script>\n"
 			}
 		}
 	}
-	pageHTML := strings.Replace(ci.htmlBody, "</body>",
-		pluginScripts+"<script>"+bridgeJS+"</script>\n</body>", 1)
+	injectedJS += "<script>" + bridgeJS + "</script>\n"
+	pageHTML := strings.Replace(ci.htmlBody, "</body>", injectedJS+"</body>", 1)
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -207,20 +217,35 @@ func (a *App) Start() error {
 			return
 		}
 
-		// Read messages from this connection
+		// Read binary messages from this connection
 		for {
-			var msg wsMessage
-			if err := conn.ReadJSON(&msg); err != nil {
+			msgType, data, err := conn.ReadMessage()
+			if err != nil {
 				pool.remove(wc)
 				conn.Close()
 				return
 			}
+			if msgType != websocket.BinaryMessage {
+				continue
+			}
 
-			switch msg.Type {
+			env := &Envelope{}
+			if err := proto.Unmarshal(data, env); err != nil {
+				log.Printf("godom: envelope unmarshal error: %v", err)
+				continue
+			}
+
+			wsMsg := &WSMessage{}
+			if err := proto.Unmarshal(env.Msg, wsMsg); err != nil {
+				log.Printf("godom: wsmessage unmarshal error: %v", err)
+				continue
+			}
+
+			switch wsMsg.Type {
 			case "call":
-				handleCall(ci, msg, pool)
+				handleCall(ci, wsMsg, env.Args, pool)
 			case "bind":
-				handleBind(ci, msg, pool)
+				handleBind(ci, wsMsg, env.Value, pool)
 			}
 		}
 	})
@@ -241,16 +266,6 @@ func (a *App) Start() error {
 
 // --- WebSocket helpers ---
 
-// wsMessage is the structure of messages received from the bridge.
-type wsMessage struct {
-	Type   string            `json:"type"`
-	Method string            `json:"method,omitempty"`
-	Args   []json.RawMessage `json:"args,omitempty"`
-	Field  string            `json:"field,omitempty"`
-	Value  json.RawMessage   `json:"value,omitempty"`
-	Scope  string            `json:"scope,omitempty"` // "forGID:idx" for child components
-}
-
 // wsConn wraps a WebSocket connection with a write mutex.
 // gorilla/websocket does not allow concurrent writes, so each
 // connection needs its own lock.
@@ -259,10 +274,10 @@ type wsConn struct {
 	wmu  sync.Mutex
 }
 
-func (wc *wsConn) writeJSON(msg interface{}) error {
+func (wc *wsConn) writeBinary(data []byte) error {
 	wc.wmu.Lock()
 	defer wc.wmu.Unlock()
-	return wc.conn.WriteJSON(msg)
+	return wc.conn.WriteMessage(websocket.BinaryMessage, data)
 }
 
 // connPool manages WebSocket connections for broadcasting.
@@ -290,14 +305,14 @@ func (p *connPool) remove(wc *wsConn) {
 	p.mu.Unlock()
 }
 
-func (p *connPool) broadcast(msg interface{}) {
+func (p *connPool) broadcast(data []byte) {
 	p.mu.RLock()
 	snapshot := make([]*wsConn, len(p.conns))
 	copy(snapshot, p.conns)
 	p.mu.RUnlock()
 
 	for _, wc := range snapshot {
-		wc.writeJSON(msg)
+		wc.writeBinary(data)
 	}
 }
 
@@ -309,17 +324,21 @@ func handleInit(wc *wsConn, ci *componentInfo) error {
 	if err != nil {
 		return err
 	}
-	return wc.writeJSON(initMsg)
+	data, err := proto.Marshal(initMsg)
+	if err != nil {
+		return err
+	}
+	return wc.writeBinary(data)
 }
 
 // handleCall processes a method call message from the bridge.
-func handleCall(ci *componentInfo, msg wsMessage, pool *connPool) {
+func handleCall(ci *componentInfo, wsMsg *WSMessage, envArgs []float64, pool *connPool) {
 	target := ci
-	if msg.Scope != "" {
-		if child := resolveScope(ci, msg.Scope); child != nil {
+	if wsMsg.Scope != "" {
+		if child := resolveScope(ci, wsMsg.Scope); child != nil {
 			target = child
 		} else {
-			log.Printf("godom: unknown scope %q", msg.Scope)
+			log.Printf("godom: unknown scope %q", wsMsg.Scope)
 			return
 		}
 	}
@@ -327,7 +346,19 @@ func handleCall(ci *componentInfo, msg wsMessage, pool *connPool) {
 	ci.mu.Lock()
 	oldRootState := ci.snapshotState()
 
-	if err := target.callMethod(msg.Method, msg.Args); err != nil {
+	// Merge browser-side args (mouse coords, wheel delta) into WSMessage args
+	for _, a := range envArgs {
+		jsonArg, _ := json.Marshal(a)
+		wsMsg.Args = append(wsMsg.Args, jsonArg)
+	}
+
+	// Convert [][]byte to []json.RawMessage for callMethod
+	jsonArgs := make([]json.RawMessage, len(wsMsg.Args))
+	for i, a := range wsMsg.Args {
+		jsonArgs[i] = json.RawMessage(a)
+	}
+
+	if err := target.callMethod(wsMsg.Method, jsonArgs); err != nil {
 		log.Printf("godom: %v", err)
 		ci.mu.Unlock()
 		return
@@ -338,30 +369,32 @@ func handleCall(ci *componentInfo, msg wsMessage, pool *connPool) {
 
 	// For scoped calls where parent state didn't change,
 	// re-render the child to pick up child state changes.
-	if msg.Scope != "" && len(changed) == 0 {
-		updateMsg := computeChildUpdateMessage(ci.pb, ci, msg.Scope)
+	if wsMsg.Scope != "" && len(changed) == 0 {
+		sm := computeChildUpdateMessage(ci.pb, ci, wsMsg.Scope)
 		ci.mu.Unlock()
-		if updateMsg != nil {
-			pool.broadcast(updateMsg)
+		if sm != nil {
+			data, _ := proto.Marshal(sm)
+			pool.broadcast(data)
 		}
 		return
 	}
 
-	updateMsg := computeUpdateMessage(ci.pb, ci, changed)
+	sm := computeUpdateMessage(ci.pb, ci, changed)
 	ci.mu.Unlock()
-	if updateMsg != nil {
-		pool.broadcast(updateMsg)
+	if sm != nil {
+		data, _ := proto.Marshal(sm)
+		pool.broadcast(data)
 	}
 }
 
 // handleBind processes a two-way binding update from the bridge.
-func handleBind(ci *componentInfo, msg wsMessage, pool *connPool) {
+func handleBind(ci *componentInfo, wsMsg *WSMessage, value []byte, pool *connPool) {
 	target := ci
-	if msg.Scope != "" {
-		if child := resolveScope(ci, msg.Scope); child != nil {
+	if wsMsg.Scope != "" {
+		if child := resolveScope(ci, wsMsg.Scope); child != nil {
 			target = child
 		} else {
-			log.Printf("godom: unknown scope %q", msg.Scope)
+			log.Printf("godom: unknown scope %q", wsMsg.Scope)
 			return
 		}
 	}
@@ -369,7 +402,7 @@ func handleBind(ci *componentInfo, msg wsMessage, pool *connPool) {
 	ci.mu.Lock()
 	oldState := ci.snapshotState()
 
-	if err := target.setField(msg.Field, msg.Value); err != nil {
+	if err := target.setField(wsMsg.Field, json.RawMessage(value)); err != nil {
 		log.Printf("godom: bind error: %v", err)
 	}
 
@@ -379,10 +412,11 @@ func handleBind(ci *componentInfo, msg wsMessage, pool *connPool) {
 
 	if len(changed) > 0 {
 		ci.mu.Lock()
-		updateMsg := computeUpdateMessage(ci.pb, ci, changed)
+		sm := computeUpdateMessage(ci.pb, ci, changed)
 		ci.mu.Unlock()
-		if updateMsg != nil {
-			pool.broadcast(updateMsg)
+		if sm != nil {
+			data, _ := proto.Marshal(sm)
+			pool.broadcast(data)
 		}
 	}
 }

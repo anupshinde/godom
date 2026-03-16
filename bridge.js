@@ -5,11 +5,16 @@
     var eventMap = {};  // "gid:event" → latest event config (for dedup)
     var pluginState = {}; // gid → true if init has been called
 
+    var Proto = godomProto; // defined in protocol.js
+    var textEncoder = new TextEncoder();
+    var textDecoder = new TextDecoder();
+
     function connect() {
         ws = new WebSocket("ws://" + location.host + "/ws");
+        ws.binaryType = "arraybuffer";
 
         ws.onmessage = function(evt) {
-            var msg = JSON.parse(evt.data);
+            var msg = Proto.ServerMessage.decode(new Uint8Array(evt.data));
             if (msg.type === "init") {
                 gidMap = {};
                 anchorMap = {};
@@ -19,6 +24,7 @@
                 registerEvents(msg.events);
             } else if (msg.type === "update") {
                 execCommands(msg.commands);
+                if (msg.events && msg.events.length) registerEvents(msg.events);
             }
         };
 
@@ -77,41 +83,39 @@
                 case "list-truncate":
                     execListTruncate(c);
                     break;
-                case "re-event":
-                    registerEvents([c.val]);
-                    break;
                 default:
                     var el = getEl(c.id);
                     if (!el) break;
                     switch (c.op) {
                         case "text":
-                            el.textContent = c.val != null ? String(c.val) : "";
+                            el.textContent = c.strVal || "";
                             break;
                         case "value":
-                            var sv = c.val != null ? String(c.val) : "";
+                            var sv = c.strVal || "";
                             if (el.value !== sv) el.value = sv;
                             break;
                         case "checked":
-                            el.checked = !!c.val;
+                            el.checked = !!c.boolVal;
                             break;
                         case "display":
-                            el.style.display = c.val ? "" : "none";
+                            el.style.display = c.boolVal ? "" : "none";
                             break;
                         case "class":
-                            if (c.val) el.classList.add(c.name);
+                            if (c.boolVal) el.classList.add(c.name);
                             else el.classList.remove(c.name);
                             break;
                         case "attr":
-                            el.setAttribute(c.name, c.val != null ? String(c.val) : "");
+                            el.setAttribute(c.name, c.strVal || "");
                             break;
                         case "plugin":
                             var handler = window.godom && window.godom._plugins && window.godom._plugins[c.name];
                             if (handler) {
+                                var data = c.rawVal && c.rawVal.length ? JSON.parse(textDecoder.decode(c.rawVal)) : null;
                                 if (!pluginState[c.id]) {
-                                    handler.init(el, c.val);
+                                    handler.init(el, data);
                                     pluginState[c.id] = true;
                                 } else {
-                                    handler.update(el, c.val);
+                                    handler.update(el, data);
                                 }
                             }
                             break;
@@ -193,7 +197,7 @@
         var a = anchorMap[c.id];
         if (!a || !a.end) return;
         var end = a.end;
-        var count = c.val;
+        var count = c.numVal;
 
         for (var i = 0; i < count; i++) {
             var prev = end.previousSibling;
@@ -209,6 +213,13 @@
             }
             prev.parentNode.removeChild(prev);
         }
+    }
+
+    function sendEnvelope(msg, args, value) {
+        var env = {msg: msg};
+        if (args) env.args = args;
+        if (value) env.value = value;
+        ws.send(Proto.Envelope.encode(env).finish());
     }
 
     function registerEvents(evts) {
@@ -237,9 +248,8 @@
                     elem.addEventListener("input", function() {
                         var ev = eventMap[k];
                         if (!ev) return;
-                        var m = JSON.parse(JSON.stringify(ev.msg));
-                        m.value = elem.value;
-                        ws.send(JSON.stringify(m));
+                        var valBytes = textEncoder.encode(JSON.stringify(elem.value));
+                        sendEnvelope(ev.msg, null, valBytes);
                     });
                 })(key, el);
             } else if (e.on === "keydown") {
@@ -249,19 +259,17 @@
                         var ev = eventMap[gid + ":keydown:" + ke.key]
                               || eventMap[gid + ":keydown"];
                         if (!ev) return;
-                        ws.send(JSON.stringify(ev.msg));
+                        sendEnvelope(ev.msg);
                     });
                 })(e.id, el);
             } else if (e.on === "mousedown" || e.on === "mouseup") {
-                (function(k, elem) {
-                    elem.addEventListener(e.on, function(me) {
+                (function(k, elem, evtName) {
+                    elem.addEventListener(evtName, function(me) {
                         var ev = eventMap[k];
                         if (!ev) return;
-                        var m = JSON.parse(JSON.stringify(ev.msg));
-                        m.args = [me.offsetX, me.offsetY];
-                        ws.send(JSON.stringify(m));
+                        sendEnvelope(ev.msg, [me.offsetX, me.offsetY]);
                     });
-                })(key, el);
+                })(key, el, e.on);
             } else if (e.on === "mousemove") {
                 (function(k, elem) {
                     var pending = null;
@@ -274,9 +282,7 @@
                         if (scheduled) return;
                         scheduled = true;
                         requestAnimationFrame(function() {
-                            var m = JSON.parse(JSON.stringify(ev.msg));
-                            m.args = [pending.offsetX, pending.offsetY];
-                            ws.send(JSON.stringify(m));
+                            sendEnvelope(ev.msg, [pending.offsetX, pending.offsetY]);
                             pending = null;
                             scheduled = false;
                         });
@@ -288,9 +294,7 @@
                         we.preventDefault();
                         var ev = eventMap[k];
                         if (!ev) return;
-                        var m = JSON.parse(JSON.stringify(ev.msg));
-                        m.args = [we.deltaY];
-                        ws.send(JSON.stringify(m));
+                        sendEnvelope(ev.msg, [we.deltaY]);
                     }, {passive: false});
                 })(key, el);
             } else {
@@ -298,7 +302,7 @@
                     elem.addEventListener(e.on, function() {
                         var ev = eventMap[k];
                         if (!ev) return;
-                        ws.send(JSON.stringify(ev.msg));
+                        sendEnvelope(ev.msg);
                     });
                 })(key, el);
             }
