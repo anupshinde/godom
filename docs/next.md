@@ -63,6 +63,8 @@ When the Go process exits or crashes, the bridge should update the page to show 
 ## Drop gorilla/websocket dependency
 
 Currently using `github.com/gorilla/websocket`. Evaluate alternatives:
-- `golang.org/x/net/websocket` — already in dep tree (used for HTML parsing), covers godom's needs
+- `golang.org/x/net/websocket` — already in dep tree (used for HTML parsing), covers godom's needs (binary WebSocket read/write for protobuf)
 - SSE + POST — see [docs/transport.md](transport.md) for detailed analysis
 - Stdlib websocket — not available yet, monitor future Go releases
+
+Note: the wire format is already Protocol Buffers (binary WebSocket). Any WebSocket replacement just needs to support binary message read/write.

@@ -1,15 +1,15 @@
 # Performance & Transport
 
-## Wire format: JSON → Protocol Buffers
+## Wire format: Protocol Buffers (done)
 
-The bridge currently uses JSON for all WebSocket communication. This works but is not the right long-term choice.
+The WebSocket wire format uses **Protocol Buffers** for all communication between Go and the browser. This replaced the original JSON-based protocol.
 
-**Why we're switching to protobuf:**
+**Why protobuf:**
 
 - **Binary format** — smaller wire size, faster encode/decode than JSON
-- **Schema as contract** — the `.proto` file defines the protocol formally. No guessing message formats from source code
+- **Schema as contract** — `protocol.proto` defines the protocol formally. No guessing message formats from source code
 - **Multi-language support** — any language (Python, Rust, Java, etc.) can generate a client from the `.proto` file and talk to a godom app
-- **No user-facing impact** — users write Go structs and HTML directives. They never see the wire format. All examples continue to work unchanged
+- **No user-facing impact** — users write Go structs and HTML directives. They never see the wire format. All examples work unchanged
 - **Future-proof** — protobuf handles schema evolution cleanly. Adding fields is backward compatible
 
 **Alternatives considered and rejected:**
@@ -18,27 +18,34 @@ The bridge currently uses JSON for all WebSocket communication. This works but i
 |--------|---------|
 | FlatBuffers | Zero-copy advantage only matters for large messages where you read a few fields. godom reads every field in every message — no benefit over protobuf |
 | Custom binary protocol | Protobuf already is a binary protocol, but with codegen, schemas, and multi-language support. No reason to hand-roll one |
-| String concatenation | A hack to avoid JSON cloning overhead. Irrelevant once we're on protobuf |
+| String concatenation | A hack to avoid JSON cloning overhead. Irrelevant with protobuf |
 
-**What changes internally:**
+**How it works internally:**
 
-- `godom.go` — `ReadJSON`/`WriteJSON` → binary WebSocket read/write + `proto.Marshal`/`Unmarshal`
-- `render.go` — `json.Marshal` → `proto.Marshal` for commands and events
-- `bridge.js` — `JSON.parse`/`JSON.stringify` → protobuf encode/decode (using embedded `protobuf.js`)
-- New `protocol.proto` schema file and `make proto` codegen step
+- `protocol.proto` — schema defining all message types (ServerMessage, Command with oneof val, EventCommand, Envelope, WSMessage)
+- `protocol.pb.go` — generated Go types via `protoc`
+- `protocol.js` — JS type definitions via protobuf.js reflection API (no CLI codegen needed)
+- `protobuf.min.js` — protobuf.js light build (~68KB), embedded into the binary
+- `godom.go` — binary WebSocket read/write with `proto.Marshal`/`Unmarshal`
+- `render.go` — builds protobuf Command/EventCommand types directly
+- `bridge.js` — decodes `ServerMessage`, encodes `Envelope` (wraps pre-built bytes without inspecting them)
 
-**What doesn't change:** all examples, all HTML templates, all user-facing Go APIs, parser, validator, plugin JS files.
+**Design decisions:**
 
-## Transport: WebSocket today, WebTransport future
+- **Envelope pattern** — the bridge never opens the inner WSMessage. It wraps the pre-built bytes with optional browser-side data (mouse coordinates in `args`, input value in `value`). The bridge stays thin
+- **Command oneof val** — `str_val`, `bool_val`, `num_val`, `raw_val` for type-safe command values
+- **Plugin data stays JSON** — plugin data is JSON-encoded inside a `bytes` field (`raw_val`). Plugin developers never see protobuf
 
-**WebSocket** is the right transport for godom today:
+## Transport: WebSocket today, WebTransport parked for future
+
+**WebSocket** is the transport for godom:
 
 - Bidirectional, low-latency, tiny frame overhead (2-6 bytes per message)
 - One persistent connection handles everything — DOM updates, events, plugin data
 - Works everywhere — every browser, no TLS requirement locally
 - The solar system example proves it: 60fps rendering + mouse drag + scroll, all smooth on one connection
 
-**WebTransport** is a future addition, not a replacement. It would run alongside WebSocket:
+**WebTransport** is parked for the future. It would run alongside WebSocket, not replace it:
 
 - **WebSocket** — control messages (click, keydown, DOM updates). Reliable, ordered, guaranteed delivery
 - **WebTransport** — high-frequency or lossy-tolerant data (mouse tracking, video frames). Supports unreliable datagrams where dropping a stale frame is better than queuing it
@@ -116,9 +123,9 @@ For a godom video editor, Canvas 2D with JPEG frames over a binary WebSocket is 
 
 ## Summary
 
-| Layer | Current | Planned | Future |
-|-------|---------|---------|--------|
-| Wire format | JSON | **Protocol Buffers** | — |
-| Control transport | WebSocket | WebSocket | WebSocket |
-| Media transport | — | Binary WebSocket (`app.Stream`) | WebTransport datagrams |
-| Inter-app messaging | — | — | External broker (NATS etc.), not godom's job |
+| Layer | Status | Future |
+|-------|--------|--------|
+| Wire format | **Protocol Buffers** (done) | — |
+| Control transport | WebSocket | WebSocket |
+| Media transport | — | Binary WebSocket (`app.Stream`), then WebTransport datagrams |
+| Inter-app messaging | — | External broker (NATS etc.), not godom's job |

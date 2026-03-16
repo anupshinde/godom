@@ -52,6 +52,20 @@ Two working examples:
 
 ---
 
+## Layer 4.5: Wire Format — done
+
+Switched the WebSocket wire format from JSON to Protocol Buffers.
+
+- `protocol.proto` schema with `ServerMessage`, `Command` (oneof val), `EventCommand`, `Envelope`, `WSMessage`
+- Go side: `proto.Marshal`/`Unmarshal` with binary WebSocket frames
+- JS side: protobuf.js light build with reflection API (no CLI codegen)
+- Envelope pattern: bridge wraps pre-built bytes without inspecting them
+- Plugin data stays JSON inside protobuf `bytes` fields — plugin developers never see protobuf
+
+See [protocol.md](protocol.md) for the full rationale and alternatives considered.
+
+---
+
 ## Layer 5: Styling
 
 ### 5.1 CSS in HTML files — done

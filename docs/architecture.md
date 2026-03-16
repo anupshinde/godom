@@ -43,7 +43,7 @@ log.Fatal(app.Start())                    // serve, open browser, block
 `Start()` then:
 
 1. Wires the `Refresh()` callback (needs the connection pool, which only exists at start time)
-2. Injects scripts before `</body>`: first the `godom.register()` global (if plugins exist), then plugin scripts in order, then `bridge.js`
+2. Injects scripts before `</body>`: `protobuf.min.js`, `protocol.js`, then `godom.register()` global (if plugins exist), then plugin scripts in order, then `bridge.js`
 3. Starts an HTTP server on the configured port
 4. Opens the default browser
 5. Blocks forever, handling WebSocket connections
@@ -57,6 +57,10 @@ log.Fatal(app.Start())                    // serve, open browser, block
 | `render.go` | Expression resolution, DOM command generation, init/update messages, list diffing |
 | `parser.go` | HTML parsing, gid assignment, binding extraction, template expansion, component expansion |
 | `validate.go` | Startup directive validation against struct types via reflection |
+| `protocol.proto` | Protobuf schema defining all wire message types |
+| `protocol.pb.go` | Generated Go types from `protocol.proto` |
+| `protocol.js` | JS protobuf type definitions (protobuf.js reflection API) |
+| `protobuf.min.js` | Protobuf.js light build (~68KB), embedded into the binary |
 | `bridge.js` | Browser-side command executor (injected, never authored by the developer) |
 | `plugins/chartjs/` | Chart.js plugin — embeds library + thin bridge adapter |
 
@@ -142,8 +146,8 @@ The bridge is vanilla JS with no dependencies. It:
 
 - Connects to `/ws` and auto-reconnects on disconnect
 - Caches elements by `data-gid` for O(1) lookup
-- Executes commands: `text`, `value`, `checked`, `display`, `class`, `attr`, `plugin`, `list`, `list-append`, `list-truncate`, `re-event`
-- Registers event listeners that send pre-built messages back over the WebSocket
+- Executes commands: `text`, `value`, `checked`, `display`, `class`, `attr`, `plugin`, `list`, `list-append`, `list-truncate`
+- Registers event listeners that wrap pre-built protobuf bytes in an Envelope and send over the WebSocket
 - Manages `g-for` anchor comments to insert/remove list items
 
 It does not: evaluate expressions, access component state, make timing decisions, batch or debounce anything. Every decision is made in Go and sent as a concrete command.
@@ -164,26 +168,27 @@ The plugin state is tracked per element by `data-gid`. The bridge calls `init` o
 
 ## Wire protocol
 
-All messages are JSON over WebSocket.
+All messages are **binary Protocol Buffers** over WebSocket. The schema is defined in `protocol.proto`.
 
-### Go → Browser
+### Go → Browser (ServerMessage)
 
-```json
-{"type": "init", "commands": [...], "events": [...]}
-{"type": "update", "commands": [...]}
-```
+A `ServerMessage` contains a type (`"init"` or `"update"`), a list of `Command` messages, and optionally a list of `EventCommand` messages.
 
-Commands: `{op, id, val, name, items}` — each op maps to a single DOM mutation.
+Each `Command` has an `op`, target element `id`, optional `name`, and a `oneof val` that carries the value as the appropriate type (`str_val`, `bool_val`, `num_val`, or `raw_val` for JSON bytes). List operations use the `items` field.
 
-### Browser → Go
+Each `EventCommand` carries a pre-built `WSMessage` (serialized to bytes in `msg`) that the bridge sends back untouched when the event fires.
 
-```json
-{"type": "call", "method": "AddTodo", "args": [...]}
-{"type": "call", "method": "Toggle", "args": [0], "scope": "g3:2"}
-{"type": "bind", "field": "InputText", "value": "hello"}
-```
+### Browser → Go (Envelope)
 
-The `scope` field routes to a child component instance within a `g-for`.
+The bridge wraps events in an `Envelope`:
+
+- `msg` — the pre-built `WSMessage` bytes from the `EventCommand`, forwarded untouched
+- `args` — browser-side doubles (mouse coordinates, wheel delta)
+- `value` — input value for `g-bind` events (JSON-encoded bytes)
+
+The bridge never inspects `msg`. Go unpacks the `WSMessage` to determine the type (`"call"` or `"bind"`), method name, pre-resolved args, and scope.
+
+The `scope` field in `WSMessage` routes to a child component instance within a `g-for`.
 
 ## Validation
 
