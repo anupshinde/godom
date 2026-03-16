@@ -54,9 +54,11 @@ Serve images, fonts, CSS from a directory alongside the embedded HTML.
 
 ---
 
-## Disconnect Handling
+## ~~Disconnect Handling~~ ✅
 
-When the Go process exits or crashes, the bridge should update the page to show a disconnected state instead of silently freezing.
+Implemented. The bridge shows a blurred dark overlay on disconnect:
+- **Server stopped/killed**: "Disconnected — Waiting for server…" with auto-reconnect
+- **Application crash (panic)**: "Application Crashed — Restart the application to continue" with the panic message in a code block; no auto-reconnect; process exits
 
 ---
 

@@ -358,12 +358,28 @@ func (a *App) Start() error {
 			return
 		}
 
-		// Read binary messages from this connection
+		// Read binary messages from this connection.
+		// The defer ensures cleanup even if a handler panics —
+		// closing the WebSocket triggers the browser's disconnect overlay.
+		defer func() {
+			if r := recover(); r != nil {
+				msg := fmt.Sprintf("panic: %v", r)
+				log.Printf("godom: %s", msg)
+				// WebSocket close reason is limited to 123 bytes
+				reason := msg
+				if len(reason) > 123 {
+					reason = reason[:120] + "..."
+				}
+				closeMsg := websocket.FormatCloseMessage(websocket.CloseInternalServerErr, reason)
+				pool.broadcastClose(closeMsg)
+				os.Exit(1)
+			}
+			pool.remove(wc)
+			conn.Close()
+		}()
 		for {
 			msgType, data, err := conn.ReadMessage()
 			if err != nil {
-				pool.remove(wc)
-				conn.Close()
 				return
 			}
 			if msgType != websocket.BinaryMessage {
@@ -475,6 +491,18 @@ func (p *connPool) broadcast(data []byte) {
 
 	for _, wc := range snapshot {
 		wc.writeBinary(data)
+	}
+}
+
+func (p *connPool) broadcastClose(closeMsg []byte) {
+	p.mu.RLock()
+	snapshot := make([]*wsConn, len(p.conns))
+	copy(snapshot, p.conns)
+	p.mu.RUnlock()
+
+	for _, wc := range snapshot {
+		wc.conn.WriteMessage(websocket.CloseMessage, closeMsg)
+		wc.conn.Close()
 	}
 }
 

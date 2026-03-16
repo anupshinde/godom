@@ -146,7 +146,8 @@ For `g-for` lists, each item is individually JSON-marshaled and compared against
 
 The bridge is vanilla JS with no dependencies. It:
 
-- Connects to `/ws` and auto-reconnects on disconnect
+- Connects to `/ws` and auto-reconnects on disconnect (shows a blurred dark overlay with "Disconnected" while retrying)
+- On application crash (panic in a handler), shows an "Application Crashed" overlay with the error message; does not retry
 - Caches elements by `data-gid` for O(1) lookup
 - Executes commands: `text`, `value`, `checked`, `display`, `class`, `attr`, `plugin`, `list`, `list-append`, `list-truncate`
 - Registers event listeners that wrap pre-built protobuf bytes in an Envelope and send over the WebSocket
