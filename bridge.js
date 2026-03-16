@@ -9,6 +9,32 @@
     var textEncoder = new TextEncoder();
     var textDecoder = new TextDecoder();
 
+    // Disconnect overlay — shown when the WebSocket connection is lost
+    var overlay = null;
+    function showDisconnectOverlay(errorMsg) {
+        if (overlay) return;
+        overlay = document.createElement("div");
+        overlay.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;transition:opacity 0.3s";
+        var title = errorMsg ? "Application Crashed" : "Disconnected";
+        var subtitle = errorMsg ? "Restart the application to continue" : "Waiting for server\u2026";
+        var html = '<div style="color:#fff;font-family:system-ui,sans-serif;text-align:center">'
+            + '<div style="font-size:1.5rem;margin-bottom:0.5rem;color:#ff4d4d;font-weight:600">' + title + '</div>'
+            + '<div style="font-size:1.05rem;color:#ccc">' + subtitle + '</div>';
+        if (errorMsg) {
+            var safe = errorMsg.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+            html += '<div style="margin-top:1.2rem;background:rgba(0,0,0,0.5);border:1px solid #444;border-radius:8px;padding:0.8rem 1.2rem;text-align:left;max-width:80vw;overflow-x:auto">'
+                + '<pre style="margin:0;font-size:0.85rem;color:#ffaaaa;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word">' + safe + '</pre></div>';
+        }
+        html += '</div>';
+        overlay.innerHTML = html;
+        document.body.appendChild(overlay);
+    }
+    function hideDisconnectOverlay() {
+        if (!overlay) return;
+        overlay.remove();
+        overlay = null;
+    }
+
     function connect() {
         ws = new WebSocket("ws://" + location.host + "/ws");
         ws.binaryType = "arraybuffer";
@@ -16,6 +42,7 @@
         ws.onmessage = function(evt) {
             var msg = Proto.ServerMessage.decode(new Uint8Array(evt.data));
             if (msg.type === "init") {
+                hideDisconnectOverlay();
                 gidMap = {};
                 anchorMap = {};
                 eventMap = {};
@@ -28,8 +55,10 @@
             }
         };
 
-        ws.onclose = function() {
-            setTimeout(connect, 1000);
+        ws.onclose = function(evt) {
+            var errorMsg = evt.reason || null;
+            showDisconnectOverlay(errorMsg);
+            if (!errorMsg) setTimeout(connect, 1000);
         };
 
         ws.onerror = function() {
