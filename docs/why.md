@@ -24,12 +24,11 @@ This is not a web framework. There are no API endpoints, no REST, no JSON contra
 
 godom is for local use. This is not a limitation — it's the core assumption that makes everything simpler:
 
-- **No auth** — you don't authenticate with your own desktop apps. The user running the Go process is the user viewing the UI. Same trust boundary.
-- **No HTTPS** — localhost doesn't need TLS. The traffic never leaves the machine.
-- **No CORS, no CSP, no rate limiting** — none of the security machinery that protects multi-user web apps applies here.
+- **Auth built in, not bolted on** — token-based authentication is enabled by default. The token is generated on startup, passed to the browser automatically, and persisted as a cookie. Other users on the same machine or network can't access your app without the token. Disable with `--no-auth` if you don't need it.
+- **No HTTPS** — localhost doesn't need TLS. For network access, the token protects against unauthorized access; TLS is not in scope.
 - **No deployment ceremony** — `go build` gives you one binary. Run it, the UI appears. Stop it, the UI is gone.
 
-godom also works as a **local network service**. Run the binary on a headless machine, bind it to the local IP, and access the UI from any browser on the network. This is useful for home servers, lab machines, Raspberry Pis — anything where you want a UI without a monitor.
+godom also works as a **local network service**. Run the binary on a headless machine with `--no-browser --host=0.0.0.0 --token=my-secret`, and access the UI from any browser on the network. This is useful for home servers, lab machines, Raspberry Pis — anything where you want a UI without a monitor. See [configuration.md](configuration.md) for the full reference.
 
 Because state lives in the Go process — not in the browser — you get two things for free:
 
@@ -37,8 +36,6 @@ Because state lives in the Go process — not in the browser — you get two thi
 - **Multiple tabs stay in sync.** Open the app in two browser windows and type in one — the other updates instantly. This isn't a feature we built; it's a natural consequence of Go owning the state and pushing DOM commands to every connected tab.
 
 These aren't things you'd normally get from a web app without explicit sync infrastructure. Here they fall out of the architecture for free.
-
-**Security note:** godom has no authentication or encryption. It assumes a trusted network. If your local network is compromised, you have bigger problems than godom. We may add optional auth in the future, but it is not a priority — the project is designed around trusted environments.
 
 ## Why not Wails, Tauri, or Electron
 
@@ -50,7 +47,7 @@ These aren't things you'd normally get from a web app without explicit sync infr
 | Build toolchain | Node + Electron Forge | Rust + Node + Cargo | Go + Node | `go build` |
 | Binary size | 100MB+ | ~5MB | ~8MB | ~5MB (Go binary only) |
 | Target | Desktop apps | Desktop apps | Desktop apps | Local apps and services |
-| Run as a service | No | No | No | Yes — headless machine, local network |
+| Run as a service | No | No | No | Yes — `--no-browser --host=0.0.0.0` |
 
 The fundamental difference: Wails, Tauri, and Electron all create a **desktop application with an embedded webview**. You still write JavaScript for the frontend. The Go/Rust backend communicates with the JS frontend through bindings.
 

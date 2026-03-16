@@ -186,11 +186,24 @@ Key differences from presentational components:
 ```go
 app := godom.New()                       // Create a new app
 app.Port = 8081                          // Set port (0 = random)
+app.Host = "0.0.0.0"                    // Bind to all interfaces (default "localhost")
+app.NoAuth = true                       // Disable token auth (default false = auth enabled)
+app.Token = "my-secret"                 // Fixed token (default: random per startup)
+app.NoBrowser = true                    // Don't auto-open browser
+app.Quiet = true                        // Suppress startup output
 app.Component("tag", &T{})              // Register a stateful component (tag must contain a hyphen)
 app.Plugin("chartjs", libJS, bridgeJS)   // Register a plugin with one or more JS scripts
 app.Mount(&MyApp{}, fsys)               // Mount root component with embedded filesystem
 app.Start()                             // Start server, open browser, block forever
 ```
+
+Every godom app also supports CLI flags:
+
+```
+./myapp --port=8081 --host=0.0.0.0 --no-auth --no-browser --quiet --token=my-secret
+```
+
+See [docs/configuration.md](docs/configuration.md) for the full reference on settings, CLI flags, authentication, and precedence rules.
 
 ### Component
 
@@ -297,7 +310,7 @@ go build -o counter ./examples/counter
 - **State in Go** — the browser is a rendering engine, not the source of truth
 - **Fail fast** — all directives validated at startup against your struct
 - **Single binary** — `go build` produces one executable, no node_modules
-- **Local apps** — designed for local use and trusted networks, not the public internet. No auth, no HTTPS, no deployment ceremony. Also runs as a service on headless machines ([why?](docs/why.md))
+- **Local apps** — designed for local use and trusted networks, not the public internet. Token-based auth is on by default to prevent other local users from accessing your app. No HTTPS, no deployment ceremony. Also runs as a service on headless machines ([why?](docs/why.md))
 
 ## AI disclosure
 

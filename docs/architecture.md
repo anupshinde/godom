@@ -42,11 +42,13 @@ log.Fatal(app.Start())                    // serve, open browser, block
 
 `Start()` then:
 
-1. Wires the `Refresh()` callback (needs the connection pool, which only exists at start time)
-2. Injects scripts before `</body>`: `protobuf.min.js`, `protocol.js`, then `godom.register()` global (if plugins exist), then plugin scripts in order, then `bridge.js`
-3. Starts an HTTP server on the configured port
-4. Opens the default browser
-5. Blocks forever, handling WebSocket connections
+1. Parses CLI flags (`--port`, `--host`, `--no-auth`) — these override framework defaults but not values set explicitly in code
+2. Generates a random auth token (unless `NoAuth` is set)
+3. Wires the `Refresh()` callback (needs the connection pool, which only exists at start time)
+4. Injects scripts before `</body>`: `protobuf.min.js`, `protocol.js`, then `godom.register()` global (if plugins exist), then plugin scripts in order, then `bridge.js`
+5. Starts an HTTP server on the configured host and port, with token auth middleware on `/` and `/ws`
+6. Opens the default browser with the token URL
+7. Blocks forever, handling WebSocket connections
 
 ## Files
 

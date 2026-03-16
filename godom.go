@@ -5,11 +5,13 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/fs"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"reflect"
 	"runtime"
@@ -43,6 +45,10 @@ type componentReg struct {
 type App struct {
 	Port       int    // 0 = random available port
 	Host       string // default "localhost"; set to "0.0.0.0" for network access
+	NoAuth     bool   // disable token auth (default false = auth enabled)
+	Token      string // fixed auth token; empty = generate random token
+	NoBrowser  bool   // don't open browser on start
+	Quiet      bool   // suppress startup output
 	comp       *componentInfo
 	components map[string]*componentReg // tag name → registered component
 	plugins    map[string][]string       // plugin name → JS scripts
@@ -192,9 +198,47 @@ func (a *App) Start() error {
 		return fmt.Errorf("godom: no component mounted, call Mount() before Start()")
 	}
 
+	// Parse CLI flags using a separate FlagSet to avoid conflicts
+	// with the app developer's own flag usage.
+	// CLI flags only apply when the developer hasn't explicitly set the value.
+	fs := flag.NewFlagSet("godom", flag.ContinueOnError)
+	flagPort := fs.Int("port", 0, "port to listen on (0 = random)")
+	flagHost := fs.String("host", "localhost", "host to bind to")
+	flagNoAuth := fs.Bool("no-auth", false, "disable token authentication")
+	flagToken := fs.String("token", "", "fixed auth token (default: random)")
+	flagNoBrowser := fs.Bool("no-browser", false, "don't open browser on start")
+	flagQuiet := fs.Bool("quiet", false, "suppress startup output")
+	_ = fs.Parse(os.Args[1:])
+
+	if a.Port == 0 && *flagPort != 0 {
+		a.Port = *flagPort
+	}
+	if a.Host == "" && *flagHost != "localhost" {
+		a.Host = *flagHost
+	}
+	if !a.NoAuth && *flagNoAuth {
+		a.NoAuth = true
+	}
+	if a.Token == "" && *flagToken != "" {
+		a.Token = *flagToken
+	}
+	if !a.NoBrowser && *flagNoBrowser {
+		a.NoBrowser = true
+	}
+	if !a.Quiet && *flagQuiet {
+		a.Quiet = true
+	}
+
 	ci := a.comp
 	pool := &connPool{}
-	token := generateToken()
+	var token string
+	if !a.NoAuth {
+		if a.Token != "" {
+			token = a.Token
+		} else {
+			token = generateToken()
+		}
+	}
 
 	// Wire up Refresh: allow Go code to push state to all browsers.
 	ci.refreshFn = func() {
@@ -231,21 +275,23 @@ func (a *App) Start() error {
 			http.NotFound(w, r)
 			return
 		}
-		if !checkAuth(token, w, r) {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		// Redirect to strip token from URL after cookie is set
-		if r.URL.Query().Get("token") != "" {
-			http.Redirect(w, r, "/", http.StatusFound)
-			return
+		if !a.NoAuth {
+			if !checkAuth(token, w, r) {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			// Redirect to strip token from URL after cookie is set
+			if r.URL.Query().Get("token") != "" {
+				http.Redirect(w, r, "/", http.StatusFound)
+				return
+			}
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, pageHTML)
 	})
 
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		if !checkAuth(token, w, r) {
+		if !a.NoAuth && !checkAuth(token, w, r) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -308,10 +354,17 @@ func (a *App) Start() error {
 	}
 
 	port := ln.Addr().(*net.TCPAddr).Port
-	url := fmt.Sprintf("http://localhost:%d?token=%s", port, token)
-	fmt.Printf("godom running at %s\n", url)
+	url := fmt.Sprintf("http://localhost:%d", port)
+	if !a.NoAuth {
+		url += "?token=" + token
+	}
+	if !a.Quiet {
+		fmt.Printf("godom running at %s\n", url)
+	}
 
-	openBrowser(url)
+	if !a.NoBrowser {
+		openBrowser(url)
+	}
 
 	return http.Serve(ln, mux)
 }
