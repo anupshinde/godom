@@ -100,6 +100,8 @@ See [nested-for.md](nested-for.md) for the design.
 
 Example: `examples/basic-form-builder/` — select options and checkbox groups use nested `g-for` in preview mode.
 
+**Note:** The nested g-for implementation needs a manual review pass. The GID replacement logic, inner list diffing (currently absent — full re-render only), and edge cases around deeply nested loops should be carefully audited before relying on this for complex production use.
+
 ---
 
 ## Layer 3.7: Basic Form Builder — done

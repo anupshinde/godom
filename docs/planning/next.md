@@ -70,3 +70,14 @@ Currently using `github.com/gorilla/websocket`. Evaluate alternatives:
 - Stdlib websocket — not available yet, monitor future Go releases
 
 Note: the wire format is already Protocol Buffers (binary WebSocket). Any WebSocket replacement just needs to support binary message read/write.
+
+---
+
+## Review: g-for implementation
+
+The `g-for` implementation — especially nested g-for — needs a manual review pass. Areas to audit:
+
+- **GID replacement logic** in `computeSubLoopCmd` (render.go) — the two-step replacement (outer prefix first, then inner `__IDX__`) is correct for two levels but should be stress-tested for 3+ nesting depths
+- **Inner list diffing** — currently absent; inner loops fully re-render when the outer item changes. May need per-inner-loop `prevLists` tracking for performance with large inner lists
+- **Edge cases** — empty inner lists, outer items added/removed while inner loops exist, interaction with stateful components inside nested loops
+- **Bridge anchor cleanup** — when outer list items are removed, inner anchors in `anchorMap` are not explicitly cleaned up (they become orphaned but harmless)
