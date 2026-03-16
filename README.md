@@ -121,6 +121,8 @@ Requires Go 1.21+ and a web browser.
 - `.g-drag-over` — on a drop zone when a compatible draggable hovers over it
 - `.g-drag-over-above` / `.g-drag-over-below` — on sortable items indicating cursor position
 
+See [docs/drag-drop.md](docs/drag-drop.md) for the full design rationale — why this split between bridge and Go, why MIME types for groups, and alternatives considered.
+
 ### Lists
 
 ```html
@@ -134,6 +136,21 @@ Requires Go 1.21+ and a web browser.
 `g-for="item, index in ListField"` repeats the element for each item in a slice field. The index variable is optional (`g-for="item in Items"` works too).
 
 List rendering uses per-item diffing — only changed items get DOM updates, new items are appended, removed items are truncated.
+
+#### Nested lists
+
+`g-for` loops can be nested. Inner loops iterate over fields of the outer item:
+
+```html
+<div g-for="field, i in Fields">
+    <label g-text="field.Label"></label>
+    <select g-show="field.IsSelect" style="display:none">
+        <option g-for="opt in field.Options" g-text="opt"></option>
+    </select>
+</div>
+```
+
+The inner `g-for` resolves `field.Options` from the outer loop variable. This works to arbitrary nesting depth. See [docs/nested-for.md](docs/nested-for.md) for the design details.
 
 ### Expressions
 
@@ -303,6 +320,7 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 - [examples/charts-without-plugin/](examples/charts-without-plugin/) — ApexCharts with inline bridge adapter (no plugin package)
 - [examples/drag-tiles/](examples/drag-tiles/) — 24 colored tiles with drag-to-reorder and a periodic shine animation sweep
 - [examples/drag-demo/](examples/drag-demo/) — drag-and-drop demo with groups, dropzones, string data, and position detection (palette → canvas → trash)
+- [examples/basic-form-builder/](examples/basic-form-builder/) — drag-and-drop form builder with palette, canvas, config panel, preview mode, and JSON export (uses drag groups, nested g-for, conditional rendering)
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
 

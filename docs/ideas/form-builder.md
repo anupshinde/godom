@@ -114,6 +114,32 @@ Once the form is built, the Go process can generate output:
 
 The export happens entirely in Go — template rendering, JSON marshaling, code generation. No browser involvement.
 
-## Status
+## Status — Implemented
 
-Good candidate for near-term implementation. Low risk — the interaction patterns are proven, the state model is straightforward, and the result is a genuinely useful tool.
+Implemented as `examples/basic-form-builder/`. The basic version covers:
+
+- ✅ Palette → canvas drag-and-drop (using `g-draggable.palette` / `g-drop.palette` groups)
+- ✅ Canvas reordering (using `g-draggable.canvas` / `g-drop.canvas` groups)
+- ✅ Trash zone for field removal
+- ✅ Click-to-select with config panel (label, placeholder, required, help text, options)
+- ✅ Preview mode toggle with type-specific rendering
+- ✅ JSON export
+- ✅ Nested `g-for` for select options and checkbox groups in preview
+- ✅ Seven field types: text, textarea, select, checkbox, number, date, section header
+
+What was deferred from the original design:
+- Validation rules (min/max length, regex, number range) — not needed for the basic version
+- File upload field type
+- HTML/Go struct export — only JSON export implemented
+
+Building this example drove the implementation of nested `g-for` support in the framework (see [../nested-for.md](../nested-for.md)).
+
+### Lessons learned
+
+1. **godom doesn't support expression comparisons** — can't do `g-show="field.Type == 'text'"`. Workaround: boolean type flags on the struct (`IsText`, `IsSelect`, etc.). This is a deliberate simplicity choice, not a bug.
+
+2. **g-show negation doesn't work as expected** — godom's init render sends explicit `display` commands for all `g-show` bindings, so "default visible, hide when truthy" breaks. Workaround: use two explicit boolean fields that are inverses of each other (`HasFields` / `ShowEmpty`), both with `style="display:none"`.
+
+3. **g-bind only works with top-level struct fields** — can't bind directly to `Fields[Selected].Label`. Workaround: `Cfg*` fields on the root struct, synced lazily to the selected field via `applyConfig()`.
+
+4. **prevLists was keyed by field name** — two `g-for` loops over the same field (builder and preview both iterating `Fields`) shared diff state. Fixed by keying `prevLists` by `ft.GID` instead of `ft.ListField`.

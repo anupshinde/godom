@@ -85,6 +85,40 @@ Examples:
 
 ---
 
+## Layer 3.6: Nested g-for — done
+
+`g-for` loops inside other `g-for` loops. Inner loops iterate over fields of the outer item (e.g., `g-for="opt in field.Options"` inside `g-for="field in Fields"`).
+
+- Inner `g-for` extracted as `SubLoops` on the parent `forTemplate` at parse time
+- GID disambiguation: outer `__IDX__` resolved first (by prefix replacement), then inner `__IDX__`
+- Bridge indexes anchor comments from dynamically inserted HTML
+- Validation supports dotted paths through loop variables (e.g., `field.Options`)
+- Recursive: supports arbitrary nesting depth
+- No inner list diffing yet — inner loops fully re-render when the outer item changes
+
+See [nested-for.md](nested-for.md) for the design.
+
+Example: `examples/basic-form-builder/` — select options and checkbox groups use nested `g-for` in preview mode.
+
+---
+
+## Layer 3.7: Basic Form Builder — done
+
+A drag-and-drop form builder demonstrating godom's drag-and-drop directives, nested `g-for`, conditional rendering, and two-way binding together in a practical tool.
+
+- Three-column layout: palette, canvas, config panel
+- Drag field types from palette to canvas (`g-draggable.palette` / `g-drop.palette`)
+- Reorder canvas fields by dragging (`g-draggable.canvas` / `g-drop.canvas`)
+- Remove fields by dragging to trash zone
+- Click-to-select with config panel for editing field properties
+- Preview mode with type-specific rendering via boolean flags
+- Export to JSON
+- Uses nested `g-for` for select options and checkbox groups in preview
+
+Example: `examples/basic-form-builder/`
+
+---
+
 ## Layer 5: Styling
 
 ### 5.1 CSS in HTML files — done

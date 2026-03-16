@@ -131,6 +131,16 @@ Parent struct         ───props───►    Child struct
 
 When a `g-for` iterates over a list with a stateful component, godom creates one `componentInfo` per list item. These are stored in `parent.children[forGID]` and indexed by position. The scope string (e.g., `"g3:2"`) routes incoming events to the correct child instance.
 
+## Nested g-for
+
+`g-for` loops can be nested: a `g-for` inside another `g-for` template. The inner loop is extracted as a `SubLoop` on the parent `forTemplate` at parse time, and expanded at render time in Go.
+
+The key challenge is GID disambiguation. Inner template elements have GIDs like `g3-__IDX__-2-__IDX__` — the first placeholder is the outer index, the second is the inner index. At render time, the outer prefix is resolved first (by replacing the `sub.GID` pattern), then remaining `__IDX__` placeholders are resolved with the inner index.
+
+The bridge's only change: after inserting list item HTML, it scans for anchor comments and registers them in `anchorMap`. This allows inner `list` commands to find their target anchors.
+
+See [nested-for.md](nested-for.md) for the full design and implementation details.
+
 ## State diffing
 
 godom uses JSON snapshot comparison, not field-level tracking:
@@ -193,6 +203,16 @@ The bridge wraps events in an `Envelope`:
 The bridge never inspects `msg`. Go unpacks the `WSMessage` to determine the type (`"call"` or `"bind"`), method name, pre-resolved args, and scope.
 
 The `scope` field in `WSMessage` routes to a child component instance within a `g-for`.
+
+## Drag and drop
+
+Drag-and-drop splits responsibility between the bridge and Go. The bridge handles the HTML5 DnD ceremony (event listeners, `preventDefault`, `dataTransfer`, CSS feedback classes). Go handles the semantics (what data is being dragged, what happens on drop).
+
+This split exists because `dragover` fires continuously and requires synchronous `preventDefault()` — a round trip to Go would be too slow. But the final drop result is always sent to Go, where the method decides what to do (reorder a slice, add an item, delete an item).
+
+Groups use `dataTransfer` MIME types (`application/x-godom-{group}`) for filtering, requiring zero JS-side state. CSS classes (`.g-dragging`, `.g-drag-over`, `.g-drag-over-above/below`) are applied directly by the bridge for instant visual feedback.
+
+See [drag-drop.md](drag-drop.md) for the full design rationale and alternatives considered.
 
 ## Validation
 
