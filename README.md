@@ -102,6 +102,27 @@ Requires Go 1.21+ and a web browser.
 | `g-mouseup` | `g-mouseup="OnUp"` | Mouse button released — receives `(x, y float64)` |
 | `g-wheel` | `g-wheel="OnScroll"` | Scroll wheel — receives `(deltaY float64)` |
 
+### Drag and drop
+
+| Directive | Example | Description |
+|-----------|---------|-------------|
+| `g-draggable` | `g-draggable="i"` | Make element draggable, with the given value as drag data |
+| `g-draggable.group` | `g-draggable.palette="'red'"` | Draggable with a named group — only matching dropzones accept the drop |
+| `g-dropzone` | `g-dropzone="'canvas'"` | Mark element as a drop zone with a named value (used as `to` in drop handler) |
+| `g-drop` | `g-drop="Reorder"` | Call method on drop — receives `(from, to)` or `(from, to, position)` |
+| `g-drop.group` | `g-drop.palette="Add"` | Drop handler filtered by group — only fires for matching `g-draggable.group` |
+
+**Groups** isolate drag interactions. A `g-draggable.palette` element can only be dropped on a `g-drop.palette` handler. Without a group, all draggables and drop handlers interact freely.
+
+**Drop data** is passed as method arguments: `from` (the draggable's value), `to` (the dropzone's value or the target's drag data), and optionally `position` (`"above"` or `"below"` based on cursor position). String and numeric values are preserved automatically.
+
+**CSS classes** are applied automatically during drag operations:
+- `.g-dragging` — on the element being dragged
+- `.g-drag-over` — on a drop zone when a compatible draggable hovers over it
+- `.g-drag-over-above` / `.g-drag-over-below` — on sortable items indicating cursor position
+
+See [docs/drag-drop.md](docs/drag-drop.md) for the full design rationale — why this split between bridge and Go, why MIME types for groups, and alternatives considered.
+
 ### Lists
 
 ```html
@@ -115,6 +136,21 @@ Requires Go 1.21+ and a web browser.
 `g-for="item, index in ListField"` repeats the element for each item in a slice field. The index variable is optional (`g-for="item in Items"` works too).
 
 List rendering uses per-item diffing — only changed items get DOM updates, new items are appended, removed items are truncated.
+
+#### Nested lists
+
+`g-for` loops can be nested. Inner loops iterate over fields of the outer item:
+
+```html
+<div g-for="field, i in Fields">
+    <label g-text="field.Label"></label>
+    <select g-show="field.IsSelect" style="display:none">
+        <option g-for="opt in field.Options" g-text="opt"></option>
+    </select>
+</div>
+```
+
+The inner `g-for` resolves `field.Options` from the outer loop variable. This works to arbitrary nesting depth. See [docs/nested-for.md](docs/nested-for.md) for the design details.
 
 ### Expressions
 
@@ -282,6 +318,9 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 - [examples/system-monitor/](examples/system-monitor/) — live system monitor dashboard with `Refresh()`, `g-attr`, and presentational components
 - [examples/system-monitor-chartjs/](examples/system-monitor-chartjs/) — system monitor with Chart.js plugin (CPU, memory, disk, swap, load charts)
 - [examples/charts-without-plugin/](examples/charts-without-plugin/) — ApexCharts with inline bridge adapter (no plugin package)
+- [examples/drag-tiles/](examples/drag-tiles/) — 24 colored tiles with drag-to-reorder and a periodic shine animation sweep
+- [examples/drag-demo/](examples/drag-demo/) — drag-and-drop demo with groups, dropzones, string data, and position detection (palette → canvas → trash)
+- [examples/basic-form-builder/](examples/basic-form-builder/) — drag-and-drop form builder with palette, canvas, config panel, preview mode, and JSON export (uses drag groups, nested g-for, conditional rendering)
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
 

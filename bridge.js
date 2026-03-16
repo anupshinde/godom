@@ -139,6 +139,31 @@
                         case "style":
                             el.style.setProperty(c.name, c.strVal || "");
                             break;
+                        case "draggable":
+                            el.setAttribute("draggable", "true");
+                            el.dataset.gDrag = c.strVal || "";
+                            el.dataset.gDragGroup = c.name || "";
+                            if (!el.getAttribute("data-g-dragstart")) {
+                                el.setAttribute("data-g-dragstart", "1");
+                                el.addEventListener("dragstart", function(de) {
+                                    de.dataTransfer.effectAllowed = "move";
+                                    var dragEl = de.target.closest("[data-g-drag]");
+                                    var group = dragEl.dataset.gDragGroup || "";
+                                    de.dataTransfer.setData("application/x-godom-" + group, dragEl.dataset.gDrag);
+                                    dragEl.classList.add("g-dragging");
+                                });
+                                el.addEventListener("dragend", function(de) {
+                                    de.target.closest("[data-g-drag]").classList.remove("g-dragging");
+                                    var overs = document.querySelectorAll(".g-drag-over,.g-drag-over-above,.g-drag-over-below");
+                                    for (var j = 0; j < overs.length; j++) {
+                                        overs[j].classList.remove("g-drag-over", "g-drag-over-above", "g-drag-over-below");
+                                    }
+                                });
+                            }
+                            break;
+                        case "dropzone":
+                            el.dataset.gDrop = c.strVal || "";
+                            break;
                         case "plugin":
                             var handler = window.godom && window.godom._plugins && window.godom._plugins[c.name];
                             if (handler) {
@@ -152,6 +177,23 @@
                             }
                             break;
                     }
+            }
+        }
+    }
+
+    // Index anchor comments within a node (for nested g-for support)
+    function indexAnchors(node) {
+        if (node.nodeType !== 1) return;
+        var walker = document.createTreeWalker(node, NodeFilter.SHOW_COMMENT, null, false);
+        while (walker.nextNode()) {
+            var text = walker.currentNode.nodeValue.trim();
+            var m;
+            if ((m = text.match(/^g-for:(.+)$/))) {
+                if (!anchorMap[m[1]]) anchorMap[m[1]] = {};
+                anchorMap[m[1]].start = walker.currentNode;
+            } else if ((m = text.match(/^\/g-for:(.+)$/))) {
+                if (!anchorMap[m[1]]) anchorMap[m[1]] = {};
+                anchorMap[m[1]].end = walker.currentNode;
             }
         }
     }
@@ -192,6 +234,7 @@
                     for (var k = 0; k < newSubs.length; k++) {
                         gidMap[newSubs[k].getAttribute("data-gid")] = newSubs[k];
                     }
+                    indexAnchors(node);
                 }
             }
             execCommands(item.cmds);
@@ -218,6 +261,7 @@
                     for (var k = 0; k < subs.length; k++) {
                         gidMap[subs[k].getAttribute("data-gid")] = subs[k];
                     }
+                    indexAnchors(node);
                 }
             }
             execCommands(item.cmds);
@@ -329,6 +373,54 @@
                         sendEnvelope(ev.msg, [we.deltaY]);
                     }, {passive: false});
                 })(key, el);
+            } else if (e.on === "drop") {
+                (function(k, elem, group) {
+                    var mimeType = "application/x-godom-" + group;
+                    var dragCounter = 0;
+                    function hasMatch(dt) {
+                        for (var t = 0; t < dt.types.length; t++) {
+                            if (dt.types[t] === mimeType) return true;
+                        }
+                        return false;
+                    }
+                    elem.addEventListener("dragover", function(de) {
+                        if (!hasMatch(de.dataTransfer)) return;
+                        de.preventDefault();
+                        de.dataTransfer.dropEffect = "move";
+                        var rect = elem.getBoundingClientRect();
+                        var isAbove = de.clientY < rect.top + rect.height / 2;
+                        elem.classList.remove("g-drag-over-above", "g-drag-over-below");
+                        elem.classList.add("g-drag-over");
+                        elem.classList.add(isAbove ? "g-drag-over-above" : "g-drag-over-below");
+                    });
+                    elem.addEventListener("dragenter", function(de) {
+                        if (!hasMatch(de.dataTransfer)) return;
+                        de.preventDefault();
+                        dragCounter++;
+                    });
+                    elem.addEventListener("dragleave", function() {
+                        if (dragCounter === 0) return;
+                        dragCounter--;
+                        if (dragCounter === 0) {
+                            elem.classList.remove("g-drag-over", "g-drag-over-above", "g-drag-over-below");
+                        }
+                    });
+                    elem.addEventListener("drop", function(de) {
+                        dragCounter = 0;
+                        elem.classList.remove("g-drag-over", "g-drag-over-above", "g-drag-over-below");
+                        if (!hasMatch(de.dataTransfer)) return;
+                        de.preventDefault();
+                        var ev = eventMap[k];
+                        if (!ev) return;
+                        var fromStr = de.dataTransfer.getData(mimeType);
+                        var toStr = elem.dataset.gDrop || elem.dataset.gDrag || "";
+                        var rect = elem.getBoundingClientRect();
+                        var position = de.clientY < rect.top + rect.height / 2 ? "above" : "below";
+                        function smartVal(s) { var n = Number(s); return s !== "" && !isNaN(n) ? n : s; }
+                        var dropArgs = [smartVal(fromStr), smartVal(toStr), position];
+                        sendEnvelope(ev.msg, null, textEncoder.encode(JSON.stringify(dropArgs)));
+                    });
+                })(key, el, e.key || "");
             } else {
                 (function(k, elem) {
                     elem.addEventListener(e.on, function() {

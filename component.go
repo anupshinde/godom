@@ -178,7 +178,7 @@ func (ci *componentInfo) callMethod(name string, args []json.RawMessage) error {
 	mt := method.Type()
 	numIn := mt.NumIn()
 
-	if len(args) != numIn {
+	if len(args) < numIn {
 		return fmt.Errorf("method %q expects %d args, got %d", name, numIn, len(args))
 	}
 

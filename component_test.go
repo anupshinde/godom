@@ -189,6 +189,22 @@ func TestCallMethod_WrongArgCount(t *testing.T) {
 	}
 }
 
+func TestCallMethod_ExtraArgsIgnored(t *testing.T) {
+	comp := &testComp{}
+	ci := newTestCI(comp)
+
+	a, _ := json.Marshal(3)
+	b, _ := json.Marshal(7)
+	extra, _ := json.Marshal("above")
+	err := ci.callMethod("Add", []json.RawMessage{a, b, extra})
+	if err != nil {
+		t.Errorf("extra args should be ignored, got error: %v", err)
+	}
+	if comp.Count != 10 {
+		t.Errorf("Count = %d, want 10", comp.Count)
+	}
+}
+
 func TestSetField(t *testing.T) {
 	comp := &testComp{}
 	ci := newTestCI(comp)

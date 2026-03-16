@@ -125,7 +125,7 @@ func computeInitMessage(pb *pageBindings, ci *componentInfo) (*ServerMessage, er
 			data, _ := json.Marshal(item)
 			snapshots[i] = string(data)
 		}
-		ci.prevLists[fl.ListField] = snapshots
+		ci.prevLists[fl.GID] = snapshots
 	}
 
 	return &ServerMessage{
@@ -204,6 +204,16 @@ func singleCmd(b binding, state map[string]interface{}, ctx map[string]interface
 		if strings.HasPrefix(b.Dir, "plugin:") {
 			raw, _ := json.Marshal(val)
 			return &Command{Op: "plugin", Id: b.GID, Name: b.Dir[7:], Val: &Command_RawVal{RawVal: raw}}
+		}
+		if b.Dir == "draggable" || strings.HasPrefix(b.Dir, "draggable:") {
+			group := ""
+			if strings.HasPrefix(b.Dir, "draggable:") {
+				group = b.Dir[len("draggable:"):]
+			}
+			return &Command{Op: "draggable", Id: b.GID, Name: group, Val: &Command_StrVal{StrVal: valToStr(val)}}
+		}
+		if b.Dir == "dropzone" {
+			return &Command{Op: "dropzone", Id: b.GID, Val: &Command_StrVal{StrVal: valToStr(val)}}
 		}
 		return &Command{Op: "text", Id: b.GID, Val: &Command_StrVal{StrVal: valToStr(val)}}
 	}
@@ -366,9 +376,87 @@ func resolveItemBindings(ft *forTemplate, ci *componentInfo, state map[string]in
 			}
 			evts = append(evts, singleEventCmd(resolved, state, ctx))
 		}
+
+		// Expand nested g-for sub-loops
+		for _, sub := range ft.SubLoops {
+			subCmds := computeSubLoopCmd(sub, state, ctx, idxStr)
+			cmds = append(cmds, subCmds)
+		}
 	}
 
 	return cmds, evts
+}
+
+// computeSubLoopCmd renders a nested g-for loop for a single outer item.
+// The inner list field (e.g. "field.Options") is resolved from the outer item context.
+func computeSubLoopCmd(sub *forTemplate, state map[string]interface{}, ctx map[string]interface{}, outerIdxStr string) *Command {
+	// Resolve the inner GID by replacing the outer __IDX__ placeholder
+	innerGID := strings.ReplaceAll(sub.GID, "__IDX__", outerIdxStr)
+
+	// Resolve the inner list from the item context (e.g. "field.Options")
+	innerListVal := resolveExprVal(sub.ListField, state, ctx)
+	items, _ := innerListVal.([]interface{})
+	if items == nil {
+		items = []interface{}{}
+	}
+
+	listItems := make([]*ListItem, 0, len(items))
+	for innerIdx, innerItem := range items {
+		innerIdxStr := strconv.Itoa(innerIdx)
+
+		// Build inner item context (inherits outer context)
+		innerCtx := make(map[string]interface{})
+		for k, v := range ctx {
+			innerCtx[k] = v
+		}
+		innerCtx[sub.ItemVar] = innerItem
+		if sub.IndexVar != "" {
+			innerCtx[sub.IndexVar] = innerIdx
+		}
+
+		// GID replacement order matters: the template has GIDs like
+		// "g3-__IDX__-2-__IDX__" where the first __IDX__ is the outer index
+		// (part of sub.GID prefix) and the second is the inner index.
+		// Step 1: replace the sub.GID prefix to resolve the outer index.
+		// Step 2: replace remaining __IDX__ to resolve the inner index.
+		itemHTML := strings.ReplaceAll(sub.TemplateHTML, sub.GID, innerGID)
+		itemHTML = strings.ReplaceAll(itemHTML, "__IDX__", innerIdxStr)
+
+		var cmds []*Command
+		for _, b := range sub.Bindings {
+			resolved := binding{
+				GID:  strings.ReplaceAll(strings.ReplaceAll(b.GID, sub.GID, innerGID), "__IDX__", innerIdxStr),
+				Dir:  b.Dir,
+				Expr: b.Expr,
+			}
+			cmds = append(cmds, singleCmd(resolved, state, innerCtx))
+		}
+
+		var evts []*EventCommand
+		for _, e := range sub.Events {
+			resolved := eventBinding{
+				GID:    strings.ReplaceAll(strings.ReplaceAll(e.GID, sub.GID, innerGID), "__IDX__", innerIdxStr),
+				Event:  e.Event,
+				Key:    e.Key,
+				Method: e.Method,
+				Args:   e.Args,
+			}
+			evts = append(evts, singleEventCmd(resolved, state, innerCtx))
+		}
+
+		// Handle sub-sub-loops (recursive)
+		for _, subSub := range sub.SubLoops {
+			cmds = append(cmds, computeSubLoopCmd(subSub, state, innerCtx, innerIdxStr))
+		}
+
+		listItems = append(listItems, &ListItem{
+			Html: itemHTML,
+			Cmds: cmds,
+			Evts: evts,
+		})
+	}
+
+	return &Command{Op: "list", Id: innerGID, Items: listItems}
 }
 
 // --- g-for list rendering ---
@@ -386,7 +474,7 @@ func computeListDiff(ft *forTemplate, state map[string]interface{}, ci *componen
 	if ci.prevLists == nil {
 		ci.prevLists = make(map[string][]string)
 	}
-	prevItems := ci.prevLists[ft.ListField]
+	prevItems := ci.prevLists[ft.GID]
 	oldLen := len(prevItems)
 	newLen := len(items)
 
@@ -398,7 +486,7 @@ func computeListDiff(ft *forTemplate, state map[string]interface{}, ci *componen
 	}
 
 	// Store for next diff
-	ci.prevLists[ft.ListField] = currentSnapshots
+	ci.prevLists[ft.GID] = currentSnapshots
 
 	// If both empty, nothing to do
 	if oldLen == 0 && newLen == 0 {

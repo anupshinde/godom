@@ -513,3 +513,144 @@ func TestFindIndexHTML_NotFound(t *testing.T) {
 		t.Error("expected error when index.html not found")
 	}
 }
+
+func TestParsePageHTML_Draggable(t *testing.T) {
+	html := `<html><body><div g-draggable="i">Drag me</div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pb.Bindings) != 1 {
+		t.Fatalf("expected 1 binding, got %d", len(pb.Bindings))
+	}
+	b := pb.Bindings[0]
+	if b.Dir != "draggable" {
+		t.Errorf("dir = %q, want draggable", b.Dir)
+	}
+	if b.Expr != "i" {
+		t.Errorf("expr = %q, want i", b.Expr)
+	}
+}
+
+func TestParsePageHTML_DraggableWithGroup(t *testing.T) {
+	html := `<html><body><div g-draggable.palette="'red'">Red</div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pb.Bindings) != 1 {
+		t.Fatalf("expected 1 binding, got %d", len(pb.Bindings))
+	}
+	b := pb.Bindings[0]
+	if b.Dir != "draggable:palette" {
+		t.Errorf("dir = %q, want draggable:palette", b.Dir)
+	}
+	if b.Expr != "'red'" {
+		t.Errorf("expr = %q, want 'red'", b.Expr)
+	}
+}
+
+func TestParsePageHTML_Dropzone(t *testing.T) {
+	html := `<html><body><div g-dropzone="'canvas'">Drop here</div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pb.Bindings) != 1 {
+		t.Fatalf("expected 1 binding, got %d", len(pb.Bindings))
+	}
+	b := pb.Bindings[0]
+	if b.Dir != "dropzone" {
+		t.Errorf("dir = %q, want dropzone", b.Dir)
+	}
+}
+
+func TestParsePageHTML_DropEvent(t *testing.T) {
+	html := `<html><body><div g-drop="Reorder">Drop</div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pb.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(pb.Events))
+	}
+	e := pb.Events[0]
+	if e.Event != "drop" {
+		t.Errorf("event = %q, want drop", e.Event)
+	}
+	if e.Method != "Reorder" {
+		t.Errorf("method = %q, want Reorder", e.Method)
+	}
+	if e.Key != "" {
+		t.Errorf("key = %q, want empty (no group)", e.Key)
+	}
+}
+
+func TestParsePageHTML_DropEventWithGroup(t *testing.T) {
+	html := `<html><body><div g-drop.palette="Add">Drop</div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pb.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(pb.Events))
+	}
+	e := pb.Events[0]
+	if e.Event != "drop" {
+		t.Errorf("event = %q, want drop", e.Event)
+	}
+	if e.Key != "palette" {
+		t.Errorf("key = %q, want palette", e.Key)
+	}
+	if e.Method != "Add" {
+		t.Errorf("method = %q, want Add", e.Method)
+	}
+}
+
+func TestParsePageHTML_NestedFor(t *testing.T) {
+	html := `<html><body><div g-for="group in Groups"><span g-text="group.Name"></span><li g-for="item in group.Items"><span g-text="item.Label"></span></li></div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(pb.ForLoops) != 1 {
+		t.Fatalf("expected 1 top-level for loop, got %d", len(pb.ForLoops))
+	}
+
+	fl := pb.ForLoops[0]
+	if fl.ListField != "Groups" {
+		t.Errorf("ListField = %q, want Groups", fl.ListField)
+	}
+
+	// Should have one SubLoop for the inner g-for
+	if len(fl.SubLoops) != 1 {
+		t.Fatalf("expected 1 sub-loop, got %d", len(fl.SubLoops))
+	}
+
+	sub := fl.SubLoops[0]
+	if sub.ItemVar != "item" {
+		t.Errorf("inner ItemVar = %q, want item", sub.ItemVar)
+	}
+	if sub.ListField != "group.Items" {
+		t.Errorf("inner ListField = %q, want group.Items", sub.ListField)
+	}
+
+	// Inner template should have __IDX__ placeholders
+	if !strings.Contains(sub.TemplateHTML, "__IDX__") {
+		t.Error("expected __IDX__ in inner template HTML")
+	}
+
+	// Outer template should have inner anchor comments with __IDX__
+	if !strings.Contains(fl.TemplateHTML, "g-for:") {
+		t.Error("expected inner g-for anchor comments in outer template")
+	}
+
+	// Inner template should have a binding for item.Label
+	if len(sub.Bindings) != 1 {
+		t.Fatalf("expected 1 inner binding, got %d", len(sub.Bindings))
+	}
+	if sub.Bindings[0].Expr != "item.Label" {
+		t.Errorf("inner binding expr = %q, want item.Label", sub.Bindings[0].Expr)
+	}
+}

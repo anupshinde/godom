@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Drag &amp; Drop Demo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            max-width: 800px;
+            margin: 30px auto;
+            padding: 0 20px;
+            color: #333;
+        }
+        h1 { margin-bottom: 6px; font-size: 22px; }
+        .subtitle { color: #888; font-size: 13px; margin-bottom: 20px; }
+
+        .layout { display: flex; gap: 20px; }
+
+        /* Palette */
+        .palette {
+            width: 160px;
+            flex-shrink: 0;
+        }
+        .palette h2 { font-size: 14px; color: #666; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .palette-item {
+            padding: 10px 14px;
+            margin-bottom: 6px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: grab;
+            user-select: none;
+            transition: transform 0.1s, opacity 0.1s;
+        }
+        .palette-item:hover { transform: scale(1.03); }
+        .palette-item.g-dragging { opacity: 0.3; }
+
+        /* Canvas */
+        .canvas-area { flex: 1; }
+        .canvas-area h2 { font-size: 14px; color: #666; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .canvas {
+            min-height: 200px;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 8px;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .canvas.g-drag-over {
+            border-color: #4a90d9;
+            background: #f0f6ff;
+        }
+        .canvas-empty {
+            color: #bbb;
+            text-align: center;
+            padding: 60px 20px;
+            font-size: 14px;
+        }
+
+        .canvas-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            margin-bottom: 4px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: grab;
+            user-select: none;
+            transition: transform 0.1s, opacity 0.1s;
+        }
+        .canvas-card:hover { transform: scale(1.01); }
+        .canvas-card.g-dragging { opacity: 0.3; }
+        .canvas-card.g-drag-over-above { box-shadow: 0 -2px 0 0 #333; }
+        .canvas-card.g-drag-over-below { box-shadow: 0 2px 0 0 #333; }
+        .canvas-card span { flex: 1; }
+        .canvas-card .remove { cursor: pointer; opacity: 0.6; }
+        .canvas-card .remove:hover { opacity: 1; }
+
+        /* Trash */
+        .trash {
+            margin-top: 12px;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 14px;
+            text-align: center;
+            color: #bbb;
+            font-size: 13px;
+            transition: border-color 0.15s, background 0.15s, color 0.15s;
+        }
+        .trash.g-drag-over {
+            border-color: #e74c3c;
+            background: #fdf0ef;
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <h1>Drag &amp; Drop Demo</h1>
+    <p class="subtitle">Groups &middot; Dropzones &middot; String data &middot; Position</p>
+
+    <div class="layout">
+        <div class="palette">
+            <h2>Palette</h2>
+            <div class="palette-item" style="background:#e74c3c" g-draggable.palette="'red'">Red</div>
+            <div class="palette-item" style="background:#27ae60" g-draggable.palette="'green'">Green</div>
+            <div class="palette-item" style="background:#2980b9" g-draggable.palette="'blue'">Blue</div>
+            <div class="palette-item" style="background:#e67e22" g-draggable.palette="'orange'">Orange</div>
+            <div class="palette-item" style="background:#8e44ad" g-draggable.palette="'purple'">Purple</div>
+            <div class="palette-item" style="background:#e91e8b" g-draggable.palette="'pink'">Pink</div>
+        </div>
+
+        <div class="canvas-area">
+            <h2>Canvas</h2>
+            <div class="canvas" g-dropzone="'canvas'" g-drop.palette="Add">
+                <div g-show="Canvas" style="display:none">
+                    <div g-for="card, i in Canvas" class="canvas-card"
+                         g-style:background-color="card.Color"
+                         g-draggable.canvas="i"
+                         g-drop.canvas="Reorder">
+                        <span g-text="card.Label"></span>
+                        <span class="remove" g-click="Remove(i)">&times;</span>
+                    </div>
+                </div>
+                <div class="canvas-empty" g-show="Canvas">
+                    Drag colors from the palette
+                </div>
+            </div>
+
+            <div class="trash" g-dropzone="'trash'" g-drop.canvas="Remove">
+                Drop here to remove
+            </div>
+        </div>
+    </div>
+</body>
+</html>
