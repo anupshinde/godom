@@ -181,6 +181,23 @@
         }
     }
 
+    // Index anchor comments within a node (for nested g-for support)
+    function indexAnchors(node) {
+        if (node.nodeType !== 1) return;
+        var walker = document.createTreeWalker(node, NodeFilter.SHOW_COMMENT, null, false);
+        while (walker.nextNode()) {
+            var text = walker.currentNode.nodeValue.trim();
+            var m;
+            if ((m = text.match(/^g-for:(.+)$/))) {
+                if (!anchorMap[m[1]]) anchorMap[m[1]] = {};
+                anchorMap[m[1]].start = walker.currentNode;
+            } else if ((m = text.match(/^\/g-for:(.+)$/))) {
+                if (!anchorMap[m[1]]) anchorMap[m[1]] = {};
+                anchorMap[m[1]].end = walker.currentNode;
+            }
+        }
+    }
+
     function execList(c) {
         var a = anchorMap[c.id];
         if (!a || !a.start || !a.end) return;
@@ -217,6 +234,7 @@
                     for (var k = 0; k < newSubs.length; k++) {
                         gidMap[newSubs[k].getAttribute("data-gid")] = newSubs[k];
                     }
+                    indexAnchors(node);
                 }
             }
             execCommands(item.cmds);
@@ -243,6 +261,7 @@
                     for (var k = 0; k < subs.length; k++) {
                         gidMap[subs[k].getAttribute("data-gid")] = subs[k];
                     }
+                    indexAnchors(node);
                 }
             }
             execCommands(item.cmds);

@@ -257,6 +257,52 @@ func TestValidateDirectives_DraggableUnknownField(t *testing.T) {
 	}
 }
 
+// --- Nested g-for validation tests ---
+
+type valNestedComp struct {
+	Component
+	Groups []valNestedGroup
+}
+
+type valNestedGroup struct {
+	Name    string
+	Options []string
+}
+
+func (v *valNestedComp) Save() {}
+
+func TestValidateDirectives_NestedFor(t *testing.T) {
+	html := `<div g-for="group in Groups"><span g-text="group.Name"></span><li g-for="opt in group.Options"><span g-text="opt"></span></li></div>`
+	comp := &valNestedComp{}
+	v := reflect.ValueOf(comp)
+	ci := &componentInfo{
+		value:    v,
+		typ:      v.Elem().Type(),
+		children: make(map[string][]*componentInfo),
+		registry: make(map[string]*componentReg),
+	}
+	if err := validateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDirectives_NestedForUnknownPath(t *testing.T) {
+	html := `<div g-for="group in Groups"><li g-for="opt in group.Missing"></li></div>`
+	comp := &valNestedComp{}
+	v := reflect.ValueOf(comp)
+	ci := &componentInfo{
+		value:    v,
+		typ:      v.Elem().Type(),
+		children: make(map[string][]*componentInfo),
+		registry: make(map[string]*componentReg),
+	}
+	// "group.Missing" — "group" is a valid loop var, so this passes validation
+	// (we trust the loop variable's type at the validate level)
+	if err := validateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestIsLiteral(t *testing.T) {
 	tests := []struct {
 		s    string

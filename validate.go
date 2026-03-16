@@ -47,7 +47,7 @@ func validateDirectives(htmlStr string, ci *componentInfo) error {
 
 		switch baseDirType {
 		case "for":
-			if err := validateForExpr(expr, ci); err != nil {
+			if err := validateForExpr(expr, ci, loopVars); err != nil {
 				return err
 			}
 		case "click":
@@ -145,9 +145,18 @@ func collectLoopVars(htmlStr string, ci *componentInfo) map[string]*loopVarInfo 
 
 		// Resolve the element type of the list field
 		var elemType reflect.Type
-		f, ok := ci.typ.FieldByName(listField)
-		if ok && (f.Type.Kind() == reflect.Slice || f.Type.Kind() == reflect.Array) {
+		pathParts := strings.Split(listField, ".")
+		if f, ok := ci.typ.FieldByName(listField); ok && (f.Type.Kind() == reflect.Slice || f.Type.Kind() == reflect.Array) {
+			// Top-level field (e.g., "Todos")
 			elemType = f.Type.Elem()
+		} else if len(pathParts) > 1 {
+			// Dotted path — may start with a loop variable (e.g., "field.Options")
+			if lv, ok := vars[pathParts[0]]; ok && lv.itemType != nil {
+				resolved := resolveFieldType(lv.itemType, pathParts[1:])
+				if resolved != nil && (resolved.Kind() == reflect.Slice || resolved.Kind() == reflect.Array) {
+					elemType = resolved.Elem()
+				}
+			}
 		}
 
 		// Item variable gets the element type
@@ -182,16 +191,25 @@ func collectLoopVars(htmlStr string, ci *componentInfo) map[string]*loopVarInfo 
 	return vars
 }
 
-func validateForExpr(expr string, ci *componentInfo) error {
+func validateForExpr(expr string, ci *componentInfo, loopVars map[string]*loopVarInfo) error {
 	parts := strings.SplitN(expr, " in ", 2)
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid g-for syntax: %q (expected 'item in List' or 'item, index in List')", expr)
 	}
 	listField := strings.TrimSpace(parts[1])
-	if !ci.hasField(listField) {
-		return fmt.Errorf("g-for references unknown field %q on %s", listField, ci.typ.Name())
+
+	// Top-level field (e.g., "Todos")
+	if ci.hasField(listField) {
+		return nil
 	}
-	return nil
+
+	// Dotted path through a loop variable (e.g., "field.Options")
+	pathParts := strings.Split(listField, ".")
+	if lv, ok := loopVars[pathParts[0]]; ok && lv.itemType != nil {
+		return nil // trust the loop variable's type
+	}
+
+	return fmt.Errorf("g-for references unknown field %q on %s", listField, ci.typ.Name())
 }
 
 func validateMethodRef(dirName, expr string, ci *componentInfo, loopVars map[string]*loopVarInfo) error {
@@ -299,6 +317,25 @@ func validateArgExpr(arg string, ci *componentInfo, loopVars map[string]*loopVar
 	}
 
 	return fmt.Errorf("unknown argument %q", arg)
+}
+
+// resolveFieldType walks a dotted path through a struct type, returning the final type.
+func resolveFieldType(t reflect.Type, path []string) reflect.Type {
+	current := t
+	for _, part := range path {
+		for current.Kind() == reflect.Ptr {
+			current = current.Elem()
+		}
+		if current.Kind() != reflect.Struct {
+			return nil
+		}
+		f, ok := current.FieldByName(part)
+		if !ok {
+			return nil
+		}
+		current = f.Type
+	}
+	return current
 }
 
 func isLiteral(s string) bool {

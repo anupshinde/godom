@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Form Builder</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: #333;
+            background: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top bar */
+        .topbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            background: white;
+            border-bottom: 1px solid #ddd;
+        }
+        .topbar input {
+            font-size: 18px;
+            font-weight: 600;
+            border: 1px solid transparent;
+            padding: 4px 8px;
+            border-radius: 4px;
+            flex: 1;
+            max-width: 400px;
+        }
+        .topbar input:focus {
+            border-color: #4a90d9;
+            outline: none;
+        }
+        .topbar button {
+            padding: 6px 16px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .topbar button:hover { background: #f0f0f0; }
+        .topbar .btn-primary {
+            background: #4a90d9;
+            color: white;
+            border-color: #4a90d9;
+        }
+        .topbar .btn-primary:hover { background: #357abd; }
+
+        /* Layout */
+        .layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Palette */
+        .palette {
+            width: 180px;
+            padding: 16px;
+            background: white;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+        }
+        .palette h3 {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #999;
+            margin-bottom: 10px;
+        }
+        .palette-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            margin-bottom: 4px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background: white;
+            font-size: 13px;
+            cursor: grab;
+            user-select: none;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .palette-item:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+        .palette-item.g-dragging { opacity: 0.3; }
+        .palette-item .icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        /* Canvas */
+        .canvas-area {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .canvas {
+            min-height: 300px;
+            background: white;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .canvas.g-drag-over {
+            border-color: #4a90d9;
+            background: #f0f6ff;
+        }
+        .canvas-empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: #bbb;
+            font-size: 14px;
+        }
+
+        .field-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            margin-bottom: 4px;
+            border: 2px solid #e8e8e8;
+            border-radius: 6px;
+            background: white;
+            cursor: grab;
+            user-select: none;
+            transition: transform 0.1s, opacity 0.1s, border-color 0.15s;
+        }
+        .field-card:hover { border-color: #ccc; }
+        .field-card.selected {
+            border-color: #4a90d9;
+            background: #f8fbff;
+        }
+        .field-card.g-dragging { opacity: 0.3; }
+        .field-card.g-drag-over-above { box-shadow: 0 -2px 0 0 #4a90d9; }
+        .field-card.g-drag-over-below { box-shadow: 0 2px 0 0 #4a90d9; }
+        .field-card .type-badge {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: #f0f0f0;
+            color: #666;
+            flex-shrink: 0;
+        }
+        .field-card .field-label {
+            flex: 1;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .field-card .required-dot {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .field-card .remove {
+            cursor: pointer;
+            color: #ccc;
+            font-size: 18px;
+            line-height: 1;
+        }
+        .field-card .remove:hover { color: #e74c3c; }
+
+        /* Trash zone */
+        .trash {
+            margin-top: 12px;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+            color: #bbb;
+            font-size: 13px;
+            transition: border-color 0.15s, background 0.15s, color 0.15s;
+        }
+        .trash.g-drag-over {
+            border-color: #e74c3c;
+            background: #fdf0ef;
+            color: #e74c3c;
+        }
+
+        /* Config panel */
+        .config-panel {
+            width: 280px;
+            padding: 16px;
+            background: white;
+            border-left: 1px solid #ddd;
+            overflow-y: auto;
+        }
+        .config-panel h3 {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #999;
+            margin-bottom: 12px;
+        }
+        .config-empty {
+            color: #bbb;
+            font-size: 13px;
+            text-align: center;
+            padding: 40px 10px;
+        }
+        .config-type {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #4a90d9;
+            margin-bottom: 14px;
+            letter-spacing: 0.5px;
+        }
+        .config-field {
+            margin-bottom: 12px;
+        }
+        .config-field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        .config-field input[type="text"],
+        .config-field textarea {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+        .config-field input:focus,
+        .config-field textarea:focus {
+            border-color: #4a90d9;
+            outline: none;
+        }
+        .config-field textarea { resize: vertical; min-height: 60px; }
+        .config-check {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        .config-check label {
+            font-size: 13px;
+            color: #555;
+            cursor: pointer;
+        }
+
+        /* Preview */
+        .preview-form {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+        }
+        .preview-form h2 {
+            font-size: 20px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .preview-field {
+            margin-bottom: 16px;
+        }
+        .preview-field label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        .preview-field .req { color: #e74c3c; }
+        .preview-field input,
+        .preview-field textarea,
+        .preview-field select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        .preview-field textarea { min-height: 80px; resize: vertical; }
+        .preview-field .help {
+            font-size: 12px;
+            color: #999;
+            margin-top: 4px;
+        }
+        .preview-field .check-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 4px 0;
+            font-size: 14px;
+        }
+        .preview-section {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-top: 8px;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 2px solid #eee;
+        }
+
+        /* Export modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .modal {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            width: 500px;
+            max-height: 80vh;
+            overflow: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        .modal h3 {
+            font-size: 16px;
+            margin-bottom: 12px;
+        }
+        .modal pre {
+            background: #f5f5f5;
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            overflow-x: auto;
+            max-height: 400px;
+        }
+        .modal button {
+            margin-top: 12px;
+            padding: 6px 16px;
+            background: #4a90d9;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .modal button:hover { background: #357abd; }
+    </style>
+</head>
+<body>
+    <!-- Top bar -->
+    <div class="topbar">
+        <input type="text" g-bind="Title" />
+        <button g-click="TogglePreview" g-text="PreviewBtnText">Preview</button>
+        <button class="btn-primary" g-click="Export">Export JSON</button>
+    </div>
+
+    <!-- Builder mode -->
+    <div class="layout" g-show="Editing" style="display:none">
+        <!-- Palette -->
+        <div class="palette">
+            <h3>Fields</h3>
+            <div class="palette-item" g-draggable.palette="'text'">
+                <div class="icon" style="background:#4a90d9">T</div>
+                Text Input
+            </div>
+            <div class="palette-item" g-draggable.palette="'textarea'">
+                <div class="icon" style="background:#27ae60">&#182;</div>
+                Text Area
+            </div>
+            <div class="palette-item" g-draggable.palette="'select'">
+                <div class="icon" style="background:#8e44ad">&#9662;</div>
+                Dropdown
+            </div>
+            <div class="palette-item" g-draggable.palette="'checkbox'">
+                <div class="icon" style="background:#e67e22">&#10003;</div>
+                Checkbox
+            </div>
+            <div class="palette-item" g-draggable.palette="'number'">
+                <div class="icon" style="background:#e74c3c">#</div>
+                Number
+            </div>
+            <div class="palette-item" g-draggable.palette="'date'">
+                <div class="icon" style="background:#16a085">&#128197;</div>
+                Date
+            </div>
+            <div class="palette-item" g-draggable.palette="'section'">
+                <div class="icon" style="background:#7f8c8d">&#8212;</div>
+                Section
+            </div>
+        </div>
+
+        <!-- Canvas -->
+        <div class="canvas-area">
+            <div class="canvas" g-dropzone="'canvas'" g-drop.palette="AddField">
+                <div g-show="HasFields" style="display:none">
+                    <div g-for="field, i in Fields" class="field-card"
+                         g-class:selected="field.Selected"
+                         g-draggable.canvas="i"
+                         g-drop.canvas="Reorder"
+                         g-click="SelectField(i)">
+                        <span class="type-badge" g-text="field.Type"></span>
+                        <span class="field-label" g-text="field.Label"></span>
+                        <span class="required-dot" g-show="field.Required" style="display:none">*</span>
+                        <span class="remove" g-click="DeleteField(i)">&times;</span>
+                    </div>
+                </div>
+                <div class="canvas-empty" g-show="ShowEmpty" style="display:none">
+                    Drag fields from the palette to start building your form
+                </div>
+            </div>
+
+            <div class="trash" g-dropzone="'trash'" g-drop.canvas="RemoveField">
+                Drop here to remove
+            </div>
+        </div>
+
+        <!-- Config panel -->
+        <div class="config-panel">
+            <h3>Properties</h3>
+
+            <div g-show="HasSelection" style="display:none">
+                <div class="config-type" g-text="CfgType"></div>
+
+                <div class="config-field">
+                    <label>Label</label>
+                    <input type="text" g-bind="CfgLabel" />
+                </div>
+
+                <div class="config-field" g-show="CfgHasPlaceholder" style="display:none">
+                    <label>Placeholder</label>
+                    <input type="text" g-bind="CfgPlaceholder" />
+                </div>
+
+                <div class="config-check">
+                    <input type="checkbox" g-checked="CfgRequired" g-click="ToggleRequired" />
+                    <label g-click="ToggleRequired">Required</label>
+                </div>
+
+                <div class="config-field">
+                    <label>Help Text</label>
+                    <input type="text" g-bind="CfgHelpText" />
+                </div>
+
+                <div class="config-field" g-show="CfgHasOptions" style="display:none">
+                    <label>Options (comma-separated)</label>
+                    <textarea g-bind="CfgOptions"></textarea>
+                </div>
+            </div>
+
+            <div class="config-empty" g-show="NoSelection" style="display:none">
+                Click a field on the canvas to edit its properties
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview mode -->
+    <div class="layout" g-show="Preview" style="display:none">
+        <div class="canvas-area">
+            <div class="preview-form">
+                <h2 g-text="Title"></h2>
+                <div g-show="HasFields" style="display:none">
+                    <div g-for="field, i in Fields">
+                        <!-- Section header -->
+                        <div class="preview-section" g-show="field.IsSection" style="display:none">
+                            <span g-text="field.Label"></span>
+                        </div>
+
+                        <!-- Text input -->
+                        <div class="preview-field" g-show="field.IsText" style="display:none">
+                            <label>
+                                <span g-text="field.Label"></span>
+                                <span class="req" g-show="field.Required" style="display:none">*</span>
+                            </label>
+                            <input type="text" g-attr:placeholder="field.Placeholder" />
+                            <div class="help" g-show="field.HelpText" style="display:none" g-text="field.HelpText"></div>
+                        </div>
+
+                        <!-- Textarea -->
+                        <div class="preview-field" g-show="field.IsTextarea" style="display:none">
+                            <label>
+                                <span g-text="field.Label"></span>
+                                <span class="req" g-show="field.Required" style="display:none">*</span>
+                            </label>
+                            <textarea g-attr:placeholder="field.Placeholder"></textarea>
+                            <div class="help" g-show="field.HelpText" style="display:none" g-text="field.HelpText"></div>
+                        </div>
+
+                        <!-- Select -->
+                        <div class="preview-field" g-show="field.IsSelect" style="display:none">
+                            <label>
+                                <span g-text="field.Label"></span>
+                                <span class="req" g-show="field.Required" style="display:none">*</span>
+                            </label>
+                            <select>
+                                <option value="">Select an option...</option>
+                                <option g-for="opt in field.Options" g-text="opt"></option>
+                            </select>
+                            <div class="help" g-show="field.HelpText" style="display:none" g-text="field.HelpText"></div>
+                        </div>
+
+                        <!-- Checkbox group -->
+                        <div class="preview-field" g-show="field.IsCheckbox" style="display:none">
+                            <label>
+                                <span g-text="field.Label"></span>
+                                <span class="req" g-show="field.Required" style="display:none">*</span>
+                            </label>
+                            <div class="check-option" g-for="opt in field.Options">
+                                <input type="checkbox" />
+                                <span g-text="opt"></span>
+                            </div>
+                            <div class="help" g-show="field.HelpText" style="display:none" g-text="field.HelpText"></div>
+                        </div>
+
+                        <!-- Number -->
+                        <div class="preview-field" g-show="field.IsNumber" style="display:none">
+                            <label>
+                                <span g-text="field.Label"></span>
+                                <span class="req" g-show="field.Required" style="display:none">*</span>
+                            </label>
+                            <input type="number" g-attr:placeholder="field.Placeholder" />
+                            <div class="help" g-show="field.HelpText" style="display:none" g-text="field.HelpText"></div>
+                        </div>
+
+                        <!-- Date -->
+                        <div class="preview-field" g-show="field.IsDate" style="display:none">
+                            <label>
+                                <span g-text="field.Label"></span>
+                                <span class="req" g-show="field.Required" style="display:none">*</span>
+                            </label>
+                            <input type="date" />
+                            <div class="help" g-show="field.HelpText" style="display:none" g-text="field.HelpText"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="canvas-empty" g-show="ShowEmpty" style="display:none">
+                    No fields added yet. Switch to Edit mode to add fields.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export modal -->
+    <div class="modal-overlay" g-show="ShowExport" style="display:none">
+        <div class="modal">
+            <h3>Form JSON</h3>
+            <pre g-text="ExportJSON"></pre>
+            <button g-click="CloseExport">Close</button>
+        </div>
+    </div>
+</body>
+</html>

@@ -31,12 +31,13 @@ type forTemplate struct {
 	GID          string            // anchor identifier
 	ItemVar      string            // "todo"
 	IndexVar     string            // "i" (empty if unused)
-	ListField    string            // "Todos"
+	ListField    string            // "Todos" or dotted path like "field.Options"
 	TemplateHTML string            // rendered template HTML with __IDX__ placeholders
 	Bindings     []binding         // bindings inside template (gids have __IDX__)
 	Events       []eventBinding    // events inside template (gids have __IDX__)
 	Props        map[string]string // prop name → parent expression (e.g. "index" → "i")
 	ComponentTag string            // non-empty if this is a registered stateful component
+	SubLoops     []*forTemplate    // nested g-for loops inside this template
 }
 
 // pageBindings holds all parsed binding information for the page.
@@ -179,7 +180,8 @@ func (p *htmlParser) processForNode(n *html.Node, pb *pageBindings) {
 }
 
 // walkForSubtree assigns gids with __IDX__ placeholders and extracts
-// bindings/events for a g-for template subtree.
+// bindings/events for a g-for template subtree. It also handles nested
+// g-for elements by extracting them as SubLoops.
 func (p *htmlParser) walkForSubtree(n *html.Node, anchorGID string, ft *forTemplate) {
 	seq := 0
 
@@ -190,6 +192,12 @@ func (p *htmlParser) walkForSubtree(n *html.Node, anchorGID string, ft *forTempl
 				walk(c, false)
 			}
 			return
+		}
+
+		// Check for nested g-for (not on the root element, which is the outer g-for's template root)
+		if !isRoot && getAttr(node, "g-for") != "" {
+			p.processNestedFor(node, anchorGID, &seq, ft)
+			return // children belong to the inner template
 		}
 
 		// Assign gid to elements that have directives (or the root element always)
@@ -210,12 +218,63 @@ func (p *htmlParser) walkForSubtree(n *html.Node, anchorGID string, ft *forTempl
 			}
 		}
 
+		// Collect children first to avoid mutation issues during nested g-for processing
+		var children []*html.Node
 		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			children = append(children, c)
+		}
+		for _, c := range children {
 			walk(c, false)
 		}
 	}
 
 	walk(n, true)
+}
+
+// processNestedFor extracts a nested g-for element inside an outer g-for template.
+// It replaces the element with anchor comments and stores the sub-loop on the parent forTemplate.
+func (p *htmlParser) processNestedFor(n *html.Node, parentAnchorGID string, seq *int, parentFT *forTemplate) {
+	forExpr := getAttr(n, "g-for")
+	parts := parseForExprParts(forExpr)
+	if parts == nil {
+		return
+	}
+
+	innerGID := fmt.Sprintf("%s-__IDX__-%d", parentAnchorGID, *seq)
+	*seq++
+
+	removeAttr(n, "g-for")
+
+	subFT := &forTemplate{
+		GID:       innerGID,
+		ItemVar:   parts.item,
+		IndexVar:  parts.index,
+		ListField: parts.list, // e.g. "field.Options" — resolved from parent item context
+	}
+
+	// Recursively walk the inner template (supports arbitrary nesting depth)
+	p.walkForSubtree(n, innerGID, subFT)
+
+	// Render the processed element to HTML (becomes the inner template)
+	var buf bytes.Buffer
+	html.Render(&buf, n)
+	subFT.TemplateHTML = buf.String()
+
+	parentFT.SubLoops = append(parentFT.SubLoops, subFT)
+
+	// Replace the element with anchor comments in the outer template
+	parent := n.Parent
+	startAnchor := &html.Node{
+		Type: html.CommentNode,
+		Data: " g-for:" + innerGID + " ",
+	}
+	endAnchor := &html.Node{
+		Type: html.CommentNode,
+		Data: " /g-for:" + innerGID + " ",
+	}
+	parent.InsertBefore(startAnchor, n)
+	parent.InsertBefore(endAnchor, n)
+	parent.RemoveChild(n)
 }
 
 // extractBindings reads data-binding directives from an element's attributes.

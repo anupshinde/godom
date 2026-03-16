@@ -474,8 +474,8 @@ func TestComputeListDiff_Append(t *testing.T) {
 	ft := pb.ForLoops[0]
 	state := stateMap(ci)
 
-	// Seed prevLists with one item
-	ci.prevLists = map[string][]string{"Items": {`{"Done":false,"Text":"A"}`}}
+	// Seed prevLists with one item (keyed by g-for GID)
+	ci.prevLists = map[string][]string{ft.GID: {`{"Done":false,"Text":"A"}`}}
 
 	// Add a second item
 	comp.Items = append(comp.Items, cmdTestItem{Text: "B"})
@@ -509,9 +509,9 @@ func TestComputeListDiff_Truncate(t *testing.T) {
 	ci.pb = pb
 	ft := pb.ForLoops[0]
 
-	// Seed prevLists with two items
+	// Seed prevLists with two items (keyed by g-for GID)
 	ci.prevLists = map[string][]string{
-		"Items": {`{"Done":false,"Text":"A"}`, `{"Done":false,"Text":"B"}`},
+		ft.GID: {`{"Done":false,"Text":"A"}`, `{"Done":false,"Text":"B"}`},
 	}
 
 	// Remove the second item
@@ -546,8 +546,8 @@ func TestComputeListDiff_ItemChanged(t *testing.T) {
 	ci.pb = pb
 	ft := pb.ForLoops[0]
 
-	// Seed prevLists
-	ci.prevLists = map[string][]string{"Items": {`{"Done":false,"Text":"A"}`}}
+	// Seed prevLists (keyed by g-for GID)
+	ci.prevLists = map[string][]string{ft.GID: {`{"Done":false,"Text":"A"}`}}
 
 	// Change the item
 	comp.Items[0].Done = true
@@ -578,7 +578,7 @@ func TestComputeListDiff_EmptyToEmpty(t *testing.T) {
 	ci.pb = pb
 	ft := pb.ForLoops[0]
 
-	ci.prevLists = map[string][]string{"Items": {}}
+	ci.prevLists = map[string][]string{ft.GID: {}}
 	state := stateMap(ci)
 
 	cmds, evts := computeListDiff(ft, state, ci)
@@ -700,6 +700,154 @@ func TestSingleEventCmd_Drop(t *testing.T) {
 	evt := singleEventCmd(e, nil, nil)
 	if evt.On != "drop" || evt.Key != "palette" {
 		t.Errorf("got on=%q key=%q", evt.On, evt.Key)
+	}
+}
+
+// --- Nested g-for tests ---
+
+type nestedTestComp struct {
+	Component
+	Groups []nestedTestGroup
+}
+
+type nestedTestGroup struct {
+	Name  string
+	Items []nestedTestItem
+}
+
+type nestedTestItem struct {
+	Label string
+}
+
+func TestComputeSubLoopCmd(t *testing.T) {
+	comp := &nestedTestComp{
+		Groups: []nestedTestGroup{
+			{Name: "A", Items: []nestedTestItem{{Label: "A1"}, {Label: "A2"}}},
+			{Name: "B", Items: []nestedTestItem{{Label: "B1"}}},
+		},
+	}
+	ci := newTestCI(comp)
+
+	html := `<html><body><div g-for="group in Groups"><span g-text="group.Name"></span><li g-for="item in group.Items"><span g-text="item.Label"></span></li></div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci.pb = pb
+
+	// Full init should produce commands for nested lists
+	msg, err := computeInitMessage(pb, ci)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Find the outer list command
+	var outerList *Command
+	for _, c := range msg.Commands {
+		if c.Op == "list" {
+			outerList = c
+			break
+		}
+	}
+	if outerList == nil {
+		t.Fatal("expected outer list command")
+	}
+	if len(outerList.Items) != 2 {
+		t.Fatalf("expected 2 outer items, got %d", len(outerList.Items))
+	}
+
+	// First outer item should have a sub-list command for its 2 inner items
+	item0Cmds := outerList.Items[0].Cmds
+	var innerList0 *Command
+	for _, c := range item0Cmds {
+		if c.Op == "list" {
+			innerList0 = c
+			break
+		}
+	}
+	if innerList0 == nil {
+		t.Fatal("expected inner list command for first group")
+	}
+	if len(innerList0.Items) != 2 {
+		t.Errorf("expected 2 inner items for group A, got %d", len(innerList0.Items))
+	}
+
+	// Second outer item should have 1 inner item
+	item1Cmds := outerList.Items[1].Cmds
+	var innerList1 *Command
+	for _, c := range item1Cmds {
+		if c.Op == "list" {
+			innerList1 = c
+			break
+		}
+	}
+	if innerList1 == nil {
+		t.Fatal("expected inner list command for second group")
+	}
+	if len(innerList1.Items) != 1 {
+		t.Errorf("expected 1 inner item for group B, got %d", len(innerList1.Items))
+	}
+
+	// Verify the inner list GIDs are distinct (contain the outer index)
+	if innerList0.Id == innerList1.Id {
+		t.Errorf("inner list GIDs should differ: both are %q", innerList0.Id)
+	}
+}
+
+func TestComputeSubLoopCmd_InnerBindings(t *testing.T) {
+	comp := &nestedTestComp{
+		Groups: []nestedTestGroup{
+			{Name: "G", Items: []nestedTestItem{{Label: "X"}}},
+		},
+	}
+	ci := newTestCI(comp)
+
+	html := `<html><body><div g-for="group in Groups"><li g-for="item in group.Items"><span g-text="item.Label"></span></li></div></body></html>`
+	pb, err := parsePageHTML(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci.pb = pb
+
+	msg, err := computeInitMessage(pb, ci)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Navigate to inner list item's commands
+	var outerList *Command
+	for _, c := range msg.Commands {
+		if c.Op == "list" {
+			outerList = c
+			break
+		}
+	}
+	if outerList == nil || len(outerList.Items) != 1 {
+		t.Fatal("expected 1 outer item")
+	}
+
+	var innerList *Command
+	for _, c := range outerList.Items[0].Cmds {
+		if c.Op == "list" {
+			innerList = c
+			break
+		}
+	}
+	if innerList == nil || len(innerList.Items) != 1 {
+		t.Fatal("expected 1 inner item")
+	}
+
+	// The inner item should have a text command setting "X"
+	innerItemCmds := innerList.Items[0].Cmds
+	found := false
+	for _, c := range innerItemCmds {
+		if c.Op == "text" && c.GetStrVal() == "X" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected text command with value 'X' for inner item binding")
 	}
 }
 
