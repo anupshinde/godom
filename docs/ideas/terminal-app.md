@@ -121,6 +121,20 @@ No code changes needed in godom for this — it works today because Tailscale is
 - Split panes (tmux exists)
 - Session recording/replay
 
-## Status
+## Status — implemented
 
-Feels close to buildable. The main work is the xterm.js plugin (new plugin, but follows established patterns) and the PTY management in Go (well-understood problem, good libraries). This could be a compelling demo that is also genuinely useful.
+Working example at `examples/terminal/`. See `examples/terminal/README.md` for usage and `examples/terminal/implementation.md` for the full architectural deep-dive.
+
+### What was built
+- PTY allocation with `creack/pty`, shell respawn on exit
+- xterm.js 4.19.0 via godom plugin system for rendering
+- Separate WebSocket for raw PTY I/O (godom's plugin system is one-way, so terminal data flows through a dedicated connection)
+- Resize handling via `pty.Setsize()`
+- Token auth on both godom and terminal WebSocket
+- Multi-browser support (multiple tabs see the same session)
+- Session survives browser close/reopen
+
+### What diverged from the original idea
+- **Not a godom plugin package** — the terminal is a standalone example with its own `go.mod`, not a reusable `plugins/xterm/` package. The bidirectional streaming requirement doesn't fit the plugin API cleanly enough for a generic package yet.
+- **Separate WebSocket for terminal I/O** — the idea assumed godom's binary WebSocket would carry terminal data. In practice, the plugin system is Go→browser only (no browser→Go path), and piping opaque byte streams through protobuf state diffing adds overhead for no benefit. A dedicated WebSocket for raw I/O is simpler and faster.
+- **xterm.js loaded from CDN** — not embedded yet. For true single-binary use, the JS/CSS would need to be embedded via `go:embed`.

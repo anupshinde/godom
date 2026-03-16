@@ -108,6 +108,22 @@ Prove the system works for real applications.
 
 ---
 
+## Layer 7.5: Terminal App — done
+
+Browser-based terminal with full shell access via godom.
+
+- `examples/terminal/` — standalone example with its own `go.mod`
+- PTY allocation with `creack/pty`, xterm.js for rendering
+- Separate WebSocket for raw PTY I/O (godom's plugin system is one-way; terminal needs bidirectional byte streaming)
+- Shell respawns automatically on exit — typing `exit` doesn't kill the app
+- Session survives browser close/reopen
+- Multi-browser support (multiple tabs see the same session)
+- Token auth, resize handling, Tailscale-friendly network access
+
+See `examples/terminal/implementation.md` for the full architectural deep-dive.
+
+---
+
 ## Layer 8: Developer Experience
 
 ### 8.1 Hot reload
