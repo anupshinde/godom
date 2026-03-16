@@ -9,7 +9,7 @@ import (
 )
 
 // directiveRe matches g-* attributes in HTML.
-var directiveRe = regexp.MustCompile(`g-(text|bind|click|keydown|mousedown|mousemove|mouseup|wheel|for|if|show|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+)\s*=\s*"([^"]*)"`)
+var directiveRe = regexp.MustCompile(`g-(text|bind|click|keydown|mousedown|mousemove|mouseup|wheel|for|if|show|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|style:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+)\s*=\s*"([^"]*)"`)
 
 // gForRe matches g-for attributes to extract loop variable names.
 var gForRe = regexp.MustCompile(`g-for\s*=\s*"([^"]*)"`)

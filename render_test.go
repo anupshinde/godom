@@ -220,6 +220,16 @@ func TestSingleCmd_Class(t *testing.T) {
 	}
 }
 
+func TestSingleCmd_Style(t *testing.T) {
+	b := binding{GID: "g8", Dir: "style:background-color", Expr: "BgColor"}
+	state := map[string]interface{}{"BgColor": "red"}
+
+	cmd := singleCmd(b, state, nil)
+	if cmd.Op != "style" || cmd.Name != "background-color" || cmd.GetStrVal() != "red" {
+		t.Errorf("got op=%q name=%q strVal=%q", cmd.Op, cmd.Name, cmd.GetStrVal())
+	}
+}
+
 func TestSingleCmd_WithContext(t *testing.T) {
 	b := binding{GID: "g7", Dir: "text", Expr: "todo.Text"}
 	state := map[string]interface{}{}

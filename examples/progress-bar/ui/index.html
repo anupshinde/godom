@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Progress Bar</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        .container {
+            text-align: center;
+            width: 400px;
+        }
+        h1 {
+            margin-bottom: 2rem;
+            font-weight: 300;
+            font-size: 1.5rem;
+        }
+        .progress-track {
+            background: #16213e;
+            border-radius: 12px;
+            height: 32px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 12px;
+            background: linear-gradient(90deg, #0f3460, #e94560);
+            transition: width 0.1s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 0;
+        }
+        .progress-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+        .buttons {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+        button {
+            padding: 0.6rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            background: #0f3460;
+            color: #eee;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #e94560;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Progress Bar</h1>
+        <div class="progress-track">
+            <div class="progress-fill" g-style:width="Width">
+                <span class="progress-label" g-text="Label" g-show="Running"></span>
+            </div>
+        </div>
+        <div class="buttons">
+            <button g-click="Start">Start</button>
+            <button g-click="Reset">Reset</button>
+        </div>
+    </div>
+</body>
+</html>

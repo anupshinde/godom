@@ -172,6 +172,14 @@ func TestValidateDirectives_ClassDirective(t *testing.T) {
 	}
 }
 
+func TestValidateDirectives_StyleDirective(t *testing.T) {
+	html := `<div g-style:background-color="Name"></div>`
+	ci := newValTestCI()
+	if err := validateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestValidateDirectives_ChildComponentFallback(t *testing.T) {
 	// Simulate a child component registered with a field "Local"
 	type childComp struct {

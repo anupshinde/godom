@@ -46,11 +46,11 @@ Serve images, fonts, CSS from a directory alongside the embedded HTML.
 
 ---
 
-## Style Binding
+## ~~Style Binding~~ ✅
 
-- `g-style:prop="expr"` — bind inline style properties
+Implemented. `g-style:prop="expr"` binds inline style properties to Go struct fields. Uses `el.style.setProperty()` on the browser side, so CSS property names with hyphens work directly (e.g., `g-style:background-color="BgColor"`).
 
-(`g-attr:name` is implemented; `g-style:prop` is not yet.)
+Example: `examples/progress-bar/` — animated progress bar driven by `g-style:width`.
 
 ---
 
