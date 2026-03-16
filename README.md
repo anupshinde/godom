@@ -275,6 +275,7 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 ## Examples
 
 - [examples/counter/](examples/counter/) — minimal example (the one shown above)
+- [examples/progress-bar/](examples/progress-bar/) — animated progress bar with `Refresh()` and `g-style:width` from a goroutine
 - [examples/clock/](examples/clock/) — analog clock with `Refresh()` and `g-attr` (server-pushed updates)
 - [examples/todolist/](examples/todolist/) — presentational components with prop passing
 - [examples/todolist-stateful/](examples/todolist-stateful/) — stateful components with props and emit
@@ -282,6 +283,7 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 - [examples/system-monitor-chartjs/](examples/system-monitor-chartjs/) — system monitor with Chart.js plugin (CPU, memory, disk, swap, load charts)
 - [examples/charts-without-plugin/](examples/charts-without-plugin/) — ApexCharts with inline bridge adapter (no plugin package)
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
+- [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
 
 Run any example:
 
@@ -289,11 +291,12 @@ Run any example:
 go run ./examples/counter
 ```
 
-The `system-monitor` and `system-monitor-chartjs` examples have their own `go.mod` (for platform-specific dependencies), so run them from their directory:
+The `system-monitor`, `system-monitor-chartjs`, and `terminal` examples have their own `go.mod` (for platform-specific or extra dependencies), so run them from their directory:
 
 ```
 cd examples/system-monitor && go run .
 cd examples/system-monitor-chartjs && go run .
+cd examples/terminal && go run .
 ```
 
 This starts the server and opens your browser. To build a standalone binary instead:
@@ -317,6 +320,8 @@ go build -o counter ./examples/counter
 This project was **coded with the help of [Claude](https://claude.ai)** (Anthropic). The architecture, design decisions, and all code were produced through human-AI collaboration using Claude Code.
 
 > The documentation including this README is also maintained by AI.
+
+See [docs/AI_USAGE.md](docs/AI_USAGE.md) for the full philosophy on how AI was used, what has and hasn't been reviewed, and what that means if you use this project.
 
 ## License
 
