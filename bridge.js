@@ -198,6 +198,31 @@
         }
     }
 
+    // Create a temporary container that can parse the given HTML correctly.
+    // <tr>, <td>, <th> etc. are stripped by the browser if placed inside a <div>.
+    function createTmpContainer(html) {
+        var trimmed = html.replace(/^\s+/, "").toLowerCase();
+        if (trimmed.indexOf("<tr") === 0) {
+            var tbl = document.createElement("table");
+            var tbody = document.createElement("tbody");
+            tbl.appendChild(tbody);
+            tbody.innerHTML = html;
+            return tbody;
+        }
+        if (trimmed.indexOf("<td") === 0 || trimmed.indexOf("<th") === 0) {
+            var tbl = document.createElement("table");
+            var tbody = document.createElement("tbody");
+            var tr = document.createElement("tr");
+            tbl.appendChild(tbody);
+            tbody.appendChild(tr);
+            tr.innerHTML = html;
+            return tr;
+        }
+        var div = document.createElement("div");
+        div.innerHTML = html;
+        return div;
+    }
+
     function execList(c) {
         var a = anchorMap[c.id];
         if (!a || !a.start || !a.end) return;
@@ -221,8 +246,7 @@
         // Insert new items and index them
         for (var i = 0; i < c.items.length; i++) {
             var item = c.items[i];
-            var tmp = document.createElement("div");
-            tmp.innerHTML = item.html;
+            var tmp = createTmpContainer(item.html);
             while (tmp.firstChild) {
                 var node = tmp.firstChild;
                 start.parentNode.insertBefore(node, end);
@@ -249,8 +273,7 @@
 
         for (var i = 0; i < c.items.length; i++) {
             var item = c.items[i];
-            var tmp = document.createElement("div");
-            tmp.innerHTML = item.html;
+            var tmp = createTmpContainer(item.html);
             while (tmp.firstChild) {
                 var node = tmp.firstChild;
                 end.parentNode.insertBefore(node, end);

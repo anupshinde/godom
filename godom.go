@@ -53,6 +53,7 @@ type App struct {
 	comp       *componentInfo
 	components map[string]*componentReg // tag name → registered component
 	plugins    map[string][]string       // plugin name → JS scripts
+	staticFS   fs.FS                     // embedded UI filesystem for static assets
 }
 
 // embedsComponent checks if a struct type embeds godom.Component.
@@ -123,6 +124,8 @@ func (a *App) Mount(comp interface{}, fsys fs.FS) {
 	if err != nil {
 		log.Fatalf("godom: %v", err)
 	}
+
+	a.staticFS = root
 
 	indexHTML, err := fs.ReadFile(root, "index.html")
 	if err != nil {
@@ -318,9 +321,13 @@ func (a *App) Start() error {
 	injectedJS += "<script>" + bridgeJS + "</script>\n"
 	pageHTML := strings.Replace(ci.htmlBody, "</body>", injectedJS+"</body>", 1)
 
+	// Serve static assets (CSS, images, etc.) from the embedded UI filesystem.
+	staticHandler := http.FileServer(http.FS(a.staticFS))
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
-			http.NotFound(w, r)
+			// Serve static files from the embedded filesystem
+			staticHandler.ServeHTTP(w, r)
 			return
 		}
 		if !a.NoAuth {

@@ -321,6 +321,7 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 - [examples/drag-tiles/](examples/drag-tiles/) — 24 colored tiles with drag-to-reorder and a periodic shine animation sweep
 - [examples/drag-demo/](examples/drag-demo/) — drag-and-drop demo with groups, dropzones, string data, and position detection (palette → canvas → trash)
 - [examples/basic-form-builder/](examples/basic-form-builder/) — drag-and-drop form builder with palette, canvas, config panel, preview mode, and JSON export (uses drag groups, nested g-for, conditional rendering)
+- [examples/stock-ticker/](examples/stock-ticker/) — live stock ticker dashboard with 30 simulated stocks, per-stock tick intervals, table with color-coded gainers/losers, and external CSS via static file serving
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
 

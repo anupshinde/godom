@@ -40,9 +40,11 @@ Support a hierarchy where the app holds views, views hold components, each with 
 
 ---
 
-## Static File Serving
+## ~~Static File Serving~~ ✅
 
-Serve images, fonts, CSS from a directory alongside the embedded HTML.
+Implemented. Non-root HTTP paths are now served from the embedded UI filesystem via `http.FileServer`. CSS, images, fonts, and other assets placed alongside `index.html` in the `ui/` directory are served with correct MIME types.
+
+Example: `examples/stock-ticker/` — uses `<link rel="stylesheet" href="style.css">` with a separate CSS file.
 
 ---
 
@@ -81,3 +83,4 @@ The `g-for` implementation — especially nested g-for — needs a manual review
 - **Inner list diffing** — currently absent; inner loops fully re-render when the outer item changes. May need per-inner-loop `prevLists` tracking for performance with large inner lists
 - **Edge cases** — empty inner lists, outer items added/removed while inner loops exist, interaction with stateful components inside nested loops
 - **Bridge anchor cleanup** — when outer list items are removed, inner anchors in `anchorMap` are not explicitly cleaned up (they become orphaned but harmless)
+- **Bridge innerHTML context** — `createTmpContainer()` currently inspects the HTML string to detect `<tr>`/`<td>`/`<th>` and wrap them correctly for parsing. This should be replaced with a parent-tag-based approach using `start.parentNode.tagName` to handle all context-sensitive elements (`<option>`, `<thead>`, `<tbody>`, etc.) in one shot. See known-issues.md for details.
