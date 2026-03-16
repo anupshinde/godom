@@ -198,6 +198,9 @@ func singleCmd(b binding, state map[string]interface{}, ctx map[string]interface
 		if strings.HasPrefix(b.Dir, "attr:") {
 			return &Command{Op: "attr", Id: b.GID, Name: b.Dir[5:], Val: &Command_StrVal{StrVal: valToStr(val)}}
 		}
+		if strings.HasPrefix(b.Dir, "style:") {
+			return &Command{Op: "style", Id: b.GID, Name: b.Dir[6:], Val: &Command_StrVal{StrVal: valToStr(val)}}
+		}
 		if strings.HasPrefix(b.Dir, "plugin:") {
 			raw, _ := json.Marshal(val)
 			return &Command{Op: "plugin", Id: b.GID, Name: b.Dir[7:], Val: &Command_RawVal{RawVal: raw}}

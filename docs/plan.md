@@ -33,14 +33,14 @@ Everything is a component. A component is a Go struct.
 
 ## Layer 3: HTML Directives — done
 
-Implemented: `g-text`, `g-bind`, `g-click`, `g-keydown`, `g-mousedown`, `g-mousemove`, `g-mouseup`, `g-wheel`, `g-for`, `g-if`, `g-show`, `g-checked`, `g-class:name`, `g-attr:name`.
+Implemented: `g-text`, `g-bind`, `g-click`, `g-keydown`, `g-mousedown`, `g-mousemove`, `g-mouseup`, `g-wheel`, `g-for`, `g-if`, `g-show`, `g-checked`, `g-class:name`, `g-attr:name`, `g-style:prop`.
 
 - All expressions resolved in Go (bridge is a pure command executor)
 - Per-item diffing for g-for lists (append/truncate/update, no full re-render)
 - Startup validation: all directives validated against struct at Mount() time
 - Expression support: field access, dotted paths, loop variables, literals
 
-Not yet implemented: `g-style:prop`.
+Example: `examples/progress-bar/` — animated progress bar using `g-style:width` with `Refresh()` from a goroutine.
 
 ---
 

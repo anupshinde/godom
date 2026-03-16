@@ -15,9 +15,9 @@ message ServerMessage {
 
 // Command is a single DOM operation.
 message Command {
-  string op = 1;                      // "text","value","checked","display","class","attr","plugin","list","list-append","list-truncate","re-event"
+  string op = 1;                      // "text","value","checked","display","class","attr","style","plugin","list","list-append","list-truncate","re-event"
   string id = 2;                      // data-gid of target element
-  string name = 3;                    // class name (for "class" op), attr name, plugin name
+  string name = 3;                    // class name (for "class" op), attr name, style property name, plugin name
   oneof val {
     string str_val = 4;
     bool bool_val = 5;

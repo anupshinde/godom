@@ -136,6 +136,9 @@
                         case "attr":
                             el.setAttribute(c.name, c.strVal || "");
                             break;
+                        case "style":
+                            el.style.setProperty(c.name, c.strVal || "");
+                            break;
                         case "plugin":
                             var handler = window.godom && window.godom._plugins && window.godom._plugins[c.name];
                             if (handler) {
