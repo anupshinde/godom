@@ -1,7 +1,9 @@
 package godom
 
 import (
+	"crypto/rand"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -39,7 +41,8 @@ type componentReg struct {
 
 // App is the main godom application.
 type App struct {
-	Port       int // 0 = random available port
+	Port       int    // 0 = random available port
+	Host       string // default "localhost"; set to "0.0.0.0" for network access
 	comp       *componentInfo
 	components map[string]*componentReg // tag name → registered component
 	plugins    map[string][]string       // plugin name → JS scripts
@@ -153,6 +156,36 @@ func (a *App) Mount(comp interface{}, fsys fs.FS) {
 	a.comp = ci
 }
 
+// generateToken returns a cryptographically random hex token.
+func generateToken() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		log.Fatalf("godom: failed to generate auth token: %v", err)
+	}
+	return hex.EncodeToString(b)
+}
+
+// checkAuth validates the auth token from a cookie or query parameter.
+// If the token is in the query parameter, it sets a cookie for future requests.
+func checkAuth(token string, w http.ResponseWriter, r *http.Request) bool {
+	// Check cookie first
+	if c, err := r.Cookie("godom_token"); err == nil && c.Value == token {
+		return true
+	}
+	// Check query parameter
+	if r.URL.Query().Get("token") == token {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "godom_token",
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteStrictMode,
+		})
+		return true
+	}
+	return false
+}
+
 // Start starts the HTTP server, opens the default browser, and blocks forever.
 func (a *App) Start() error {
 	if a.comp == nil {
@@ -161,6 +194,7 @@ func (a *App) Start() error {
 
 	ci := a.comp
 	pool := &connPool{}
+	token := generateToken()
 
 	// Wire up Refresh: allow Go code to push state to all browsers.
 	ci.refreshFn = func() {
@@ -197,11 +231,24 @@ func (a *App) Start() error {
 			http.NotFound(w, r)
 			return
 		}
+		if !checkAuth(token, w, r) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		// Redirect to strip token from URL after cookie is set
+		if r.URL.Query().Get("token") != "" {
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, pageHTML)
 	})
 
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAuth(token, w, r) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Printf("godom: websocket upgrade error: %v", err)
@@ -250,13 +297,18 @@ func (a *App) Start() error {
 		}
 	})
 
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", a.Port))
+	host := a.Host
+	if host == "" {
+		host = "localhost"
+	}
+
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, a.Port))
 	if err != nil {
 		return fmt.Errorf("godom: failed to listen: %w", err)
 	}
 
 	port := ln.Addr().(*net.TCPAddr).Port
-	url := fmt.Sprintf("http://localhost:%d", port)
+	url := fmt.Sprintf("http://localhost:%d?token=%s", port, token)
 	fmt.Printf("godom running at %s\n", url)
 
 	openBrowser(url)
