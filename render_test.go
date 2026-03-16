@@ -1,9 +1,10 @@
 package godom
 
 import (
-	"encoding/json"
 	"reflect"
 	"testing"
+
+	"google.golang.org/protobuf/proto"
 )
 
 // --- Expression resolution tests ---
@@ -161,8 +162,8 @@ func TestSingleCmd_Text(t *testing.T) {
 	state := map[string]interface{}{"Name": "Alice"}
 
 	cmd := singleCmd(b, state, nil)
-	if cmd.Op != "text" || cmd.ID != "g1" || cmd.Val != "Alice" {
-		t.Errorf("got %+v", cmd)
+	if cmd.Op != "text" || cmd.Id != "g1" || cmd.GetStrVal() != "Alice" {
+		t.Errorf("got op=%q id=%q strVal=%q", cmd.Op, cmd.Id, cmd.GetStrVal())
 	}
 }
 
@@ -171,8 +172,8 @@ func TestSingleCmd_Value(t *testing.T) {
 	state := map[string]interface{}{"Email": "a@b.com"}
 
 	cmd := singleCmd(b, state, nil)
-	if cmd.Op != "value" || cmd.Val != "a@b.com" {
-		t.Errorf("got %+v", cmd)
+	if cmd.Op != "value" || cmd.GetStrVal() != "a@b.com" {
+		t.Errorf("got op=%q strVal=%q", cmd.Op, cmd.GetStrVal())
 	}
 }
 
@@ -181,8 +182,8 @@ func TestSingleCmd_Checked(t *testing.T) {
 	state := map[string]interface{}{"Done": true}
 
 	cmd := singleCmd(b, state, nil)
-	if cmd.Op != "checked" || cmd.Val != true {
-		t.Errorf("got %+v", cmd)
+	if cmd.Op != "checked" || cmd.GetBoolVal() != true {
+		t.Errorf("got op=%q boolVal=%v", cmd.Op, cmd.GetBoolVal())
 	}
 }
 
@@ -192,13 +193,20 @@ func TestSingleCmd_Display(t *testing.T) {
 	state := map[string]interface{}{"Visible": false}
 
 	cmdShow := singleCmd(bShow, state, nil)
-	if cmdShow.Op != "display" || cmdShow.Val != false {
-		t.Errorf("show: got %+v", cmdShow)
+	if cmdShow.Op != "display" || cmdShow.GetBoolVal() != false {
+		t.Errorf("show: got op=%q boolVal=%v", cmdShow.Op, cmdShow.GetBoolVal())
+	}
+	// Verify it's the boolVal oneof that's set (not just default)
+	if _, ok := cmdShow.Val.(*Command_BoolVal); !ok {
+		t.Errorf("show: expected BoolVal oneof, got %T", cmdShow.Val)
 	}
 
 	cmdIf := singleCmd(bIf, state, nil)
-	if cmdIf.Op != "display" || cmdIf.Val != false {
-		t.Errorf("if: got %+v", cmdIf)
+	if cmdIf.Op != "display" {
+		t.Errorf("if: got op=%q", cmdIf.Op)
+	}
+	if _, ok := cmdIf.Val.(*Command_BoolVal); !ok {
+		t.Errorf("if: expected BoolVal oneof, got %T", cmdIf.Val)
 	}
 }
 
@@ -207,8 +215,8 @@ func TestSingleCmd_Class(t *testing.T) {
 	state := map[string]interface{}{"IsActive": true}
 
 	cmd := singleCmd(b, state, nil)
-	if cmd.Op != "class" || cmd.Name != "active" || cmd.Val != true {
-		t.Errorf("got %+v", cmd)
+	if cmd.Op != "class" || cmd.Name != "active" || cmd.GetBoolVal() != true {
+		t.Errorf("got op=%q name=%q boolVal=%v", cmd.Op, cmd.Name, cmd.GetBoolVal())
 	}
 }
 
@@ -220,8 +228,8 @@ func TestSingleCmd_WithContext(t *testing.T) {
 	}
 
 	cmd := singleCmd(b, state, ctx)
-	if cmd.Val != "Buy milk" {
-		t.Errorf("got %+v", cmd)
+	if cmd.GetStrVal() != "Buy milk" {
+		t.Errorf("got strVal=%q, want Buy milk", cmd.GetStrVal())
 	}
 }
 
@@ -230,14 +238,14 @@ func TestComputeBindingCmds(t *testing.T) {
 		{GID: "g1", Dir: "text", Expr: "Name"},
 		{GID: "g2", Dir: "text", Expr: "Age"},
 	}
-	state := map[string]interface{}{"Name": "Bob", "Age": 30}
+	state := map[string]interface{}{"Name": "Bob", "Age": float64(30)}
 
 	cmds := computeBindingCmds(bindings, state, nil)
 	if len(cmds) != 2 {
 		t.Fatalf("expected 2 commands, got %d", len(cmds))
 	}
-	if cmds[0].Val != "Bob" {
-		t.Errorf("first cmd val = %v, want Bob", cmds[0].Val)
+	if cmds[0].GetStrVal() != "Bob" {
+		t.Errorf("first cmd strVal = %q, want Bob", cmds[0].GetStrVal())
 	}
 }
 
@@ -246,14 +254,16 @@ func TestSingleEventCmd_Click(t *testing.T) {
 	state := map[string]interface{}{}
 
 	evt := singleEventCmd(e, state, nil)
-	if evt.ID != "g1" || evt.On != "click" {
-		t.Errorf("got %+v", evt)
+	if evt.Id != "g1" || evt.On != "click" {
+		t.Errorf("got id=%q on=%q", evt.Id, evt.On)
 	}
 
-	var msg map[string]interface{}
-	json.Unmarshal(evt.Msg, &msg)
-	if msg["method"] != "Save" {
-		t.Errorf("msg method = %v, want Save", msg["method"])
+	var wsMsg WSMessage
+	if err := proto.Unmarshal(evt.Msg, &wsMsg); err != nil {
+		t.Fatalf("failed to unmarshal WSMessage: %v", err)
+	}
+	if wsMsg.Method != "Save" {
+		t.Errorf("msg method = %q, want Save", wsMsg.Method)
 	}
 }
 
@@ -264,11 +274,12 @@ func TestSingleEventCmd_WithArgs(t *testing.T) {
 
 	evt := singleEventCmd(e, state, ctx)
 
-	var msg map[string]interface{}
-	json.Unmarshal(evt.Msg, &msg)
-	args := msg["args"].([]interface{})
-	if len(args) != 1 || args[0] != float64(3) {
-		t.Errorf("msg args = %v, want [3]", args)
+	var wsMsg WSMessage
+	if err := proto.Unmarshal(evt.Msg, &wsMsg); err != nil {
+		t.Fatalf("failed to unmarshal WSMessage: %v", err)
+	}
+	if len(wsMsg.Args) != 1 || string(wsMsg.Args[0]) != "3" {
+		t.Errorf("msg args = %v, want [3]", wsMsg.Args)
 	}
 }
 
@@ -280,10 +291,12 @@ func TestSingleEventCmd_Bind(t *testing.T) {
 		t.Errorf("on = %q, want input", evt.On)
 	}
 
-	var msg map[string]interface{}
-	json.Unmarshal(evt.Msg, &msg)
-	if msg["type"] != "bind" || msg["field"] != "Email" {
-		t.Errorf("msg = %v", msg)
+	var wsMsg WSMessage
+	if err := proto.Unmarshal(evt.Msg, &wsMsg); err != nil {
+		t.Fatalf("failed to unmarshal WSMessage: %v", err)
+	}
+	if wsMsg.Type != "bind" || wsMsg.Field != "Email" {
+		t.Errorf("msg type=%q field=%q, want bind/Email", wsMsg.Type, wsMsg.Field)
 	}
 }
 
@@ -301,10 +314,12 @@ func TestSingleScopedEventCmd(t *testing.T) {
 
 	evt := singleScopedEventCmd(e, nil, nil, "g3", 2)
 
-	var msg map[string]interface{}
-	json.Unmarshal(evt.Msg, &msg)
-	if msg["scope"] != "g3:2" {
-		t.Errorf("scope = %v, want g3:2", msg["scope"])
+	var wsMsg WSMessage
+	if err := proto.Unmarshal(evt.Msg, &wsMsg); err != nil {
+		t.Fatalf("failed to unmarshal WSMessage: %v", err)
+	}
+	if wsMsg.Scope != "g3:2" {
+		t.Errorf("scope = %q, want g3:2", wsMsg.Scope)
 	}
 }
 
@@ -376,12 +391,11 @@ func TestComputeInitMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if msg["type"] != "init" {
-		t.Errorf("type = %v, want init", msg["type"])
+	if msg.Type != "init" {
+		t.Errorf("type = %v, want init", msg.Type)
 	}
 
-	cmds := msg["commands"].([]command)
-	if len(cmds) < 1 {
+	if len(msg.Commands) < 1 {
 		t.Error("expected at least 1 command")
 	}
 
@@ -408,16 +422,15 @@ func TestComputeUpdateMessage(t *testing.T) {
 	if msg == nil {
 		t.Fatal("expected update message")
 	}
-	if msg["type"] != "update" {
-		t.Errorf("type = %v, want update", msg["type"])
+	if msg.Type != "update" {
+		t.Errorf("type = %v, want update", msg.Type)
 	}
 
-	cmds := msg["commands"].([]command)
-	if len(cmds) != 1 {
-		t.Fatalf("expected 1 command, got %d", len(cmds))
+	if len(msg.Commands) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(msg.Commands))
 	}
-	if cmds[0].Val != "New" {
-		t.Errorf("val = %v, want New", cmds[0].Val)
+	if msg.Commands[0].GetStrVal() != "New" {
+		t.Errorf("strVal = %q, want New", msg.Commands[0].GetStrVal())
 	}
 }
 
@@ -458,7 +471,7 @@ func TestComputeListDiff_Append(t *testing.T) {
 	comp.Items = append(comp.Items, cmdTestItem{Text: "B"})
 	state = stateMap(ci)
 
-	cmds := computeListDiff(ft, state, ci)
+	cmds, _ := computeListDiff(ft, state, ci)
 
 	hasAppend := false
 	for _, c := range cmds {
@@ -495,14 +508,14 @@ func TestComputeListDiff_Truncate(t *testing.T) {
 	comp.Items = comp.Items[:1]
 	state := stateMap(ci)
 
-	cmds := computeListDiff(ft, state, ci)
+	cmds, _ := computeListDiff(ft, state, ci)
 
 	hasTruncate := false
 	for _, c := range cmds {
 		if c.Op == "list-truncate" {
 			hasTruncate = true
-			if c.Val != 1 {
-				t.Errorf("expected truncate count 1, got %v", c.Val)
+			if c.GetNumVal() != 1 {
+				t.Errorf("expected truncate count 1, got %v", c.GetNumVal())
 			}
 		}
 	}
@@ -530,7 +543,7 @@ func TestComputeListDiff_ItemChanged(t *testing.T) {
 	comp.Items[0].Done = true
 	state := stateMap(ci)
 
-	cmds := computeListDiff(ft, state, ci)
+	cmds, _ := computeListDiff(ft, state, ci)
 
 	if len(cmds) == 0 {
 		t.Error("expected update commands for changed item")
@@ -558,9 +571,12 @@ func TestComputeListDiff_EmptyToEmpty(t *testing.T) {
 	ci.prevLists = map[string][]string{"Items": {}}
 	state := stateMap(ci)
 
-	cmds := computeListDiff(ft, state, ci)
+	cmds, evts := computeListDiff(ft, state, ci)
 	if cmds != nil {
-		t.Error("expected nil for empty → empty")
+		t.Error("expected nil cmds for empty → empty")
+	}
+	if evts != nil {
+		t.Error("expected nil evts for empty → empty")
 	}
 }
 
@@ -634,5 +650,28 @@ func TestSetChildProps(t *testing.T) {
 	}
 	if child.Index != 2 {
 		t.Errorf("Index = %d, want 2", child.Index)
+	}
+}
+
+func TestValToStr(t *testing.T) {
+	tests := []struct {
+		val  interface{}
+		want string
+	}{
+		{nil, ""},
+		{"hello", "hello"},
+		{float64(5), "5"},
+		{float64(5.5), "5.5"},
+		{float64(1000000), "1000000"},
+		{true, "true"},
+		{false, "false"},
+		{42, "42"},
+	}
+
+	for _, tt := range tests {
+		got := valToStr(tt.val)
+		if got != tt.want {
+			t.Errorf("valToStr(%v) = %q, want %q", tt.val, got, tt.want)
+		}
 	}
 }

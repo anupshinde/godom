@@ -211,6 +211,11 @@ func (ci *componentInfo) setField(path string, rawValue json.RawMessage) error {
 		// unwrap the JSON string and parse the number.
 		var s string
 		if json.Unmarshal(rawValue, &s) == nil {
+			// Empty string → zero value for numeric fields
+			if s == "" {
+				field.Set(reflect.Zero(field.Type()))
+				return nil
+			}
 			if n, convErr := strconv.ParseInt(s, 10, 64); convErr == nil {
 				rv := reflect.ValueOf(n).Convert(field.Type())
 				field.Set(rv)
