@@ -42,8 +42,8 @@ log.Fatal(app.Start())                    // serve, open browser, block
 
 `Start()` then:
 
-1. Parses CLI flags (`--port`, `--host`, `--no-auth`) — these override framework defaults but not values set explicitly in code
-2. Generates a random auth token (unless `NoAuth` is set)
+1. Parses CLI flags (`--port`, `--host`, `--no-auth`, `--token`, `--no-browser`, `--quiet`) — these override framework defaults but not values set explicitly in code (see [configuration.md](configuration.md))
+2. Generates a random auth token (unless `NoAuth` is set or a fixed `Token` is provided)
 3. Wires the `Refresh()` callback (needs the connection pool, which only exists at start time)
 4. Injects scripts before `</body>`: `protobuf.min.js`, `protocol.js`, then `godom.register()` global (if plugins exist), then plugin scripts in order, then `bridge.js`
 5. Starts an HTTP server on the configured host and port, with token auth middleware on `/` and `/ws`

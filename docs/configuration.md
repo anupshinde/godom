@@ -24,7 +24,7 @@ The network interface to bind to.
 | Code | `app.Host = "0.0.0.0"` |
 | CLI | `--host=0.0.0.0` |
 
-Set to `0.0.0.0` to allow access from other machines on the network.
+Set to `0.0.0.0` to allow access from other machines on the network. The startup URL and QR code will show your machine's LAN IP instead of `localhost`.
 
 ### NoAuth
 
@@ -60,11 +60,11 @@ Don't open the browser automatically on startup. Useful for headless servers or 
 
 ### Quiet
 
-Suppress the startup URL output.
+Suppress the startup URL and QR code output.
 
 | | Value |
 |---|---|
-| Default | `false` (print URL) |
+| Default | `false` (print URL and QR code) |
 | Code | `app.Quiet = true` |
 | CLI | `--quiet` |
 
@@ -109,11 +109,16 @@ app.Port = 9000  // locked to 9000 — `--port` flag is ignored
 
 ## Authentication
 
-godom generates a random auth token on every startup. The full URL (with token) is printed to the terminal and opened in the browser automatically:
+godom generates a random auth token on every startup. The full URL (with token) is printed to the terminal along with a QR code, and opened in the browser automatically:
 
 ```
 godom running at http://localhost:8081?token=a1b2c3d4e5f6...
+█▀▀▀▀▀█ ...  █▀▀▀▀▀█
+█ ███ █ ...  █ ███ █
+...
 ```
+
+When using `--host=0.0.0.0`, the URL displays your machine's LAN IP (e.g., `http://192.168.1.10:8081?token=...`) so the QR code can be scanned from other devices on the network.
 
 ### How it works
 

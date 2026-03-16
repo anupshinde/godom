@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+	qrcode "github.com/skip2/go-qrcode"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -160,6 +161,53 @@ func (a *App) Mount(comp interface{}, fsys fs.FS) {
 	ci.value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
 
 	a.comp = ci
+}
+
+// printQR renders a QR code to the terminal using Unicode half-block characters.
+// Each character cell encodes two vertical modules: ▀ (top only), ▄ (bottom only),
+// █ (both), or space (neither).
+func printQR(url string) {
+	qr, err := qrcode.New(url, qrcode.Medium)
+	if err != nil {
+		return
+	}
+	bitmap := qr.Bitmap()
+	n := len(bitmap)
+	// Process two rows at a time
+	for y := 0; y < n; y += 2 {
+		for x := 0; x < n; x++ {
+			top := bitmap[y][x]
+			bot := false
+			if y+1 < n {
+				bot = bitmap[y+1][x]
+			}
+			switch {
+			case top && bot:
+				fmt.Print("█")
+			case top:
+				fmt.Print("▀")
+			case bot:
+				fmt.Print("▄")
+			default:
+				fmt.Print(" ")
+			}
+		}
+		fmt.Println()
+	}
+}
+
+// localIP returns the first non-loopback IPv4 address, or "" if none found.
+func localIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+			return ipnet.IP.String()
+		}
+	}
+	return ""
 }
 
 // generateToken returns a cryptographically random hex token.
@@ -354,12 +402,21 @@ func (a *App) Start() error {
 	}
 
 	port := ln.Addr().(*net.TCPAddr).Port
-	url := fmt.Sprintf("http://localhost:%d", port)
+	urlHost := host
+	if host == "0.0.0.0" {
+		if ip := localIP(); ip != "" {
+			urlHost = ip
+		} else {
+			urlHost = "localhost"
+		}
+	}
+	url := fmt.Sprintf("http://%s:%d", urlHost, port)
 	if !a.NoAuth {
 		url += "?token=" + token
 	}
 	if !a.Quiet {
 		fmt.Printf("godom running at %s\n", url)
+		printQR(url)
 	}
 
 	if !a.NoBrowser {

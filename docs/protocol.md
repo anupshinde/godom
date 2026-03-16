@@ -42,7 +42,7 @@ The WebSocket wire format uses **Protocol Buffers** for all communication betwee
 
 - Bidirectional, low-latency, tiny frame overhead (2-6 bytes per message)
 - One persistent connection handles everything — DOM updates, events, plugin data
-- Works everywhere — every browser, no TLS requirement locally
+- Works everywhere — every browser, no TLS requirement (token auth handles access control)
 - The solar system example proves it: 60fps rendering + mouse drag + scroll, all smooth on one connection
 
 **WebTransport** is parked for the future. It would run alongside WebSocket, not replace it:
@@ -86,7 +86,7 @@ A single 1080p video frame:
 
 The key principle: **keep heavy media data off the main WebSocket so it doesn't block UI updates.**
 
-The best approach for local godom is a **dedicated binary WebSocket** — a second WebSocket connection for bulk data. It works everywhere today, needs no TLS, and Go + browser both support it fully. For network transport in the future, this could be upgraded to WebTransport datagrams.
+The best approach for local godom is a **dedicated binary WebSocket** — a second WebSocket connection for bulk data. It works everywhere today, needs no TLS (token auth provides access control), and Go + browser both support it fully. For network transport in the future, this could be upgraded to WebTransport datagrams.
 
 ### What godom would need
 
