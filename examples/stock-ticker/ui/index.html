@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stock Ticker Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <h1>Stock Ticker</h1>
+            <span class="badge" g-text="MarketStatus">OPEN</span>
+        </div>
+        <div class="header-right">
+            <span class="meta" g-text="LastUpdate">--:--:--</span>
+        </div>
+    </div>
+
+    <div class="summary">
+        <div class="summary-card">
+            <div class="summary-label">Stocks</div>
+            <div class="summary-value" g-text="TotalStocks">0</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">Gainers</div>
+            <div class="summary-value up" g-text="Gainers">0</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">Losers</div>
+            <div class="summary-value down" g-text="Losers">0</div>
+        </div>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Company</th>
+                    <th>Sector</th>
+                    <th class="right">Price</th>
+                    <th class="right">Change</th>
+                    <th class="right">% Change</th>
+                    <th class="right">Volume</th>
+                    <th class="right">Mkt Cap</th>
+                    <th class="right">High</th>
+                    <th class="right">Low</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr g-for="stock in Stocks" g-class:row-up="stock.IsUp" g-class:row-down="stock.IsDown">
+                    <td class="symbol" g-text="stock.Symbol">--</td>
+                    <td class="company" g-text="stock.Company">--</td>
+                    <td class="sector" g-text="stock.Sector">--</td>
+                    <td class="right mono" g-text="stock.Price">--</td>
+                    <td class="right mono" g-class:up="stock.IsUp" g-class:down="stock.IsDown" g-text="stock.Change">--</td>
+                    <td class="right mono" g-class:up="stock.IsUp" g-class:down="stock.IsDown" g-text="stock.ChangePercent">--</td>
+                    <td class="right mono" g-text="stock.Volume">--</td>
+                    <td class="right mono" g-text="stock.MarketCap">--</td>
+                    <td class="right mono" g-text="stock.High">--</td>
+                    <td class="right mono" g-text="stock.Low">--</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
