@@ -1,13 +1,17 @@
 package godom
 
 import (
+	"crypto/rand"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/fs"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"reflect"
 	"runtime"
@@ -15,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+	qrcode "github.com/skip2/go-qrcode"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -39,7 +44,12 @@ type componentReg struct {
 
 // App is the main godom application.
 type App struct {
-	Port       int // 0 = random available port
+	Port       int    // 0 = random available port
+	Host       string // default "localhost"; set to "0.0.0.0" for network access
+	NoAuth     bool   // disable token auth (default false = auth enabled)
+	Token      string // fixed auth token; empty = generate random token
+	NoBrowser  bool   // don't open browser on start
+	Quiet      bool   // suppress startup output
 	comp       *componentInfo
 	components map[string]*componentReg // tag name → registered component
 	plugins    map[string][]string       // plugin name → JS scripts
@@ -153,14 +163,130 @@ func (a *App) Mount(comp interface{}, fsys fs.FS) {
 	a.comp = ci
 }
 
+// printQR renders a QR code to the terminal using Unicode half-block characters.
+// Each character cell encodes two vertical modules: ▀ (top only), ▄ (bottom only),
+// █ (both), or space (neither).
+func printQR(url string) {
+	qr, err := qrcode.New(url, qrcode.Medium)
+	if err != nil {
+		return
+	}
+	bitmap := qr.Bitmap()
+	n := len(bitmap)
+	// Process two rows at a time
+	for y := 0; y < n; y += 2 {
+		for x := 0; x < n; x++ {
+			top := bitmap[y][x]
+			bot := false
+			if y+1 < n {
+				bot = bitmap[y+1][x]
+			}
+			switch {
+			case top && bot:
+				fmt.Print("█")
+			case top:
+				fmt.Print("▀")
+			case bot:
+				fmt.Print("▄")
+			default:
+				fmt.Print(" ")
+			}
+		}
+		fmt.Println()
+	}
+}
+
+// localIP returns the first non-loopback IPv4 address, or "" if none found.
+func localIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+			return ipnet.IP.String()
+		}
+	}
+	return ""
+}
+
+// generateToken returns a cryptographically random hex token.
+func generateToken() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		log.Fatalf("godom: failed to generate auth token: %v", err)
+	}
+	return hex.EncodeToString(b)
+}
+
+// checkAuth validates the auth token from a cookie or query parameter.
+// If the token is in the query parameter, it sets a cookie for future requests.
+func checkAuth(token string, w http.ResponseWriter, r *http.Request) bool {
+	// Check cookie first
+	if c, err := r.Cookie("godom_token"); err == nil && c.Value == token {
+		return true
+	}
+	// Check query parameter
+	if r.URL.Query().Get("token") == token {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "godom_token",
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteStrictMode,
+		})
+		return true
+	}
+	return false
+}
+
 // Start starts the HTTP server, opens the default browser, and blocks forever.
 func (a *App) Start() error {
 	if a.comp == nil {
 		return fmt.Errorf("godom: no component mounted, call Mount() before Start()")
 	}
 
+	// Parse CLI flags using a separate FlagSet to avoid conflicts
+	// with the app developer's own flag usage.
+	// CLI flags only apply when the developer hasn't explicitly set the value.
+	fs := flag.NewFlagSet("godom", flag.ContinueOnError)
+	flagPort := fs.Int("port", 0, "port to listen on (0 = random)")
+	flagHost := fs.String("host", "localhost", "host to bind to")
+	flagNoAuth := fs.Bool("no-auth", false, "disable token authentication")
+	flagToken := fs.String("token", "", "fixed auth token (default: random)")
+	flagNoBrowser := fs.Bool("no-browser", false, "don't open browser on start")
+	flagQuiet := fs.Bool("quiet", false, "suppress startup output")
+	_ = fs.Parse(os.Args[1:])
+
+	if a.Port == 0 && *flagPort != 0 {
+		a.Port = *flagPort
+	}
+	if a.Host == "" && *flagHost != "localhost" {
+		a.Host = *flagHost
+	}
+	if !a.NoAuth && *flagNoAuth {
+		a.NoAuth = true
+	}
+	if a.Token == "" && *flagToken != "" {
+		a.Token = *flagToken
+	}
+	if !a.NoBrowser && *flagNoBrowser {
+		a.NoBrowser = true
+	}
+	if !a.Quiet && *flagQuiet {
+		a.Quiet = true
+	}
+
 	ci := a.comp
 	pool := &connPool{}
+	var token string
+	if !a.NoAuth {
+		if a.Token != "" {
+			token = a.Token
+		} else {
+			token = generateToken()
+		}
+	}
 
 	// Wire up Refresh: allow Go code to push state to all browsers.
 	ci.refreshFn = func() {
@@ -197,11 +323,26 @@ func (a *App) Start() error {
 			http.NotFound(w, r)
 			return
 		}
+		if !a.NoAuth {
+			if !checkAuth(token, w, r) {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			// Redirect to strip token from URL after cookie is set
+			if r.URL.Query().Get("token") != "" {
+				http.Redirect(w, r, "/", http.StatusFound)
+				return
+			}
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, pageHTML)
 	})
 
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		if !a.NoAuth && !checkAuth(token, w, r) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Printf("godom: websocket upgrade error: %v", err)
@@ -250,16 +391,37 @@ func (a *App) Start() error {
 		}
 	})
 
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", a.Port))
+	host := a.Host
+	if host == "" {
+		host = "localhost"
+	}
+
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, a.Port))
 	if err != nil {
 		return fmt.Errorf("godom: failed to listen: %w", err)
 	}
 
 	port := ln.Addr().(*net.TCPAddr).Port
-	url := fmt.Sprintf("http://localhost:%d", port)
-	fmt.Printf("godom running at %s\n", url)
+	urlHost := host
+	if host == "0.0.0.0" {
+		if ip := localIP(); ip != "" {
+			urlHost = ip
+		} else {
+			urlHost = "localhost"
+		}
+	}
+	url := fmt.Sprintf("http://%s:%d", urlHost, port)
+	if !a.NoAuth {
+		url += "?token=" + token
+	}
+	if !a.Quiet {
+		fmt.Printf("godom running at %s\n", url)
+		printQR(url)
+	}
 
-	openBrowser(url)
+	if !a.NoBrowser {
+		openBrowser(url)
+	}
 
 	return http.Serve(ln, mux)
 }
