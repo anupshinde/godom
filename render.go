@@ -205,6 +205,9 @@ func singleCmd(b binding, state map[string]interface{}, ctx map[string]interface
 			raw, _ := json.Marshal(val)
 			return &Command{Op: "plugin", Id: b.GID, Name: b.Dir[7:], Val: &Command_RawVal{RawVal: raw}}
 		}
+		if b.Dir == "draggable" {
+			return &Command{Op: "draggable", Id: b.GID, Val: &Command_StrVal{StrVal: valToStr(val)}}
+		}
 		return &Command{Op: "text", Id: b.GID, Val: &Command_StrVal{StrVal: valToStr(val)}}
 	}
 }

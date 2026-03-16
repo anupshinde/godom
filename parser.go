@@ -241,6 +241,8 @@ func (p *htmlParser) extractBindings(n *html.Node, gid string, out *[]binding) {
 			dir = a.Key[2:] // "style:background-color"
 		case strings.HasPrefix(a.Key, "g-plugin:"):
 			dir = a.Key[2:] // "plugin:chartjs"
+		case a.Key == "g-draggable":
+			dir = "draggable"
 		}
 		if dir != "" {
 			*out = append(*out, binding{GID: gid, Dir: dir, Expr: a.Val})
@@ -290,6 +292,11 @@ func (p *htmlParser) extractEvents(n *html.Node, gid string, out *[]eventBinding
 			// Two-way binding: also register an input event
 			*out = append(*out, eventBinding{
 				GID: gid, Event: "input", Method: "__bind", Args: []string{a.Val},
+			})
+		case a.Key == "g-drop":
+			name, args := parseCallExpr(a.Val)
+			*out = append(*out, eventBinding{
+				GID: gid, Event: "drop", Method: name, Args: args,
 			})
 		}
 	}

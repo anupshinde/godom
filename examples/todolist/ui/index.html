@@ -18,6 +18,9 @@
         li span { flex: 1; font-size: 15px; }
         li button { background: none; border: none; color: #cc4444; cursor: pointer; font-size: 18px; }
         li button:hover { color: #ff0000; }
+        li[draggable="true"] { cursor: grab; }
+        li.g-dragging { opacity: 0.3; }
+        li.g-drag-over { background: #e8f0fe; border-radius: 4px; }
     </style>
 </head>
 <body>

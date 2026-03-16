@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Drag Tiles</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 0 20px;
+            color: #333;
+        }
+        h1 { margin-bottom: 20px; font-size: 24px; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+        }
+        .tile {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #999;
+            color: white;
+            font-size: 20px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: grab;
+            user-select: none;
+            transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s, filter 0.15s;
+        }
+        .tile:hover { transform: scale(1.05); }
+        .tile.g-dragging { opacity: 0.3; transform: scale(0.95); }
+        .tile.g-drag-over { box-shadow: 0 0 0 3px #333; transform: scale(1.1); }
+        .tile.shine { filter: brightness(1.5); box-shadow: 0 0 12px rgba(255,255,255,0.6); transform: scale(1.08); }
+    </style>
+</head>
+<body>
+    <h1>Drag Tiles</h1>
+    <div class="grid">
+        <div g-for="tile, i in Tiles" class="tile" g-draggable="i" g-drop="Reorder" g-style:background-color="tile.Color" g-class:shine="tile.Shine">
+            <span g-text="tile.Label"></span>
+        </div>
+    </div>
+</body>
+</html>
