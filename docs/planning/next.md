@@ -64,6 +64,12 @@ Implemented. The bridge shows a blurred dark overlay on disconnect:
 
 ---
 
+## Publish module path
+
+Change `go.mod` module from `godom` to `github.com/anupshinde/godom` so users can `go get` it. Requires updating all internal imports across the codebase. Once done, update the Install section in README to show `go get github.com/anupshinde/godom`.
+
+---
+
 ## Drop gorilla/websocket dependency
 
 Currently using `github.com/gorilla/websocket`. Evaluate alternatives:
@@ -84,3 +90,14 @@ The `g-for` implementation — especially nested g-for — needs a manual review
 - **Edge cases** — empty inner lists, outer items added/removed while inner loops exist, interaction with stateful components inside nested loops
 - **Bridge anchor cleanup** — when outer list items are removed, inner anchors in `anchorMap` are not explicitly cleaned up (they become orphaned but harmless)
 - **Bridge innerHTML context** — `createTmpContainer()` currently inspects the HTML string to detect `<tr>`/`<td>`/`<th>` and wrap them correctly for parsing. This should be replaced with a parent-tag-based approach using `start.parentNode.tagName` to handle all context-sensitive elements (`<option>`, `<thead>`, `<tbody>`, etc.) in one shot. See known-issues.md for details.
+
+---
+
+## Review: "re-event" op in protocol.proto
+
+`protocol.proto` lists `"re-event"` as a valid `op` value, but no Go code ever sends it and `bridge.js` has no handler for it. The event re-registration behavior exists implicitly — resending an event setup command for the same element just overwrites `eventMap[key]` in the bridge. Decide whether to:
+
+- **Remove** `"re-event"` from the proto comment (it was never a real op)
+- **Keep** it if there's a future plan to make re-registration an explicit, distinct operation
+
+Also update `architecture.md`'s op list to match whatever is decided — it's currently missing `draggable`, `dropzone`, and `style` ops.

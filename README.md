@@ -12,6 +12,18 @@ The browser is the rendering engine. All state and logic live in your Go process
 
 godom also works as a local network service: run the binary on a headless machine and access the UI from any browser on the network. See [docs/why.md](docs/why.md) for the full rationale and how godom differs from Electron, Tauri, and Wails.
 
+## Showcase
+
+| Solar System | System Monitor (Chart.js) |
+|:---:|:---:|
+| ![Solar System](docs/screenshots/solar-system.jpg) | ![System Monitor with Chart.js](docs/screenshots/system-monitor-chartjs.jpg) |
+| 3D engine in Go, Canvas 2D rendering | Live charts with Chart.js plugin |
+
+| Terminal | Terminal + Claude Code |
+|:---:|:---:|
+| ![Terminal](docs/screenshots/terminal.jpg) | ![Claude Code in browser terminal](docs/screenshots/terminal-claude.jpg) |
+| Full PTY shell via xterm.js | Claude Code running in the browser terminal |
+
 ```go
 package main
 
@@ -68,11 +80,14 @@ Run `go build` and you get a single binary that opens the browser and shows a li
 
 ## Install
 
+> **Note:** The module path hasn't been published to a registry yet.
+> For now, clone the repository to get started.
+
 ```
-go get godom
+git clone https://github.com/anupshinde/godom.git
 ```
 
-Requires Go 1.21+ and a web browser.
+Requires Go 1.25+ and a web browser.
 
 ## Directives reference
 
