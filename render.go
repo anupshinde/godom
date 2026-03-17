@@ -298,13 +298,28 @@ func computeChildUpdateMessage(pb *pageBindings, ci *componentInfo, scope string
 		cmds = append(cmds, singleCmd(resolved, childState, nil))
 	}
 
-	if len(cmds) == 0 {
+	// Recompute child events so args that depend on mutable child state
+	// (e.g. g-click="Delete(ItemID)") are refreshed, not stale.
+	var evts []*EventCommand
+	for _, e := range ft.Events {
+		resolved := eventBinding{
+			GID:    strings.ReplaceAll(e.GID, "__IDX__", idxStr),
+			Event:  e.Event,
+			Key:    e.Key,
+			Method: e.Method,
+			Args:   e.Args,
+		}
+		evts = append(evts, singleScopedEventCmd(resolved, childState, nil, forGID, idx))
+	}
+
+	if len(cmds) == 0 && len(evts) == 0 {
 		return nil
 	}
 
 	return &ServerMessage{
 		Type:     "update",
 		Commands: cmds,
+		Events:   evts,
 	}
 }
 
