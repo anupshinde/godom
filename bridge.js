@@ -437,6 +437,11 @@
     }
 
     // Remove N items from the end of a list (working backwards from end anchor).
+    //
+    // list-truncate relies on a structural invariant:
+    // every g-for item renders to exactly one top-level DOM element.
+    // item.html is produced by html.Render on the single element that had g-for,
+    // so removing one sibling per count is correct.
     function execListTruncate(c) {
         var a = anchorMap[c.id];
         if (!a || !a.end) return;
