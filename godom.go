@@ -615,16 +615,24 @@ func handleBind(ci *componentInfo, wsMsg *WSMessage, value []byte, pool *connPoo
 
 	newState := ci.snapshotState()
 	changed := ci.changedFields(oldState, newState)
-	ci.mu.Unlock()
 
-	if len(changed) > 0 {
-		ci.mu.Lock()
-		sm := computeUpdateMessage(ci.pb, ci, changed)
+	// For scoped binds where parent state didn't change,
+	// re-render the child to pick up child state changes.
+	if wsMsg.Scope != "" && len(changed) == 0 {
+		sm := computeChildUpdateMessage(ci.pb, ci, wsMsg.Scope)
 		ci.mu.Unlock()
 		if sm != nil {
 			data, _ := proto.Marshal(sm)
 			pool.broadcast(data)
 		}
+		return
+	}
+
+	sm := computeUpdateMessage(ci.pb, ci, changed)
+	ci.mu.Unlock()
+	if sm != nil {
+		data, _ := proto.Marshal(sm)
+		pool.broadcast(data)
 	}
 }
 
