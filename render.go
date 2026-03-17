@@ -485,9 +485,6 @@ func computeListDiff(ft *forTemplate, state map[string]interface{}, ci *componen
 		currentSnapshots[i] = string(data)
 	}
 
-	// Store for next diff
-	ci.prevLists[ft.GID] = currentSnapshots
-
 	// If both empty, nothing to do
 	if oldLen == 0 && newLen == 0 {
 		return nil, nil
@@ -495,11 +492,13 @@ func computeListDiff(ft *forTemplate, state map[string]interface{}, ci *componen
 
 	// First render or list was empty before — full render
 	if oldLen == 0 {
+		ci.prevLists[ft.GID] = currentSnapshots
 		return []*Command{computeListCmd(ft, state, ci)}, nil
 	}
 
 	// List cleared — full render (empty)
 	if newLen == 0 {
+		ci.prevLists[ft.GID] = currentSnapshots
 		return []*Command{computeListCmd(ft, state, ci)}, nil
 	}
 
@@ -559,6 +558,10 @@ func computeListDiff(ft *forTemplate, state map[string]interface{}, ci *componen
 			Items: appendItems,
 		})
 	}
+
+	// Store current snapshots for next diff (deferred until after all
+	// comparisons with prevItems are complete).
+	ci.prevLists[ft.GID] = currentSnapshots
 
 	return cmds, evts
 }
