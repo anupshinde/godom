@@ -337,6 +337,8 @@
                 for (var k = 0; k < subs.length; k++) {
                     gidMap[subs[k].getAttribute("data-gid")] = subs[k];
                 }
+                // item.html always inserts as one root element, so nested g-for anchors
+                // (if any) are always inside `node`, never top-level siblings here.
                 indexAnchors(node);
             }
         }
