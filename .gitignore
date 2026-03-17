@@ -29,3 +29,7 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Temporary files
+temp.md
+/temp/
