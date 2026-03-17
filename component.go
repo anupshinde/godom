@@ -56,11 +56,6 @@ type componentInfo struct {
 	value    reflect.Value  // pointer to the user's struct
 	typ      reflect.Type   // the struct type (not pointer)
 	htmlBody string
-	pb       *pageBindings  // parsed bindings (nil until Mount parses HTML)
-
-	// Per-item diffing: previous list state keyed by list field name.
-	// Each entry is the JSON-encoded items from the last render.
-	prevLists map[string][]string
 
 	// Component tree
 	parent   *componentInfo                 // nil for root component
@@ -74,6 +69,11 @@ type componentInfo struct {
 
 	// refreshFn is set by Start() to broadcast current state to all clients.
 	refreshFn func()
+
+	// VDOM fields
+	vdomTemplates []*templateNode // parsed once at Mount()
+	prevTree      Node            // last rendered tree (for diffing)
+	gidSeq        int             // gid counter state across renders
 }
 
 // propFieldNames returns the set of fields tagged with `godom:"prop"`.

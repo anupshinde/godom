@@ -15,7 +15,6 @@ import (
 	"os/exec"
 	"reflect"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 
@@ -152,13 +151,18 @@ func (a *App) Mount(comp interface{}, fsys fs.FS) {
 		log.Fatalf("godom: %v", err)
 	}
 
-	// Parse HTML: assign data-gid, extract bindings, replace g-for with anchors.
-	pb, err := parsePageHTML(composed)
-	if err != nil {
-		log.Fatalf("godom: %v", err)
+	ci.htmlBody = composed
+
+	// Parse template tree for the VDOM pipeline.
+	componentTags := make(map[string]bool)
+	for tag := range a.components {
+		componentTags[tag] = true
 	}
-	ci.pb = pb
-	ci.htmlBody = pb.HTML // use the gid-annotated HTML
+	templates, err := parseTemplate(composed, componentTags)
+	if err != nil {
+		log.Fatalf("godom: failed to parse templates: %v", err)
+	}
+	ci.vdomTemplates = templates
 
 	// Set ci on the embedded Component so Refresh()/Emit() work
 	// even if a goroutine starts before Start() is called.
@@ -295,11 +299,10 @@ func (a *App) Start() error {
 	// Wire up Refresh: allow Go code to push state to all browsers.
 	ci.refreshFn = func() {
 		ci.mu.Lock()
-		allFields := allExportedFieldNames(ci.typ)
-		sm := computeUpdateMessage(ci.pb, ci, allFields)
+		msg := vdomBuildUpdate(ci)
 		ci.mu.Unlock()
-		if sm != nil {
-			data, _ := proto.Marshal(sm)
+		if msg != nil {
+			data, _ := proto.Marshal(msg)
 			pool.broadcast(data)
 		}
 	}
@@ -517,12 +520,9 @@ func (p *connPool) broadcastClose(closeMsg []byte) {
 // handleInit sends the initial state to a newly connected client.
 func handleInit(wc *wsConn, ci *componentInfo) error {
 	ci.mu.Lock()
-	initMsg, err := computeInitMessage(ci.pb, ci)
+	msg := vdomBuildInit(ci)
 	ci.mu.Unlock()
-	if err != nil {
-		return err
-	}
-	data, err := proto.Marshal(initMsg)
+	data, err := proto.Marshal(msg)
 	if err != nil {
 		return err
 	}
@@ -531,18 +531,7 @@ func handleInit(wc *wsConn, ci *componentInfo) error {
 
 // handleCall processes a method call message from the bridge.
 func handleCall(ci *componentInfo, wsMsg *WSMessage, envArgs []float64, envValue []byte, pool *connPool) {
-	target := ci
-	if wsMsg.Scope != "" {
-		if child := resolveScope(ci, wsMsg.Scope); child != nil {
-			target = child
-		} else {
-			log.Printf("godom: unknown scope %q", wsMsg.Scope)
-			return
-		}
-	}
-
 	ci.mu.Lock()
-	oldRootState := ci.snapshotState()
 
 	// Merge browser-side args (mouse coords, wheel delta) into WSMessage args
 	for _, a := range envArgs {
@@ -566,130 +555,36 @@ func handleCall(ci *componentInfo, wsMsg *WSMessage, envArgs []float64, envValue
 		jsonArgs[i] = json.RawMessage(a)
 	}
 
-	if err := target.callMethod(wsMsg.Method, jsonArgs); err != nil {
+	if err := ci.callMethod(wsMsg.Method, jsonArgs); err != nil {
 		log.Printf("godom: %v", err)
 		ci.mu.Unlock()
 		return
 	}
 
-	newRootState := ci.snapshotState()
-	changed := ci.changedFields(oldRootState, newRootState)
-
-	if wsMsg.Scope != "" && len(changed) == 0 {
-		// No root changes — only child state changed. Re-render the child.
-		sm := computeChildUpdateMessage(ci.pb, ci, wsMsg.Scope)
-		ci.mu.Unlock()
-		if sm != nil {
-			data, _ := proto.Marshal(sm)
-			pool.broadcast(data)
-		}
-		return
-	}
-
-	// Root state changed — always send the root update.
-	sm := computeUpdateMessage(ci.pb, ci, changed)
-
-	// For scoped calls, also send a child update if the root change did not
-	// structurally affect the child's owning list. If the list field changed,
-	// the root update already re-rendered the list (which includes this child),
-	// so a separate child update would be redundant or wrong (indexes may have shifted).
-	var childSM *ServerMessage
-	if wsMsg.Scope != "" && len(changed) > 0 {
-		if listField := scopeListField(ci.pb, wsMsg.Scope); listField == "" || !slices.Contains(changed, listField) {
-			childSM = computeChildUpdateMessage(ci.pb, ci, wsMsg.Scope)
-		}
-	}
-
+	// VDOM: rebuild tree, diff, encode patches
+	msg := vdomBuildUpdate(ci)
 	ci.mu.Unlock()
-	if sm != nil {
-		data, _ := proto.Marshal(sm)
+	if msg != nil {
+		data, _ := proto.Marshal(msg)
 		pool.broadcast(data)
 	}
-	if childSM != nil {
-		data, _ := proto.Marshal(childSM)
-		pool.broadcast(data)
-	}
-}
-
-// scopeListField returns the ListField of the forTemplate that owns the given
-// scope (e.g. "g3:0" → the ListField of the g-for with GID "g3"). Returns ""
-// if the scope can't be resolved to a forTemplate.
-func scopeListField(pb *pageBindings, scope string) string {
-	parts := strings.SplitN(scope, ":", 2)
-	if len(parts) != 2 || pb == nil {
-		return ""
-	}
-	forGID := parts[0]
-	for _, ft := range pb.ForLoops {
-		if ft.GID == forGID {
-			return ft.ListField
-		}
-	}
-	return ""
 }
 
 // handleBind processes a two-way binding update from the bridge.
-// Note: unlike handleCall, this uses a simple either/or path for scoped binds
-// (child update OR root update, not both). This is deliberate — setField is a
-// direct field write with no callbacks, so a scoped bind changing root state is
-// unlikely under current semantics. If binding grows richer (derived updates,
-// nested fields, alias-heavy props), revisit to match handleCall's dual-path.
 func handleBind(ci *componentInfo, wsMsg *WSMessage, value []byte, pool *connPool) {
-	target := ci
-	if wsMsg.Scope != "" {
-		if child := resolveScope(ci, wsMsg.Scope); child != nil {
-			target = child
-		} else {
-			log.Printf("godom: unknown scope %q", wsMsg.Scope)
-			return
-		}
-	}
-
 	ci.mu.Lock()
-	oldState := ci.snapshotState()
 
-	if err := target.setField(wsMsg.Field, json.RawMessage(value)); err != nil {
+	if err := ci.setField(wsMsg.Field, json.RawMessage(value)); err != nil {
 		log.Printf("godom: bind error: %v", err)
 	}
 
-	newState := ci.snapshotState()
-	changed := ci.changedFields(oldState, newState)
-
-	// For scoped binds where parent state didn't change,
-	// re-render the child to pick up child state changes.
-	if wsMsg.Scope != "" && len(changed) == 0 {
-		sm := computeChildUpdateMessage(ci.pb, ci, wsMsg.Scope)
-		ci.mu.Unlock()
-		if sm != nil {
-			data, _ := proto.Marshal(sm)
-			pool.broadcast(data)
-		}
-		return
-	}
-
-	sm := computeUpdateMessage(ci.pb, ci, changed)
+	// VDOM: rebuild tree, diff, encode patches
+	msg := vdomBuildUpdate(ci)
 	ci.mu.Unlock()
-	if sm != nil {
-		data, _ := proto.Marshal(sm)
+	if msg != nil {
+		data, _ := proto.Marshal(msg)
 		pool.broadcast(data)
 	}
-}
-
-// resolveScope finds a child componentInfo from a scope string like "g3:0".
-func resolveScope(root *componentInfo, scope string) *componentInfo {
-	parts := strings.SplitN(scope, ":", 2)
-	if len(parts) != 2 {
-		return nil
-	}
-	forGID := parts[0]
-	idx := 0
-	fmt.Sscanf(parts[1], "%d", &idx)
-
-	children := root.children[forGID]
-	if idx < 0 || idx >= len(children) {
-		return nil
-	}
-	return children[idx]
 }
 
 // openBrowser opens the given URL in the default browser.

@@ -42,6 +42,43 @@ message EventCommand {
   bytes msg = 4;                      // pre-built Envelope.msg bytes — bridge sends back untouched
 }
 
+// --- VDOM: Go → Browser patch messages ---
+
+// VDomMessage is the top-level message for the VDOM pipeline.
+message VDomMessage {
+  string type = 1;                    // "init" or "patch"
+  bytes html = 2;                     // full rendered HTML (init only)
+  repeated DomPatch patches = 3;      // incremental patches (patch only)
+  repeated EventSetup events = 4;     // event listener registrations
+}
+
+// DomPatch describes a single DOM mutation produced by the diff algorithm.
+message DomPatch {
+  int32 index = 1;                    // depth-first traversal index of target node
+  string op = 2;                      // patch operation type
+
+  // Type-specific payloads:
+  string text = 10;                   // patchText: new text content
+  bytes facts = 11;                   // patchFacts: JSON-encoded FactsDiff
+  bytes html_content = 12;            // patchRedraw/patchAppend: rendered HTML
+  int32 count = 13;                   // patchRemoveLast: number of children to remove
+  bytes reorder = 14;                 // patchReorder: JSON-encoded {inserts, removes}
+  bytes plugin_data = 15;             // patchPlugin: JSON-encoded plugin data
+  repeated DomPatch sub_patches = 16; // patchLazy: patches inside lazy node
+  repeated EventSetup patch_events = 17; // events for newly rendered nodes (redraw/append)
+}
+
+// EventSetup describes an event listener the bridge should register.
+// Similar to EventCommand but with additional options.
+message EventSetup {
+  string gid = 1;                     // data-gid of target element
+  string event = 2;                   // "click","keydown","input", etc.
+  string key = 3;                     // key filter for keydown
+  bytes msg = 4;                      // pre-built WSMessage bytes
+  bool stop_propagation = 5;
+  bool prevent_default = 6;
+}
+
 // --- Browser → Go messages ---
 
 // Envelope is what the bridge sends to Go on every event.

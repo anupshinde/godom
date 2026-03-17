@@ -382,16 +382,3 @@ func TestParseCallExpr(t *testing.T) {
 	}
 }
 
-func TestStateMap(t *testing.T) {
-	comp := &testComp{Name: "Eve", Count: 99}
-	ci := newTestCI(comp)
-
-	m := stateMap(ci)
-	if m["Name"] != "Eve" {
-		t.Errorf("Name = %v, want Eve", m["Name"])
-	}
-	// JSON round-trip: int becomes float64
-	if m["Count"] != float64(99) {
-		t.Errorf("Count = %v, want 99", m["Count"])
-	}
-}

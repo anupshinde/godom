@@ -1,466 +1,11 @@
 package godom
 
 import (
-	"bytes"
 	"fmt"
 	"io/fs"
 	"regexp"
 	"strings"
-
-	"golang.org/x/net/html"
 )
-
-// binding represents a data-binding directive on an element.
-type binding struct {
-	GID  string // element's data-gid
-	Dir  string // "text", "bind", "checked", "if", "show", "class:name"
-	Expr string // expression: "InputText", "todo.Done"
-}
-
-// eventBinding represents an event directive on an element.
-type eventBinding struct {
-	GID    string   // element's data-gid
-	Event  string   // "click", "keydown", "input"
-	Key    string   // key filter for keydown (e.g. "Enter")
-	Method string   // method name: "AddTodo", "Toggle"
-	Args   []string // argument expressions: ["i"]
-}
-
-// forTemplate represents a g-for loop extracted at parse time.
-type forTemplate struct {
-	GID          string            // anchor identifier
-	ItemVar      string            // "todo"
-	IndexVar     string            // "i" (empty if unused)
-	ListField    string            // "Todos" or dotted path like "field.Options"
-	TemplateHTML string            // rendered template HTML with __IDX__ placeholders
-	Bindings     []binding         // bindings inside template (gids have __IDX__)
-	Events       []eventBinding    // events inside template (gids have __IDX__)
-	Props        map[string]string // prop name → parent expression (e.g. "index" → "i")
-	ComponentTag string            // non-empty if this is a registered stateful component
-	SubLoops     []*forTemplate    // nested g-for loops inside this template
-}
-
-// pageBindings holds all parsed binding information for the page.
-type pageBindings struct {
-	HTML     string         // full HTML with data-gid attributes and g-for anchors
-	Bindings []binding      // top-level bindings (not inside g-for)
-	Events   []eventBinding // top-level events
-	ForLoops []*forTemplate // g-for templates
-
-	// Lookup: field name → indices for fast patch computation
-	FieldToBindings map[string][]int
-	FieldToForLoops map[string][]int
-}
-
-// htmlParser assigns gids and extracts bindings from the DOM tree.
-type htmlParser struct {
-	gidSeq int
-}
-
-func (p *htmlParser) nextGID() string {
-	p.gidSeq++
-	return fmt.Sprintf("g%d", p.gidSeq)
-}
-
-// parsePageHTML parses composed HTML, assigns data-gid to directive elements,
-// extracts bindings/events/for-loops, and returns the modified HTML + registry.
-func parsePageHTML(composedHTML string) (*pageBindings, error) {
-	doc, err := html.Parse(strings.NewReader(composedHTML))
-	if err != nil {
-		return nil, fmt.Errorf("parse HTML: %w", err)
-	}
-
-	p := &htmlParser{}
-	pb := &pageBindings{
-		FieldToBindings: make(map[string][]int),
-		FieldToForLoops: make(map[string][]int),
-	}
-
-	p.walkNode(doc, pb)
-
-	// Render modified document back to HTML
-	var buf bytes.Buffer
-	if err := html.Render(&buf, doc); err != nil {
-		return nil, fmt.Errorf("render HTML: %w", err)
-	}
-	pb.HTML = buf.String()
-
-	// Build field → index lookup tables
-	for i, b := range pb.Bindings {
-		field := exprRoot(b.Expr)
-		if field != "" {
-			pb.FieldToBindings[field] = append(pb.FieldToBindings[field], i)
-		}
-	}
-	for i, fl := range pb.ForLoops {
-		pb.FieldToForLoops[fl.ListField] = append(pb.FieldToForLoops[fl.ListField], i)
-	}
-
-	return pb, nil
-}
-
-// walkNode recursively processes the DOM tree, assigning gids and extracting bindings.
-func (p *htmlParser) walkNode(n *html.Node, pb *pageBindings) {
-	if n.Type == html.ElementNode && hasDirectiveAttr(n) {
-		// g-for elements get special treatment
-		if getAttr(n, "g-for") != "" {
-			p.processForNode(n, pb)
-			return // don't recurse; children belong to the template
-		}
-
-		gid := p.nextGID()
-		setAttr(n, "data-gid", gid)
-		p.extractBindings(n, gid, &pb.Bindings)
-		p.extractEvents(n, gid, &pb.Events)
-	}
-
-	// Recurse into children (collect first to avoid mutation issues)
-	var children []*html.Node
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		children = append(children, c)
-	}
-	for _, c := range children {
-		p.walkNode(c, pb)
-	}
-}
-
-// processForNode extracts a g-for element as a template, replaces it with
-// anchor comments in the DOM, and records the template + bindings.
-func (p *htmlParser) processForNode(n *html.Node, pb *pageBindings) {
-	forExpr := getAttr(n, "g-for")
-	parts := parseForExprParts(forExpr)
-	if parts == nil {
-		return
-	}
-
-	anchorGID := p.nextGID()
-
-	// Parse g-props attribute (prop mappings from parent custom element)
-	props := parsePropsAttr(getAttr(n, "g-props"))
-	removeAttr(n, "g-props")
-
-	// Check if this is a registered stateful component
-	compTag := getAttr(n, "data-g-component")
-	removeAttr(n, "data-g-component")
-
-	// Remove g-for attribute from the node before processing its subtree
-	removeAttr(n, "g-for")
-
-	// Walk the subtree, assigning gids with __IDX__ placeholder
-	ft := &forTemplate{
-		GID:          anchorGID,
-		ItemVar:      parts.item,
-		IndexVar:     parts.index,
-		ListField:    parts.list,
-		Props:        props,
-		ComponentTag: compTag,
-	}
-	p.walkForSubtree(n, anchorGID, ft)
-
-	// Render the processed element to HTML (this becomes the template)
-	var buf bytes.Buffer
-	html.Render(&buf, n)
-	ft.TemplateHTML = buf.String()
-
-	pb.ForLoops = append(pb.ForLoops, ft)
-
-	// Replace the element in the DOM with anchor comments
-	parent := n.Parent
-	startAnchor := &html.Node{
-		Type: html.CommentNode,
-		Data: " g-for:" + anchorGID + " ",
-	}
-	endAnchor := &html.Node{
-		Type: html.CommentNode,
-		Data: " /g-for:" + anchorGID + " ",
-	}
-	parent.InsertBefore(startAnchor, n)
-	parent.InsertBefore(endAnchor, n)
-	parent.RemoveChild(n)
-}
-
-// walkForSubtree assigns gids with __IDX__ placeholders and extracts
-// bindings/events for a g-for template subtree. It also handles nested
-// g-for elements by extracting them as SubLoops.
-func (p *htmlParser) walkForSubtree(n *html.Node, anchorGID string, ft *forTemplate) {
-	seq := 0
-
-	var walk func(node *html.Node, isRoot bool)
-	walk = func(node *html.Node, isRoot bool) {
-		if node.Type != html.ElementNode {
-			for c := node.FirstChild; c != nil; c = c.NextSibling {
-				walk(c, false)
-			}
-			return
-		}
-
-		// Check for nested g-for (not on the root element, which is the outer g-for's template root)
-		if !isRoot && getAttr(node, "g-for") != "" {
-			p.processNestedFor(node, anchorGID, &seq, ft)
-			return // children belong to the inner template
-		}
-
-		// Assign gid to elements that have directives (or the root element always)
-		needsGID := isRoot || hasDirectiveAttr(node)
-		if needsGID {
-			var gid string
-			if isRoot {
-				gid = fmt.Sprintf("%s-__IDX__", anchorGID)
-			} else {
-				gid = fmt.Sprintf("%s-__IDX__-%d", anchorGID, seq)
-				seq++
-			}
-			setAttr(node, "data-gid", gid)
-
-			if hasDirectiveAttr(node) {
-				p.extractBindings(node, gid, &ft.Bindings)
-				p.extractEvents(node, gid, &ft.Events)
-			}
-		}
-
-		// Collect children first to avoid mutation issues during nested g-for processing
-		var children []*html.Node
-		for c := node.FirstChild; c != nil; c = c.NextSibling {
-			children = append(children, c)
-		}
-		for _, c := range children {
-			walk(c, false)
-		}
-	}
-
-	walk(n, true)
-}
-
-// processNestedFor extracts a nested g-for element inside an outer g-for template.
-// It replaces the element with anchor comments and stores the sub-loop on the parent forTemplate.
-func (p *htmlParser) processNestedFor(n *html.Node, parentAnchorGID string, seq *int, parentFT *forTemplate) {
-	forExpr := getAttr(n, "g-for")
-	parts := parseForExprParts(forExpr)
-	if parts == nil {
-		return
-	}
-
-	innerGID := fmt.Sprintf("%s-__IDX__-%d", parentAnchorGID, *seq)
-	*seq++
-
-	removeAttr(n, "g-for")
-
-	subFT := &forTemplate{
-		GID:       innerGID,
-		ItemVar:   parts.item,
-		IndexVar:  parts.index,
-		ListField: parts.list, // e.g. "field.Options" — resolved from parent item context
-	}
-
-	// Recursively walk the inner template (supports arbitrary nesting depth)
-	p.walkForSubtree(n, innerGID, subFT)
-
-	// Render the processed element to HTML (becomes the inner template)
-	var buf bytes.Buffer
-	html.Render(&buf, n)
-	subFT.TemplateHTML = buf.String()
-
-	parentFT.SubLoops = append(parentFT.SubLoops, subFT)
-
-	// Replace the element with anchor comments in the outer template
-	parent := n.Parent
-	startAnchor := &html.Node{
-		Type: html.CommentNode,
-		Data: " g-for:" + innerGID + " ",
-	}
-	endAnchor := &html.Node{
-		Type: html.CommentNode,
-		Data: " /g-for:" + innerGID + " ",
-	}
-	parent.InsertBefore(startAnchor, n)
-	parent.InsertBefore(endAnchor, n)
-	parent.RemoveChild(n)
-}
-
-// extractBindings reads data-binding directives from an element's attributes.
-func (p *htmlParser) extractBindings(n *html.Node, gid string, out *[]binding) {
-	for _, a := range n.Attr {
-		dir := ""
-		switch {
-		case a.Key == "g-text":
-			dir = "text"
-		case a.Key == "g-bind":
-			dir = "bind"
-		case a.Key == "g-checked":
-			dir = "checked"
-		case a.Key == "g-if":
-			dir = "if"
-		case a.Key == "g-show":
-			dir = "show"
-		case strings.HasPrefix(a.Key, "g-class:"):
-			dir = a.Key[2:] // "class:done"
-		case strings.HasPrefix(a.Key, "g-attr:"):
-			dir = a.Key[2:] // "attr:transform"
-		case strings.HasPrefix(a.Key, "g-style:"):
-			dir = a.Key[2:] // "style:background-color"
-		case strings.HasPrefix(a.Key, "g-plugin:"):
-			dir = a.Key[2:] // "plugin:chartjs"
-		case a.Key == "g-draggable" || strings.HasPrefix(a.Key, "g-draggable."):
-			if strings.HasPrefix(a.Key, "g-draggable.") {
-				dir = "draggable:" + a.Key[len("g-draggable."):]
-			} else {
-				dir = "draggable"
-			}
-		case a.Key == "g-dropzone":
-			dir = "dropzone"
-		}
-		if dir != "" {
-			*out = append(*out, binding{GID: gid, Dir: dir, Expr: a.Val})
-		}
-	}
-}
-
-// extractEvents reads event directives from an element's attributes.
-func (p *htmlParser) extractEvents(n *html.Node, gid string, out *[]eventBinding) {
-	for _, a := range n.Attr {
-		switch {
-		case a.Key == "g-click":
-			name, args := parseCallExpr(a.Val)
-			*out = append(*out, eventBinding{
-				GID: gid, Event: "click", Method: name, Args: args,
-			})
-		case a.Key == "g-keydown":
-			// Support multiple bindings separated by semicolons:
-			// g-keydown="ArrowUp:PanUp;ArrowDown:PanDown;Enter:Submit"
-			for _, part := range strings.Split(a.Val, ";") {
-				part = strings.TrimSpace(part)
-				if part == "" {
-					continue
-				}
-				key, method := "", part
-				if idx := strings.Index(part, ":"); idx != -1 {
-					key = part[:idx]
-					method = part[idx+1:]
-				}
-				name, args := parseCallExpr(method)
-				*out = append(*out, eventBinding{
-					GID: gid, Event: "keydown", Key: key, Method: name, Args: args,
-				})
-			}
-		case a.Key == "g-mousedown" || a.Key == "g-mousemove" || a.Key == "g-mouseup":
-			event := a.Key[2:] // "mousedown", "mousemove", "mouseup"
-			name, args := parseCallExpr(a.Val)
-			*out = append(*out, eventBinding{
-				GID: gid, Event: event, Method: name, Args: args,
-			})
-		case a.Key == "g-wheel":
-			name, args := parseCallExpr(a.Val)
-			*out = append(*out, eventBinding{
-				GID: gid, Event: "wheel", Method: name, Args: args,
-			})
-		case a.Key == "g-bind":
-			// Two-way binding: also register an input event
-			*out = append(*out, eventBinding{
-				GID: gid, Event: "input", Method: "__bind", Args: []string{a.Val},
-			})
-		case a.Key == "g-drop" || strings.HasPrefix(a.Key, "g-drop."):
-			group := ""
-			if strings.HasPrefix(a.Key, "g-drop.") {
-				group = a.Key[len("g-drop."):]
-			}
-			name, args := parseCallExpr(a.Val)
-			*out = append(*out, eventBinding{
-				GID: gid, Event: "drop", Key: group, Method: name, Args: args,
-			})
-		}
-	}
-}
-
-// --- HTML node helpers ---
-
-func hasDirectiveAttr(n *html.Node) bool {
-	for _, a := range n.Attr {
-		if strings.HasPrefix(a.Key, "g-") {
-			return true
-		}
-	}
-	return false
-}
-
-func getAttr(n *html.Node, key string) string {
-	for _, a := range n.Attr {
-		if a.Key == key {
-			return a.Val
-		}
-	}
-	return ""
-}
-
-func setAttr(n *html.Node, key, val string) {
-	for i, a := range n.Attr {
-		if a.Key == key {
-			n.Attr[i].Val = val
-			return
-		}
-	}
-	n.Attr = append(n.Attr, html.Attribute{Key: key, Val: val})
-}
-
-func removeAttr(n *html.Node, key string) {
-	for i, a := range n.Attr {
-		if a.Key == key {
-			n.Attr = append(n.Attr[:i], n.Attr[i+1:]...)
-			return
-		}
-	}
-}
-
-type forParts struct {
-	item  string
-	index string
-	list  string
-}
-
-func parseForExprParts(expr string) *forParts {
-	parts := strings.SplitN(expr, " in ", 2)
-	if len(parts) != 2 {
-		return nil
-	}
-	left := strings.TrimSpace(parts[0])
-	list := strings.TrimSpace(parts[1])
-	vars := strings.Split(left, ",")
-	item := strings.TrimSpace(vars[0])
-	idx := ""
-	if len(vars) > 1 {
-		idx = strings.TrimSpace(vars[1])
-	}
-	return &forParts{item: item, index: idx, list: list}
-}
-
-// parsePropsAttr parses a g-props attribute value like "index:i,todo:todo"
-// into a map of prop name → parent expression.
-func parsePropsAttr(val string) map[string]string {
-	val = strings.TrimSpace(val)
-	if val == "" {
-		return nil
-	}
-	props := make(map[string]string)
-	for _, pair := range strings.Split(val, ",") {
-		parts := strings.SplitN(pair, ":", 2)
-		if len(parts) == 2 {
-			props[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-		}
-	}
-	return props
-}
-
-// exprRoot returns the top-level field name from an expression.
-// "InputText" → "InputText", "todo.Done" → "todo"
-func exprRoot(expr string) string {
-	expr = strings.TrimSpace(expr)
-	if expr == "" {
-		return ""
-	}
-	if idx := strings.Index(expr, "."); idx != -1 {
-		return expr[:idx]
-	}
-	return expr
-}
 
 // --- Template expansion (custom elements → HTML) ---
 
@@ -596,4 +141,58 @@ func findIndexHTML(fsys fs.FS) (fs.FS, error) {
 	}
 
 	return nil, fmt.Errorf("index.html not found in filesystem")
+}
+
+// --- Helpers used by validate.go and parser_test.go ---
+
+type forParts struct {
+	item  string
+	index string
+	list  string
+}
+
+func parseForExprParts(expr string) *forParts {
+	parts := strings.SplitN(expr, " in ", 2)
+	if len(parts) != 2 {
+		return nil
+	}
+	left := strings.TrimSpace(parts[0])
+	list := strings.TrimSpace(parts[1])
+	vars := strings.Split(left, ",")
+	item := strings.TrimSpace(vars[0])
+	idx := ""
+	if len(vars) > 1 {
+		idx = strings.TrimSpace(vars[1])
+	}
+	return &forParts{item: item, index: idx, list: list}
+}
+
+// parsePropsAttr parses a g-props attribute value like "index:i,todo:todo"
+// into a map of prop name → parent expression.
+func parsePropsAttr(val string) map[string]string {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return nil
+	}
+	props := make(map[string]string)
+	for _, pair := range strings.Split(val, ",") {
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) == 2 {
+			props[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
+	}
+	return props
+}
+
+// exprRoot returns the top-level field name from an expression.
+// "InputText" → "InputText", "todo.Done" → "todo"
+func exprRoot(expr string) string {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return ""
+	}
+	if idx := strings.Index(expr, "."); idx != -1 {
+		return expr[:idx]
+	}
+	return expr
 }

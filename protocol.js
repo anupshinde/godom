@@ -1,16 +1,15 @@
-// Protocol buffer type definitions for godom wire protocol.
-// Matches protocol.proto — defined via protobuf.js reflection API.
+// Protocol buffer type definitions for godom VDOM wire protocol.
+// Matches the VDomMessage/DomPatch/EventSetup messages in protocol.proto.
 var godomProto = (function() {
     var protobuf = self.protobuf; // set by protobuf.min.js (light build)
 
     var Root = protobuf.Root,
         Type = protobuf.Type,
-        Field = protobuf.Field,
-        OneOf = protobuf.OneOf;
+        Field = protobuf.Field;
 
     var root = new Root();
 
-    // WSMessage — inner pre-built message (call/bind)
+    // WSMessage — inner pre-built message (call/bind), unchanged
     var WSMessage = new Type("WSMessage")
         .add(new Field("type", 1, "string"))
         .add(new Field("method", 2, "string"))
@@ -19,55 +18,51 @@ var godomProto = (function() {
         .add(new Field("value", 5, "bytes"))
         .add(new Field("scope", 6, "string"));
 
-    // Envelope — browser → Go wrapper
+    // Envelope — browser → Go wrapper, unchanged
     var Envelope = new Type("Envelope")
         .add(new Field("args", 1, "double", "repeated"))
         .add(new Field("msg", 2, "bytes"))
         .add(new Field("value", 3, "bytes"));
 
-    // EventCommand — event listener config
-    var EventCommand = new Type("EventCommand")
-        .add(new Field("id", 1, "string"))
-        .add(new Field("on", 2, "string"))
+    // EventSetup — event listener registration
+    var EventSetup = new Type("EventSetup")
+        .add(new Field("gid", 1, "string"))
+        .add(new Field("event", 2, "string"))
         .add(new Field("key", 3, "string"))
-        .add(new Field("msg", 4, "bytes"));
+        .add(new Field("msg", 4, "bytes"))
+        .add(new Field("stopPropagation", 5, "bool"))
+        .add(new Field("preventDefault", 6, "bool"));
 
-    // Command — single DOM operation
-    var Command = new Type("Command")
-        .add(new Field("op", 1, "string"))
-        .add(new Field("id", 2, "string"))
-        .add(new Field("name", 3, "string"))
-        .add(new Field("strVal", 4, "string"))
-        .add(new Field("boolVal", 5, "bool"))
-        .add(new Field("numVal", 6, "double"))
-        .add(new Field("rawVal", 7, "bytes"))
-        .add(new OneOf("val", ["strVal", "boolVal", "numVal", "rawVal"]))
-        .add(new Field("items", 8, "ListItem", "repeated"));
+    // DomPatch — single DOM mutation from diff
+    var DomPatch = new Type("DomPatch")
+        .add(new Field("index", 1, "int32"))
+        .add(new Field("op", 2, "string"))
+        .add(new Field("text", 10, "string"))
+        .add(new Field("facts", 11, "bytes"))
+        .add(new Field("htmlContent", 12, "bytes"))
+        .add(new Field("count", 13, "int32"))
+        .add(new Field("reorder", 14, "bytes"))
+        .add(new Field("pluginData", 15, "bytes"))
+        .add(new Field("subPatches", 16, "DomPatch", "repeated"))
+        .add(new Field("patchEvents", 17, "EventSetup", "repeated"));
 
-    // ListItem — single g-for list item
-    var ListItem = new Type("ListItem")
-        .add(new Field("html", 1, "string"))
-        .add(new Field("cmds", 2, "Command", "repeated"))
-        .add(new Field("evts", 3, "EventCommand", "repeated"));
-
-    // ServerMessage — top-level Go → browser message
-    var ServerMessage = new Type("ServerMessage")
+    // VDomMessage — top-level Go → browser message
+    var VDomMessage = new Type("VDomMessage")
         .add(new Field("type", 1, "string"))
-        .add(new Field("commands", 2, "Command", "repeated"))
-        .add(new Field("events", 3, "EventCommand", "repeated"));
+        .add(new Field("html", 2, "bytes"))
+        .add(new Field("patches", 3, "DomPatch", "repeated"))
+        .add(new Field("events", 4, "EventSetup", "repeated"));
 
-    root.add(ServerMessage);
-    root.add(Command);
-    root.add(ListItem);
-    root.add(EventCommand);
+    root.add(VDomMessage);
+    root.add(DomPatch);
+    root.add(EventSetup);
     root.add(Envelope);
     root.add(WSMessage);
 
     return {
-        ServerMessage: ServerMessage,
-        Command: Command,
-        ListItem: ListItem,
-        EventCommand: EventCommand,
+        VDomMessage: VDomMessage,
+        DomPatch: DomPatch,
+        EventSetup: EventSetup,
         Envelope: Envelope,
         WSMessage: WSMessage
     };
