@@ -312,7 +312,7 @@ The plugin JS calls `godom.register(name, {init, update})` to handle data from G
 
 See [docs/javascript-libraries.md](docs/javascript-libraries.md) for a detailed guide on using any JS library — with or without a plugin package.
 
-godom ships a Chart.js plugin (`godom/plugins/chartjs`) that embeds Chart.js and provides a minimal Go struct for chart data. Charts are configured using plain `map[string]interface{}` — any Chart.js property passes straight through:
+godom ships a Chart.js plugin (`github.com/anupshinde/godom/plugins/chartjs`) that embeds Chart.js and provides a minimal Go struct for chart data. Charts are configured using plain `map[string]interface{}` — any Chart.js property passes straight through:
 
 ```go
 import "github.com/anupshinde/godom/plugins/chartjs"

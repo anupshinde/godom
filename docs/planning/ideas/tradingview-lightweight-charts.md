@@ -51,7 +51,7 @@ If the game angle is too much scope, a simpler version:
 Same pattern as Chart.js:
 
 ```go
-import "godom/plugins/lwcharts"
+import "github.com/anupshinde/godom/plugins/lwcharts"
 
 func main() {
     app := godom.New()

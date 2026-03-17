@@ -11,7 +11,7 @@ The `plugins/` directory contains reusable Go packages that integrate JavaScript
 ## Using a plugin
 
 ```go
-import "godom/plugins/chartjs"
+import "github.com/anupshinde/godom/plugins/chartjs"
 
 func main() {
     app := godom.New()

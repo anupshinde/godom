@@ -31,7 +31,7 @@ Same pattern as the existing Chart.js plugin:
 ### Plotly plugin
 
 ```go
-import "godom/plugins/plotly"
+import "github.com/anupshinde/godom/plugins/plotly"
 
 func main() {
     app := godom.New()
@@ -76,7 +76,7 @@ The plugin JS adapter:
 ### ECharts plugin
 
 ```go
-import "godom/plugins/echarts"
+import "github.com/anupshinde/godom/plugins/echarts"
 
 func main() {
     app := godom.New()
