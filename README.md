@@ -80,8 +80,18 @@ Run `go build` and you get a single binary that opens the browser and shows a li
 
 ## Install
 
+**Use in your project:**
+
 ```
 go get github.com/anupshinde/godom
+```
+
+**Run the examples:**
+
+```
+git clone https://github.com/anupshinde/godom.git
+cd godom
+go run ./examples/solar-system
 ```
 
 Requires Go 1.25+ and a web browser.
@@ -337,7 +347,7 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
 
-Run any example:
+After cloning the repo (see [Install](#install)), run any example with:
 
 ```
 go run ./examples/counter
