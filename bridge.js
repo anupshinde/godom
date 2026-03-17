@@ -21,8 +21,9 @@
     // =========================================================================
 
     var ws;
-    // gids are not globally unique forever — g-for items reuse gids across
-    // re-renders. Full list replace (execList) cleans up old entries first.
+    // gids are not globally unique forever — g-for items may reuse gids across
+    // re-renders. Removed nodes are cleaned out of gidMap/pluginState/eventMap
+    // before replacement or truncation.
     var gidMap = {};    // data-gid → DOM element cache
     var anchorMap = {}; // g-for id → {start, end} comment nodes that mark list boundaries (<!-- g-for:id --> ... <!-- /g-for:id -->)
     var eventMap = {};  // "gid:event" → latest event config (for dedup)
