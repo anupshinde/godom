@@ -70,6 +70,31 @@ Implemented. Module path changed from `godom` to `github.com/anupshinde/godom`. 
 
 ---
 
+## Keyed identity for g-for stateful components
+
+Currently, g-for items have positional identity — item 0 is always gid `g3-0`, item 1 is `g3-1`, etc. Child component instances are stored by index. This means inserts, deletes in the middle, or reorders can attach a child's local state to the wrong logical item.
+
+**What's needed:**
+- Keyed diff algorithm (detect inserts, deletes, moves — not just append/truncate)
+- New wire operations: `list-insert-at`, `list-remove-at`, `list-move`
+- Gid generation that encodes key instead of index (or a key→gid mapping)
+- Child instance tracking by key instead of flat index slice
+- Template HTML can't pre-bake `__IDX__` if items move; gids need rewriting on the fly
+
+**Syntax idea:** `g-for="todo, i in Todos" g-key="todo.ID"`
+
+This is a cross-cutting change touching parser, renderer, protocol, and bridge. Not urgent for append-only or full-replace lists, but required for reorderable lists with stateful children.
+
+---
+
+## Child-local state lost when scoped event also changes root state
+
+For scoped calls and binds, child re-rendering only happens when the root component shows no changed fields. If a child mutates its own local state and also causes parent/root state to change (e.g. via a callback), only the root update path runs, so child-local UI updates are dropped.
+
+**Fix:** The root update path (`computeUpdateMessage`) needs to also include child re-renders for any scoped components that were involved in the current event, not just skip them when root state changed.
+
+---
+
 ## Drop gorilla/websocket dependency
 
 Currently using `github.com/gorilla/websocket`. Evaluate alternatives:
@@ -78,6 +103,18 @@ Currently using `github.com/gorilla/websocket`. Evaluate alternatives:
 - Stdlib websocket — not available yet, monitor future Go releases
 
 Note: the wire format is already Protocol Buffers (binary WebSocket). Any WebSocket replacement just needs to support binary message read/write.
+
+---
+
+## Validator hardening
+
+The startup validator (`validate.go`) has known limitations — it's useful as a guardrail but not a source of truth:
+
+- **Child component validation is too permissive**: if a directive doesn't validate against the parent, it falls back to any registered child component type, not the actual subtree where it appears. Can allow incorrect templates to pass.
+- **g-bind validation is broader than runtime**: validates dotted-path and loop-scoped binds, but runtime `setField` only supports direct top-level fields via `FieldByName`. Valid templates can still fail at runtime.
+- **g-props collection is global**: `collectLoopVars` scans all g-props in the entire HTML for every g-for, not scoped to the actual subtree. Can create false positives in complex nested structures.
+
+These are low priority — the runtime parser/render path is more solid than the validator.
 
 ---
 
