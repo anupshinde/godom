@@ -22,7 +22,7 @@
 
     var ws;
     var gidMap = {};    // data-gid → DOM element cache
-    var anchorMap = {}; // g-for id → {start, end} comment nodes
+    var anchorMap = {}; // g-for id → {start, end} comment nodes that mark list boundaries (<!-- g-for:id --> ... <!-- /g-for:id -->)
     var eventMap = {};  // "gid:event" → latest event config (for dedup)
     var pluginState = {}; // gid → true if plugin init has been called
 
@@ -240,12 +240,21 @@
     // Context-sensitive HTML parsing: certain elements (tr, td, option, etc.)
     // are stripped by the browser when parsed via innerHTML on a <div>.
     // Use the parent element's tag to determine the correct wrapper.
+    //
+    // TABLE is special: unlike other parents, the correct wrapper depends on
+    // what's being inserted, not just where. A <table> can contain <thead>,
+    // <tbody>, <tr>, <colgroup>, etc. — and <tr> needs a <tbody> wrapper to
+    // prevent browser auto-insertion, while <td>/<th> need <tbody><tr>.
+    // Other table children (thead, tbody, tfoot, colgroup, caption) parse
+    // correctly inside a plain <table>. So TABLE inspects the HTML to pick
+    // the right wrapper — this is the one case where string inspection is
+    // justified over pure parent-tag lookup.
     var contextWrappers = {
-        "TABLE":    function() { return document.createElement("table"); },
         "THEAD":    function() { var t = document.createElement("table"); var s = document.createElement("thead"); t.appendChild(s); return s; },
         "TBODY":    function() { var t = document.createElement("table"); var s = document.createElement("tbody"); t.appendChild(s); return s; },
         "TFOOT":    function() { var t = document.createElement("table"); var s = document.createElement("tfoot"); t.appendChild(s); return s; },
         "TR":       function() { var t = document.createElement("table"); var b = document.createElement("tbody"); var r = document.createElement("tr"); t.appendChild(b); b.appendChild(r); return r; },
+        "COLGROUP": function() { var t = document.createElement("table"); var c = document.createElement("colgroup"); t.appendChild(c); return c; },
         "SELECT":   function() { return document.createElement("select"); },
         "OPTGROUP": function() { var s = document.createElement("select"); var g = document.createElement("optgroup"); s.appendChild(g); return g; }
     };
@@ -253,6 +262,38 @@
     // Parse an HTML string into DOM nodes using the correct parent context.
     // Returns a container element whose children are the parsed nodes.
     function createTmpContainer(html, parentTag) {
+        // TABLE is ambiguous — inspect the child tag to pick the right wrapper
+        if (parentTag === "TABLE") {
+            var m = /^\s*<\s*([a-z0-9]+)/i.exec(html);
+            var firstTag = m ? m[1].toUpperCase() : "";
+
+            if (firstTag === "TR") {
+                // <tr> needs <tbody> to prevent browser auto-insertion
+                var t = document.createElement("table");
+                var b = document.createElement("tbody");
+                t.appendChild(b);
+                b.innerHTML = html;
+                return b;
+            }
+
+            if (firstTag === "TD" || firstTag === "TH") {
+                // <td>/<th> are only valid under <tr>, not directly under <tbody>
+                var t2 = document.createElement("table");
+                var b2 = document.createElement("tbody");
+                var r = document.createElement("tr");
+                t2.appendChild(b2);
+                b2.appendChild(r);
+                r.innerHTML = html;
+                return r;
+            }
+
+            // All other table children (thead, tbody, tfoot, colgroup, caption)
+            // parse correctly inside a plain <table>
+            var table = document.createElement("table");
+            table.innerHTML = html;
+            return table;
+        }
+
         var factory = contextWrappers[parentTag];
         if (factory) {
             var container = factory();
@@ -264,15 +305,19 @@
         return div;
     }
 
-    // Insert parsed nodes before the anchor, indexing their gids and any
-    // nested g-for anchors as we go.
+    // Move all child nodes from the temporary container into the real DOM
+    // (before `beforeNode`), and register each inserted element in gidMap.
+    // Also scans for nested g-for anchor comments so inner loops work.
+    // Note: tmp.firstChild is used as the loop condition because insertBefore
+    // moves the node out of tmp, advancing firstChild automatically.
     function insertAndIndex(tmp, parent, beforeNode) {
         while (tmp.firstChild) {
             var node = tmp.firstChild;
             parent.insertBefore(node, beforeNode);
-            if (node.nodeType === 1) {
+            if (node.nodeType === 1) { // element nodes only (skip text/comment)
                 var ng = node.getAttribute("data-gid");
                 if (ng) gidMap[ng] = node;
+                // Also index any gid elements nested inside this node
                 var subs = node.querySelectorAll("[data-gid]");
                 for (var k = 0; k < subs.length; k++) {
                     gidMap[subs[k].getAttribute("data-gid")] = subs[k];
@@ -282,7 +327,8 @@
         }
     }
 
-    // Remove a DOM node and clean up its gidMap entries.
+    // Remove a DOM node and clean up all gidMap entries for it and its
+    // descendants. This prevents stale references to removed elements.
     function removeAndClean(node) {
         if (node.nodeType === 1) {
             var gid = node.getAttribute("data-gid");
@@ -356,7 +402,10 @@
     // from eventMap at fire time. When Go re-sends events (e.g. after a g-for
     // re-render), the map is updated but no duplicate listeners are created.
 
-    // Encode and send a message to Go via the WebSocket.
+    // Encode and send a message to Go via the WebSocket as a protobuf Envelope.
+    //   msg   — the method/handler name in Go (e.g. "Increment", "Toggle(3)")
+    //   args  — optional numeric args array (e.g. [x, y] for mouse events)
+    //   value — optional raw bytes (e.g. JSON-encoded input value or drop data)
     function sendEnvelope(msg, args, value) {
         var env = {msg: msg};
         if (args) env.args = args;
@@ -384,6 +433,11 @@
             // The listener reads from eventMap, so updating the map is sufficient.
             if (el.getAttribute("data-evt-" + e.on)) continue;
             el.setAttribute("data-evt-" + e.on, "1");
+
+            // Each event type below uses an IIFE — (function(k, elem) { ... })(key, el) —
+            // to capture the current values of `key` and `el` in a closure. Without this,
+            // all listeners would share the same loop variable and only reference the last
+            // element. This is standard pre-ES6 JS; `let` would make it unnecessary.
 
             // --- g-bind: two-way input binding ---
             // Sends the current input value to Go on every keystroke.
