@@ -198,25 +198,25 @@
         }
     }
 
-    // Create a temporary container that can parse the given HTML correctly.
-    // <tr>, <td>, <th> etc. are stripped by the browser if placed inside a <div>.
-    function createTmpContainer(html) {
-        var trimmed = html.replace(/^\s+/, "").toLowerCase();
-        if (trimmed.indexOf("<tr") === 0) {
-            var tbl = document.createElement("table");
-            var tbody = document.createElement("tbody");
-            tbl.appendChild(tbody);
-            tbody.innerHTML = html;
-            return tbody;
-        }
-        if (trimmed.indexOf("<td") === 0 || trimmed.indexOf("<th") === 0) {
-            var tbl = document.createElement("table");
-            var tbody = document.createElement("tbody");
-            var tr = document.createElement("tr");
-            tbl.appendChild(tbody);
-            tbody.appendChild(tr);
-            tr.innerHTML = html;
-            return tr;
+    // Context-sensitive HTML parsing: certain elements (tr, td, option, etc.)
+    // are stripped by the browser when parsed via innerHTML on a <div>.
+    // Use the parent element's tag to determine the correct wrapper.
+    var contextWrappers = {
+        "TABLE":    function() { return document.createElement("table"); },
+        "THEAD":    function() { var t = document.createElement("table"); var s = document.createElement("thead"); t.appendChild(s); return s; },
+        "TBODY":    function() { var t = document.createElement("table"); var s = document.createElement("tbody"); t.appendChild(s); return s; },
+        "TFOOT":    function() { var t = document.createElement("table"); var s = document.createElement("tfoot"); t.appendChild(s); return s; },
+        "TR":       function() { var t = document.createElement("table"); var b = document.createElement("tbody"); var r = document.createElement("tr"); t.appendChild(b); b.appendChild(r); return r; },
+        "SELECT":   function() { return document.createElement("select"); },
+        "OPTGROUP": function() { var s = document.createElement("select"); var g = document.createElement("optgroup"); s.appendChild(g); return g; }
+    };
+
+    function createTmpContainer(html, parentTag) {
+        var factory = contextWrappers[parentTag];
+        if (factory) {
+            var container = factory();
+            container.innerHTML = html;
+            return container;
         }
         var div = document.createElement("div");
         div.innerHTML = html;
@@ -227,6 +227,7 @@
         var a = anchorMap[c.id];
         if (!a || !a.start || !a.end) return;
         var start = a.start, end = a.end;
+        var parentTag = start.parentNode.tagName;
 
         // Remove old items between anchors and clear their gidMap entries
         while (start.nextSibling !== end) {
@@ -246,7 +247,7 @@
         // Insert new items and index them
         for (var i = 0; i < c.items.length; i++) {
             var item = c.items[i];
-            var tmp = createTmpContainer(item.html);
+            var tmp = createTmpContainer(item.html, parentTag);
             while (tmp.firstChild) {
                 var node = tmp.firstChild;
                 start.parentNode.insertBefore(node, end);
@@ -270,10 +271,11 @@
         var a = anchorMap[c.id];
         if (!a || !a.end) return;
         var end = a.end;
+        var parentTag = end.parentNode.tagName;
 
         for (var i = 0; i < c.items.length; i++) {
             var item = c.items[i];
-            var tmp = createTmpContainer(item.html);
+            var tmp = createTmpContainer(item.html, parentTag);
             while (tmp.firstChild) {
                 var node = tmp.firstChild;
                 end.parentNode.insertBefore(node, end);
