@@ -629,6 +629,11 @@ func scopeListField(pb *pageBindings, scope string) string {
 }
 
 // handleBind processes a two-way binding update from the bridge.
+// Note: unlike handleCall, this uses a simple either/or path for scoped binds
+// (child update OR root update, not both). This is deliberate — setField is a
+// direct field write with no callbacks, so a scoped bind changing root state is
+// unlikely under current semantics. If binding grows richer (derived updates,
+// nested fields, alias-heavy props), revisit to match handleCall's dual-path.
 func handleBind(ci *componentInfo, wsMsg *WSMessage, value []byte, pool *connPool) {
 	target := ci
 	if wsMsg.Scope != "" {
