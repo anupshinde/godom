@@ -11,6 +11,16 @@ go run .
 
 A browser tab opens with a full terminal session. That's it.
 
+To build a standalone binary:
+
+```bash
+cd examples/terminal
+go build -o terminal .
+./terminal
+```
+
+Everything — HTML, CSS, xterm.js — is embedded. The binary runs anywhere with no external files or network dependencies.
+
 ## What it does
 
 - Spawns your default shell (`$SHELL`) with a pseudo-terminal (PTY)
@@ -72,4 +82,4 @@ All standard godom flags apply:
 - [godom](../../) — page serving, auth, plugin system
 - [creack/pty](https://github.com/creack/pty) — PTY allocation (pseudo-terminal syscalls)
 - [gorilla/websocket](https://github.com/gorilla/websocket) — terminal WebSocket server
-- [xterm.js](https://xtermjs.org/) 4.19.0 — terminal emulation in the browser (loaded from CDN)
+- [xterm.js](https://xtermjs.org/) 4.19.0 — terminal emulation in the browser (embedded in binary, MIT license)

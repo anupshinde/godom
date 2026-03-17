@@ -292,7 +292,7 @@ The `update()` function is empty. Terminal configuration (port, token) doesn't c
 
 A minimal full-screen page. Key points:
 
-- **CDN-loaded xterm.js** (v4.19.0): The last version with UMD/global script support. xterm.js 5.x moved to ESM-only, which requires a bundler. Using CDN keeps the example simple — no npm, no build step. For a production version, these could be embedded via `go:embed` for offline/single-binary use.
+- **Embedded xterm.js** (v4.19.0): The last version with UMD/global script support. xterm.js 5.x moved to ESM-only, which requires a bundler. The JS, CSS, and license are bundled in `ui/vendor/` and embedded into the binary via `go:embed` — no CDN, no npm, no build step, fully offline.
 
 - **xterm-addon-fit** (v0.5.0): Companion addon that auto-sizes the terminal to fill its container. Without it, you'd need to manually calculate rows/cols from pixel dimensions and font metrics.
 
@@ -442,14 +442,13 @@ This is the sweet spot: zero-config remote access with strong security guarantee
 | `godom` | Page serving, auth, plugin system | Framework this example is built on |
 | `github.com/creack/pty` | PTY allocation and management | The standard Go library for pseudo-terminal operations. Handles the syscalls for creating PTY pairs, starting processes with a PTY, and resizing |
 | `github.com/gorilla/websocket` | Terminal WebSocket server | godom doesn't expose its HTTP mux or WebSocket handling, so the terminal needs its own WebSocket server for raw I/O |
-| xterm.js 4.19.0 (CDN) | Terminal emulation in the browser | Mature, fast terminal emulator. Handles ANSI parsing, cursor, colors, scrollback, selection, mouse events |
-| xterm-addon-fit (CDN) | Auto-resize terminal to container | Calculates optimal rows/cols for the container size |
+| xterm.js 4.19.0 (embedded) | Terminal emulation in the browser | Mature, fast terminal emulator. Handles ANSI parsing, cursor, colors, scrollback, selection, mouse events |
+| xterm-addon-fit (embedded) | Auto-resize terminal to container | Calculates optimal rows/cols for the container size |
 
 ## What this doesn't do (yet)
 
 - **Multiple terminal tabs** — currently one PTY session per application instance. Multiple sessions would need a session manager and UI for switching.
 - **Scrollback persistence** — scrollback lives in xterm.js (browser). Closing the tab loses it. Could buffer recent output in Go and replay on reconnect.
-- **Embedded xterm.js** — currently loaded from CDN. For true single-binary offline use, embed the minified JS/CSS via `go:embed`.
 - **TLS** — no HTTPS or WSS. Use Tailscale or a reverse proxy if you need encryption.
 - **File upload/download** — out of scope; use scp/sftp.
 - **Copy/paste** — xterm.js supports selection and Ctrl+C/Ctrl+V natively, but clipboard access requires HTTPS or localhost.
