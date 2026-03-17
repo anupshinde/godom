@@ -1,10 +1,10 @@
-module godom/examples/system-monitor
+module github.com/anupshinde/godom/examples/system-monitor
 
 go 1.25.6
 
 require (
 	github.com/shirou/gopsutil/v3 v3.24.5
-	godom v0.0.0
+	github.com/anupshinde/godom v0.0.0
 )
 
 require (
@@ -22,4 +22,4 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-replace godom => ../..
+replace github.com/anupshinde/godom => ../..

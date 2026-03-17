@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"time"
 
-	"godom"
+	"github.com/anupshinde/godom"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"

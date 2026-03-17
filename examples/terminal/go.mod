@@ -1,11 +1,11 @@
-module terminal-example
+module github.com/anupshinde/godom/examples/terminal
 
 go 1.25.6
 
 require (
 	github.com/creack/pty v1.1.24
 	github.com/gorilla/websocket v1.5.3
-	godom v0.0.0
+	github.com/anupshinde/godom v0.0.0
 )
 
 require (
@@ -14,4 +14,4 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-replace godom => ../..
+replace github.com/anupshinde/godom => ../..

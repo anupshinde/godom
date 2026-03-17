@@ -8,7 +8,7 @@ import (
 	"math/rand"
 	"time"
 
-	"godom"
+	"github.com/anupshinde/godom"
 )
 
 //go:embed ui

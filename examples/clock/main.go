@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"godom"
+	"github.com/anupshinde/godom"
 )
 
 //go:embed ui

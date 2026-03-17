@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"log"
 
-	"godom"
+	"github.com/anupshinde/godom"
 )
 
 //go:embed ui

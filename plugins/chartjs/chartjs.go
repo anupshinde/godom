@@ -7,7 +7,7 @@ package chartjs
 import (
 	_ "embed"
 
-	"godom"
+	"github.com/anupshinde/godom"
 )
 
 //go:embed chart.min.js

@@ -64,9 +64,9 @@ Implemented. The bridge shows a blurred dark overlay on disconnect:
 
 ---
 
-## Publish module path
+## ~~Publish module path~~ ✅
 
-Change `go.mod` module from `godom` to `github.com/anupshinde/godom` so users can `go get` it. Requires updating all internal imports across the codebase. Once done, update the Install section in README to show `go get github.com/anupshinde/godom`.
+Implemented. Module path changed from `godom` to `github.com/anupshinde/godom`. All internal imports and sub-module go.mod files updated. README Install section now shows `go get github.com/anupshinde/godom`.
 
 ---
 
