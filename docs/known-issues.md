@@ -10,12 +10,6 @@ When clicking a button very fast (10+ clicks per second), occasional click event
 
 **Workaround:** None — this is browser behavior below the application layer.
 
-## bridge.js g-for innerHTML parsing is context-sensitive
+## ~~bridge.js g-for innerHTML parsing is context-sensitive~~ ✅
 
-When `g-for` is used on table elements (`<tr>`, `<td>`, `<th>`), the browser silently strips them when parsed via `innerHTML` on a `<div>` — because these elements are only valid inside `<table>`/`<tbody>`. This caused the stock-ticker example to render empty rows.
-
-**Current fix:** `createTmpContainer()` in bridge.js inspects the HTML string and wraps it in the appropriate table structure. This works but is whack-a-mole — it handles `<tr>`, `<td>`, `<th>` but would miss other context-sensitive elements like `<option>` inside `<select>`, `<thead>`, `<tbody>`, etc.
-
-**Proper fix:** Instead of inspecting the HTML string, use `start.parentNode.tagName` to determine the correct wrapper element. The g-for anchor comment nodes already sit inside the parent, so the context is known. A small tag→wrapper lookup map would cover all cases in one shot. This should be done as part of the broader g-for / bridge.js review.
-
-**Related:** The bridge has grown beyond its original ~150-line scope after adding recursive g-for support. A manual review pass of the full g-for rendering path (Go-side list diffing + bridge-side DOM manipulation) is already planned.
+**Fixed.** `createTmpContainer()` now uses `start.parentNode.tagName` to determine the correct wrapper element instead of inspecting the HTML string. A `contextWrappers` lookup map covers `TABLE`, `THEAD`, `TBODY`, `TFOOT`, `TR`, `SELECT`, and `OPTGROUP` — all context-sensitive elements in one shot.

@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 
@@ -574,9 +575,8 @@ func handleCall(ci *componentInfo, wsMsg *WSMessage, envArgs []float64, envValue
 	newRootState := ci.snapshotState()
 	changed := ci.changedFields(oldRootState, newRootState)
 
-	// For scoped calls where parent state didn't change,
-	// re-render the child to pick up child state changes.
 	if wsMsg.Scope != "" && len(changed) == 0 {
+		// No root changes — only child state changed. Re-render the child.
 		sm := computeChildUpdateMessage(ci.pb, ci, wsMsg.Scope)
 		ci.mu.Unlock()
 		if sm != nil {
@@ -586,15 +586,54 @@ func handleCall(ci *componentInfo, wsMsg *WSMessage, envArgs []float64, envValue
 		return
 	}
 
+	// Root state changed — always send the root update.
 	sm := computeUpdateMessage(ci.pb, ci, changed)
+
+	// For scoped calls, also send a child update if the root change did not
+	// structurally affect the child's owning list. If the list field changed,
+	// the root update already re-rendered the list (which includes this child),
+	// so a separate child update would be redundant or wrong (indexes may have shifted).
+	var childSM *ServerMessage
+	if wsMsg.Scope != "" && len(changed) > 0 {
+		if listField := scopeListField(ci.pb, wsMsg.Scope); listField == "" || !slices.Contains(changed, listField) {
+			childSM = computeChildUpdateMessage(ci.pb, ci, wsMsg.Scope)
+		}
+	}
+
 	ci.mu.Unlock()
 	if sm != nil {
 		data, _ := proto.Marshal(sm)
 		pool.broadcast(data)
 	}
+	if childSM != nil {
+		data, _ := proto.Marshal(childSM)
+		pool.broadcast(data)
+	}
+}
+
+// scopeListField returns the ListField of the forTemplate that owns the given
+// scope (e.g. "g3:0" → the ListField of the g-for with GID "g3"). Returns ""
+// if the scope can't be resolved to a forTemplate.
+func scopeListField(pb *pageBindings, scope string) string {
+	parts := strings.SplitN(scope, ":", 2)
+	if len(parts) != 2 || pb == nil {
+		return ""
+	}
+	forGID := parts[0]
+	for _, ft := range pb.ForLoops {
+		if ft.GID == forGID {
+			return ft.ListField
+		}
+	}
+	return ""
 }
 
 // handleBind processes a two-way binding update from the bridge.
+// Note: unlike handleCall, this uses a simple either/or path for scoped binds
+// (child update OR root update, not both). This is deliberate — setField is a
+// direct field write with no callbacks, so a scoped bind changing root state is
+// unlikely under current semantics. If binding grows richer (derived updates,
+// nested fields, alias-heavy props), revisit to match handleCall's dual-path.
 func handleBind(ci *componentInfo, wsMsg *WSMessage, value []byte, pool *connPool) {
 	target := ci
 	if wsMsg.Scope != "" {
@@ -615,16 +654,24 @@ func handleBind(ci *componentInfo, wsMsg *WSMessage, value []byte, pool *connPoo
 
 	newState := ci.snapshotState()
 	changed := ci.changedFields(oldState, newState)
-	ci.mu.Unlock()
 
-	if len(changed) > 0 {
-		ci.mu.Lock()
-		sm := computeUpdateMessage(ci.pb, ci, changed)
+	// For scoped binds where parent state didn't change,
+	// re-render the child to pick up child state changes.
+	if wsMsg.Scope != "" && len(changed) == 0 {
+		sm := computeChildUpdateMessage(ci.pb, ci, wsMsg.Scope)
 		ci.mu.Unlock()
 		if sm != nil {
 			data, _ := proto.Marshal(sm)
 			pool.broadcast(data)
 		}
+		return
+	}
+
+	sm := computeUpdateMessage(ci.pb, ci, changed)
+	ci.mu.Unlock()
+	if sm != nil {
+		data, _ := proto.Marshal(sm)
+		pool.broadcast(data)
 	}
 }
 
