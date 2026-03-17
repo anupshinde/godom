@@ -97,6 +97,8 @@
             }
         };
 
+        // Convention: Go server sets evt.reason to the panic message on crash,
+        // and closes without a reason on normal shutdown.
         ws.onclose = function(evt) {
             var errorMsg = evt.reason || null;
             showDisconnectOverlay(errorMsg);
