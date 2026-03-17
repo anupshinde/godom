@@ -87,11 +87,9 @@ This is a cross-cutting change touching parser, renderer, protocol, and bridge. 
 
 ---
 
-## Child-local state lost when scoped event also changes root state
+## ~~Child-local state lost when scoped event also changes root state~~ ✅
 
-For scoped calls and binds, child re-rendering only happens when the root component shows no changed fields. If a child mutates its own local state and also causes parent/root state to change (e.g. via a callback), only the root update path runs, so child-local UI updates are dropped.
-
-**Fix:** The root update path (`computeUpdateMessage`) needs to also include child re-renders for any scoped components that were involved in the current event, not just skip them when root state changed.
+Fixed. `handleCall()` now sends both the root update and a child update for scoped calls. A structural guard skips the child update when the owning list field changed (the root list re-render already covers that child). `handleBind()` intentionally keeps the simpler either/or path since `setField` has no callback path.
 
 ---
 
@@ -138,3 +136,32 @@ The `g-for` implementation — especially nested g-for — needs a manual review
 - **Keep** it if there's a future plan to make re-registration an explicit, distinct operation
 
 Also update `architecture.md`'s op list to match whatever is decided — it's currently missing `draggable`, `dropzone`, and `style` ops.
+
+---
+
+## Explore: VDOM / builder DSL for components
+
+Consider moving from HTML templates with string directives to a Go-native builder pattern:
+
+```go
+func (app *App) View() godom.Node {
+    return Div(
+        H1(Text("My App")),
+        For(app.Todos, func(todo Todo, i int) Node {
+            return Li(Text(todo.Title))
+        }, Key(todo.ID)),
+        Button(Text("Add"), OnClick(app.Add)),
+    )
+}
+```
+
+This would structurally eliminate several classes of issues:
+- Positional identity → keyed diffing built into the reconciler
+- Prop enforcement → compile-time via function arguments
+- Root/child update split → single tree diff pass
+- Validator gaps → if it compiles, it's valid
+- Template regex parsing → no templates at all
+
+Trade-offs: designers can't edit HTML directly, steeper learning curve, needs a Go-side tree diff algorithm. Could potentially support both templates (simple cases) and builder (complex components).
+
+Worth prototyping in a branch before committing to it.
