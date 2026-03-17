@@ -64,11 +64,17 @@
         overlay = null;
     }
 
+    // Reconnect delay with exponential backoff: 1s, 2s, 4s, 8s, ... up to 30s.
+    // Reset to 1s on successful connection.
+    var reconnectDelay = 1000;
+
     // Connect to Go via WebSocket. On "init" messages, rebuild all indexes
     // and apply the full command set. On "update" messages, apply incremental
     // commands. On close, show overlay and auto-reconnect (unless it was a crash).
     function connect() {
-        ws = new WebSocket("ws://" + location.host + "/ws");
+        // Use wss:// when behind a TLS-terminating reverse proxy (nginx, Caddy, etc.)
+        var wsProto = location.protocol === "https:" ? "wss://" : "ws://";
+        ws = new WebSocket(wsProto + location.host + "/ws");
         ws.binaryType = "arraybuffer";
 
         ws.onmessage = function(evt) {
@@ -76,6 +82,7 @@
             if (msg.type === "init") {
                 // Full page init — clear all caches and rebuild from DOM
                 hideDisconnectOverlay();
+                reconnectDelay = 1000; // reset backoff on successful connection
                 gidMap = {};
                 anchorMap = {};
                 eventMap = {};
@@ -92,8 +99,12 @@
         ws.onclose = function(evt) {
             var errorMsg = evt.reason || null;
             showDisconnectOverlay(errorMsg);
-            // Auto-reconnect on normal disconnect, not on crash
-            if (!errorMsg) setTimeout(connect, 1000);
+            // Auto-reconnect on normal disconnect, not on crash.
+            // Uses exponential backoff: 1s, 2s, 4s, ... capped at 30s.
+            if (!errorMsg) {
+                setTimeout(connect, reconnectDelay);
+                reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+            }
         };
 
         ws.onerror = function() {
@@ -155,6 +166,9 @@
     function getEl(gid) {
         var el = gidMap[gid];
         if (el) return el;
+        // Fallback: query the DOM directly. If this fires, it likely means
+        // indexDOM or insertAndIndex missed this element — worth investigating.
+        console.warn("[godom] gidMap miss for", gid, "— falling back to querySelector");
         el = document.querySelector("[data-gid=\"" + gid + "\"]");
         if (el) gidMap[gid] = el;
         return el;
