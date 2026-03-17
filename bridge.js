@@ -351,9 +351,27 @@
         }
     }
 
-    // Remove a DOM node and clean up all gidMap, pluginState, and eventMap
-    // entries for it and its descendants. This prevents stale references to
-    // removed elements and ensures correct re-initialization if gids are reused.
+    // Clean up an anchorMap entry if this comment node is a g-for boundary.
+    // Deletes the entire entry when both start and end are gone.
+    function cleanAnchorComment(commentNode) {
+        var text = commentNode.nodeValue.trim();
+        var m;
+        if ((m = text.match(/^g-for:(.+)$/))) {
+            if (anchorMap[m[1]] && anchorMap[m[1]].start === commentNode) {
+                delete anchorMap[m[1]].start;
+                if (!anchorMap[m[1]].end) delete anchorMap[m[1]];
+            }
+        } else if ((m = text.match(/^\/g-for:(.+)$/))) {
+            if (anchorMap[m[1]] && anchorMap[m[1]].end === commentNode) {
+                delete anchorMap[m[1]].end;
+                if (!anchorMap[m[1]].start) delete anchorMap[m[1]];
+            }
+        }
+    }
+
+    // Remove a DOM node and clean up all gidMap, pluginState, eventMap, and
+    // anchorMap entries for it and its descendants. This prevents stale references
+    // to removed/detached nodes and ensures correct re-initialization if ids are reused.
     function removeAndClean(node) {
         if (node.nodeType === 1) {
             var gid = node.getAttribute("data-gid");
@@ -369,6 +387,13 @@
                 delete pluginState[subGid];
                 cleanEventMap(subGid);
             }
+            // Clean up any nested g-for anchor comments
+            var walker = document.createTreeWalker(node, NodeFilter.SHOW_COMMENT, null, false);
+            while (walker.nextNode()) {
+                cleanAnchorComment(walker.currentNode);
+            }
+        } else if (node.nodeType === 8) { // comment node removed directly
+            cleanAnchorComment(node);
         }
         node.parentNode.removeChild(node);
     }
