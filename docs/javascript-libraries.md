@@ -177,7 +177,7 @@ package mylib
 
 import (
     _ "embed"
-    "godom"
+    "github.com/anupshinde/godom"
 )
 
 //go:embed mylib.js
@@ -222,7 +222,7 @@ type Chart struct {
 ### Step 5: Use it
 
 ```go
-import "godom/plugins/mylib"
+import "github.com/anupshinde/godom/plugins/mylib"
 
 func main() {
     app := godom.New()

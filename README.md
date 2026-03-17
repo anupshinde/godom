@@ -30,7 +30,7 @@ package main
 import (
     "embed"
     "log"
-    "godom"
+    "github.com/anupshinde/godom"
 )
 
 //go:embed ui
@@ -80,11 +80,8 @@ Run `go build` and you get a single binary that opens the browser and shows a li
 
 ## Install
 
-> **Note:** The module path hasn't been published to a registry yet.
-> For now, clone the repository to get started.
-
 ```
-git clone https://github.com/anupshinde/godom.git
+go get github.com/anupshinde/godom
 ```
 
 Requires Go 1.25+ and a web browser.
@@ -315,10 +312,10 @@ The plugin JS calls `godom.register(name, {init, update})` to handle data from G
 
 See [docs/javascript-libraries.md](docs/javascript-libraries.md) for a detailed guide on using any JS library — with or without a plugin package.
 
-godom ships a Chart.js plugin (`godom/plugins/chartjs`) that embeds Chart.js and provides a minimal Go struct for chart data. Charts are configured using plain `map[string]interface{}` — any Chart.js property passes straight through:
+godom ships a Chart.js plugin (`github.com/anupshinde/godom/plugins/chartjs`) that embeds Chart.js and provides a minimal Go struct for chart data. Charts are configured using plain `map[string]interface{}` — any Chart.js property passes straight through:
 
 ```go
-import "godom/plugins/chartjs"
+import "github.com/anupshinde/godom/plugins/chartjs"
 
 chartjs.Register(app)  // registers plugin + embeds Chart.js library
 ```

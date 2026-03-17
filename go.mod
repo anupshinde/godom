@@ -1,4 +1,4 @@
-module godom
+module github.com/anupshinde/godom
 
 go 1.25.6
 

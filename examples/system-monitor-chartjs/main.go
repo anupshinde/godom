@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"godom"
-	"godom/plugins/chartjs"
+	"github.com/anupshinde/godom"
+	"github.com/anupshinde/godom/plugins/chartjs"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
