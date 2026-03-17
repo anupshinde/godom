@@ -86,6 +86,7 @@
                 gidMap = {};
                 anchorMap = {};
                 eventMap = {};
+                pluginState = {};
                 indexDOM(document.body);
                 execCommands(msg.commands);
                 registerEvents(msg.events);
@@ -341,15 +342,21 @@
         }
     }
 
-    // Remove a DOM node and clean up all gidMap entries for it and its
-    // descendants. This prevents stale references to removed elements.
+    // Remove a DOM node and clean up all gidMap and pluginState entries for
+    // it and its descendants. This prevents stale references to removed elements
+    // and ensures plugins get init() (not update()) if the gid is reused.
     function removeAndClean(node) {
         if (node.nodeType === 1) {
             var gid = node.getAttribute("data-gid");
-            if (gid) delete gidMap[gid];
+            if (gid) {
+                delete gidMap[gid];
+                delete pluginState[gid];
+            }
             var subs = node.querySelectorAll("[data-gid]");
             for (var j = 0; j < subs.length; j++) {
-                delete gidMap[subs[j].getAttribute("data-gid")];
+                var subGid = subs[j].getAttribute("data-gid");
+                delete gidMap[subGid];
+                delete pluginState[subGid];
             }
         }
         node.parentNode.removeChild(node);
