@@ -216,15 +216,22 @@ func (ci *componentInfo) setField(path string, rawValue json.RawMessage) error {
 				field.Set(reflect.Zero(field.Type()))
 				return nil
 			}
-			if n, convErr := strconv.ParseInt(s, 10, 64); convErr == nil {
-				rv := reflect.ValueOf(n).Convert(field.Type())
-				field.Set(rv)
-				return nil
-			}
-			if f, convErr := strconv.ParseFloat(s, 64); convErr == nil {
-				rv := reflect.ValueOf(f).Convert(field.Type())
-				field.Set(rv)
-				return nil
+			switch field.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				if n, convErr := strconv.ParseInt(s, 10, 64); convErr == nil {
+					field.SetInt(n)
+					return nil
+				}
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				if n, convErr := strconv.ParseUint(s, 10, 64); convErr == nil {
+					field.SetUint(n)
+					return nil
+				}
+			case reflect.Float32, reflect.Float64:
+				if f, convErr := strconv.ParseFloat(s, 64); convErr == nil {
+					field.SetFloat(f)
+					return nil
+				}
 			}
 		}
 		return fmt.Errorf("field %q: %w", path, err)
