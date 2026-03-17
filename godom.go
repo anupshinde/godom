@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 
@@ -574,9 +575,8 @@ func handleCall(ci *componentInfo, wsMsg *WSMessage, envArgs []float64, envValue
 	newRootState := ci.snapshotState()
 	changed := ci.changedFields(oldRootState, newRootState)
 
-	// For scoped calls where parent state didn't change,
-	// re-render the child to pick up child state changes.
 	if wsMsg.Scope != "" && len(changed) == 0 {
+		// No root changes — only child state changed. Re-render the child.
 		sm := computeChildUpdateMessage(ci.pb, ci, wsMsg.Scope)
 		ci.mu.Unlock()
 		if sm != nil {
@@ -586,12 +586,46 @@ func handleCall(ci *componentInfo, wsMsg *WSMessage, envArgs []float64, envValue
 		return
 	}
 
+	// Root state changed — always send the root update.
 	sm := computeUpdateMessage(ci.pb, ci, changed)
+
+	// For scoped calls, also send a child update if the root change did not
+	// structurally affect the child's owning list. If the list field changed,
+	// the root update already re-rendered the list (which includes this child),
+	// so a separate child update would be redundant or wrong (indexes may have shifted).
+	var childSM *ServerMessage
+	if wsMsg.Scope != "" && len(changed) > 0 {
+		if listField := scopeListField(ci.pb, wsMsg.Scope); listField == "" || !slices.Contains(changed, listField) {
+			childSM = computeChildUpdateMessage(ci.pb, ci, wsMsg.Scope)
+		}
+	}
+
 	ci.mu.Unlock()
 	if sm != nil {
 		data, _ := proto.Marshal(sm)
 		pool.broadcast(data)
 	}
+	if childSM != nil {
+		data, _ := proto.Marshal(childSM)
+		pool.broadcast(data)
+	}
+}
+
+// scopeListField returns the ListField of the forTemplate that owns the given
+// scope (e.g. "g3:0" → the ListField of the g-for with GID "g3"). Returns ""
+// if the scope can't be resolved to a forTemplate.
+func scopeListField(pb *pageBindings, scope string) string {
+	parts := strings.SplitN(scope, ":", 2)
+	if len(parts) != 2 || pb == nil {
+		return ""
+	}
+	forGID := parts[0]
+	for _, ft := range pb.ForLoops {
+		if ft.GID == forGID {
+			return ft.ListField
+		}
+	}
+	return ""
 }
 
 // handleBind processes a two-way binding update from the bridge.
