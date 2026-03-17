@@ -89,9 +89,14 @@ func propFieldNames(t reflect.Type) map[string]bool {
 }
 
 // setProps sets prop fields on the component from a prop name→value map.
+// Only fields tagged with `godom:"prop"` are written; this prevents parents
+// from accidentally overwriting child-owned state.
 func (ci *componentInfo) setProps(propValues map[string]interface{}) {
 	v := ci.value.Elem()
 	for name, val := range propValues {
+		if ci.propFields != nil && !ci.propFields[name] {
+			continue
+		}
 		field := v.FieldByName(name)
 		if !field.IsValid() || !field.CanSet() {
 			continue
