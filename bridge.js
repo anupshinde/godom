@@ -342,21 +342,32 @@
         }
     }
 
-    // Remove a DOM node and clean up all gidMap and pluginState entries for
-    // it and its descendants. This prevents stale references to removed elements
-    // and ensures plugins get init() (not update()) if the gid is reused.
+    // Remove eventMap entries for a given gid. Keys are "gid:event" or
+    // "gid:keydown:key", so we match any key starting with "gid:".
+    function cleanEventMap(gid) {
+        var prefix = gid + ":";
+        for (var k in eventMap) {
+            if (k.indexOf(prefix) === 0) delete eventMap[k];
+        }
+    }
+
+    // Remove a DOM node and clean up all gidMap, pluginState, and eventMap
+    // entries for it and its descendants. This prevents stale references to
+    // removed elements and ensures correct re-initialization if gids are reused.
     function removeAndClean(node) {
         if (node.nodeType === 1) {
             var gid = node.getAttribute("data-gid");
             if (gid) {
                 delete gidMap[gid];
                 delete pluginState[gid];
+                cleanEventMap(gid);
             }
             var subs = node.querySelectorAll("[data-gid]");
             for (var j = 0; j < subs.length; j++) {
                 var subGid = subs[j].getAttribute("data-gid");
                 delete gidMap[subGid];
                 delete pluginState[subGid];
+                cleanEventMap(subGid);
             }
         }
         node.parentNode.removeChild(node);
