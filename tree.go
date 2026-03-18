@@ -1,6 +1,7 @@
 package godom
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -424,7 +425,44 @@ func resolveTree(templates []*templateNode, ctx *resolveContext) []Node {
 		resolved := resolveTemplateNode(t, ctx)
 		nodes = append(nodes, resolved...)
 	}
-	return nodes
+	// Merge adjacent TextNodes. When g-for/g-if produce 0 nodes, whitespace
+	// text nodes before and after become adjacent in the VDOM. The browser's
+	// HTML parser merges adjacent text into a single DOM text node, so we must
+	// do the same to keep DFS indices in sync between the VDOM and the DOM.
+	return mergeAdjacentText(nodes)
+}
+
+// mergeAdjacentText collapses consecutive TextNode entries into one and
+// removes empty TextNodes. Both operations keep the VDOM in sync with the
+// browser's DOM:
+//   - Adjacent text: when g-for/g-if produce 0 nodes, surrounding whitespace
+//     text nodes become adjacent. The browser merges them into one DOM node.
+//   - Empty text: a TextNode("") renders as nothing in innerHTML, so the
+//     browser creates no DOM node for it. Keeping it in the VDOM would shift
+//     all subsequent DFS indices.
+func mergeAdjacentText(nodes []Node) []Node {
+	if len(nodes) == 0 {
+		return nodes
+	}
+	out := make([]Node, 0, len(nodes))
+	for _, n := range nodes {
+		tn, isText := n.(*TextNode)
+		if isText {
+			// Drop empty text nodes — they produce no DOM node.
+			if tn.Text == "" {
+				continue
+			}
+			// Merge with preceding text node if adjacent.
+			if len(out) > 0 {
+				if prev, prevIsText := out[len(out)-1].(*TextNode); prevIsText {
+					prev.Text += tn.Text
+					continue
+				}
+			}
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // resolveTemplateNode resolves a single template node into zero or more Nodes.
@@ -486,11 +524,15 @@ func resolveElementNode(t *templateNode, ctx *resolveContext) Node {
 	}
 
 	// Resolve children
-	// If g-text directive exists, it replaces all children with a single text node
+	// If g-text directive exists, it replaces all children with a single text node.
+	// Empty text produces no DOM node, so we omit it to keep DFS indices aligned.
 	for _, d := range t.Directives {
 		if d.Type == "text" {
 			val := resolveExpr(d.Expr, ctx)
-			el.Children = []Node{&TextNode{Text: fmt.Sprint(val)}}
+			text := fmt.Sprint(val)
+			if text != "" {
+				el.Children = []Node{&TextNode{Text: text}}
+			}
 			return el
 		}
 	}
@@ -546,6 +588,11 @@ func resolveForNode(t *templateNode, ctx *resolveContext) []Node {
 // resolvePluginNode resolves a plugin element.
 func resolvePluginNode(t *templateNode, ctx *resolveContext) Node {
 	data := resolveExpr(t.PluginExpr, ctx)
+	// Deep-copy plugin data via JSON round-trip. Plugin data often contains
+	// slices and maps that are shared with the live component state. Without
+	// a deep copy, mutations to the live state silently change prevTree's data,
+	// making the diff think nothing changed.
+	data = deepCopyJSON(data)
 	return &PluginNode{
 		Tag:   t.Tag,
 		Name:  t.PluginName,
@@ -880,6 +927,23 @@ func getAttrVal(n *html.Node, key string) string {
 		}
 	}
 	return ""
+}
+
+// deepCopyJSON deep-copies a value by JSON round-tripping.
+// Returns the original value if marshaling fails.
+func deepCopyJSON(v any) any {
+	if v == nil {
+		return nil
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return v
+	}
+	var out any
+	if err := json.Unmarshal(data, &out); err != nil {
+		return v
+	}
+	return out
 }
 
 func findBody(n *html.Node) *html.Node {

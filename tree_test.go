@@ -624,6 +624,121 @@ func TestParseForExpr(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// mergeAdjacentText tests
+// ---------------------------------------------------------------------------
+
+func TestMergeAdjacentText(t *testing.T) {
+	nodes := []Node{
+		&TextNode{Text: "a"},
+		&TextNode{Text: "b"},
+		&TextNode{Text: "c"},
+	}
+	merged := mergeAdjacentText(nodes)
+	if len(merged) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(merged))
+	}
+	if merged[0].(*TextNode).Text != "abc" {
+		t.Errorf("expected 'abc', got %q", merged[0].(*TextNode).Text)
+	}
+}
+
+func TestMergeAdjacentText_InterleaveElements(t *testing.T) {
+	nodes := []Node{
+		&TextNode{Text: "a"},
+		&ElementNode{Tag: "div"},
+		&TextNode{Text: "b"},
+		&TextNode{Text: "c"},
+	}
+	merged := mergeAdjacentText(nodes)
+	if len(merged) != 3 {
+		t.Fatalf("expected 3 nodes, got %d", len(merged))
+	}
+	if merged[0].(*TextNode).Text != "a" {
+		t.Errorf("first text should be 'a', got %q", merged[0].(*TextNode).Text)
+	}
+	if merged[2].(*TextNode).Text != "bc" {
+		t.Errorf("last text should be 'bc', got %q", merged[2].(*TextNode).Text)
+	}
+}
+
+func TestResolveTree_EmptyForMergesAdjacentWhitespace(t *testing.T) {
+	// Simulates: <div>\n  <g-for (empty list)>\n</div>
+	// The whitespace before and after the empty g-for should merge into one TextNode.
+	templates := []*templateNode{
+		{IsText: true, TextParts: []textPart{{Static: true, Value: "\n  "}}},
+		{IsFor: true, ForItem: "x", ForList: "Items"},
+		{IsText: true, TextParts: []textPart{{Static: true, Value: "\n"}}},
+	}
+
+	type comp struct {
+		Component
+		Items []string
+	}
+	c := &comp{Items: nil}
+	ctx := &resolveContext{
+		State: reflect.ValueOf(c),
+		Vars:  make(map[string]any),
+	}
+
+	nodes := resolveTree(templates, ctx)
+	// Two whitespace text nodes should be merged into one
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 merged text node, got %d nodes", len(nodes))
+	}
+	tn, ok := nodes[0].(*TextNode)
+	if !ok {
+		t.Fatal("expected a TextNode")
+	}
+	if tn.Text != "\n  \n" {
+		t.Errorf("expected merged text '\\n  \\n', got %q", tn.Text)
+	}
+}
+
+func TestMergeAdjacentText_DropsEmptyText(t *testing.T) {
+	nodes := []Node{
+		&TextNode{Text: "a"},
+		&TextNode{Text: ""},
+		&ElementNode{Tag: "div"},
+		&TextNode{Text: ""},
+		&TextNode{Text: "b"},
+	}
+	merged := mergeAdjacentText(nodes)
+	// Empty text nodes should be dropped; "a" stands alone, "b" stands alone
+	if len(merged) != 3 {
+		t.Fatalf("expected 3 nodes, got %d", len(merged))
+	}
+	if merged[0].(*TextNode).Text != "a" {
+		t.Errorf("first = %q, want 'a'", merged[0].(*TextNode).Text)
+	}
+	if merged[2].(*TextNode).Text != "b" {
+		t.Errorf("last = %q, want 'b'", merged[2].(*TextNode).Text)
+	}
+}
+
+func TestResolveElementNode_GTextEmpty(t *testing.T) {
+	// When g-text resolves to "", the element should have no children
+	// because the browser creates no DOM text node for empty innerHTML.
+	tmpl := &templateNode{
+		Tag:        "div",
+		Directives: []directive{{Type: "text", Expr: "Name"}},
+	}
+	type comp struct {
+		Component
+		Name string
+	}
+	c := &comp{Name: ""}
+	ctx := &resolveContext{State: reflect.ValueOf(c), Vars: make(map[string]any)}
+	nodes := resolveTemplateNode(tmpl, ctx)
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(nodes))
+	}
+	el := nodes[0].(*ElementNode)
+	if len(el.Children) != 0 {
+		t.Errorf("expected 0 children for empty g-text, got %d", len(el.Children))
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 

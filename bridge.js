@@ -81,6 +81,7 @@
                 rootNode = document.body;
                 indexDOM(rootNode);
                 registerEvents(msg.events);
+                initPlugins(rootNode);
             } else if (msg.type === "patch") {
                 applyPatches(msg.patches);
             }
@@ -143,13 +144,21 @@
 
     function applyPatches(patches) {
         if (!patches) return;
+        // Resolve all target DOM nodes BEFORE applying any patches.
+        // Structural patches (append, redraw, remove) change the DOM tree,
+        // which invalidates DFS indices for subsequent patches. By collecting
+        // all target nodes upfront from the unmodified DOM, every patch
+        // operates on the correct node.
+        var resolved = [];
         for (var i = 0; i < patches.length; i++) {
-            applyPatch(patches[i]);
+            resolved.push(getNodeByIndex(patches[i].index));
+        }
+        for (var i = 0; i < patches.length; i++) {
+            applyPatch(resolved[i], patches[i]);
         }
     }
 
-    function applyPatch(patch) {
-        var node = getNodeByIndex(patch.index);
+    function applyPatch(node, patch) {
         if (!node) return;
 
         switch (patch.op) {
@@ -202,8 +211,9 @@
             }
         }
 
-        // Register events on the new nodes
+        // Register events and init plugins on the new nodes
         registerEvents(patch.patchEvents);
+        if (newNode && newNode.nodeType === 1) initPlugins(newNode);
     }
 
     // --- Text: update text content ---
@@ -305,7 +315,6 @@
         if (!patch.pluginData || !patch.pluginData.length) return;
         var data = JSON.parse(textDecoder.decode(patch.pluginData));
         var gid = node.getAttribute && node.getAttribute("data-gid");
-        // Find plugin name from data-g-plugin attribute
         var pluginName = node.getAttribute && node.getAttribute("data-g-plugin");
         var handler = window.godom && window.godom._plugins && window.godom._plugins[pluginName];
         if (!handler) return;
@@ -315,6 +324,26 @@
             pluginState[gid] = true;
         } else {
             handler.update(node, data);
+        }
+    }
+
+    // --- Plugin init: scan for data-g-plugin-init elements on initial render ---
+    function initPlugins(root) {
+        var els = root.querySelectorAll("[data-g-plugin-init]");
+        for (var i = 0; i < els.length; i++) {
+            var el = els[i];
+            var pluginName = el.getAttribute("data-g-plugin");
+            var handler = window.godom && window.godom._plugins && window.godom._plugins[pluginName];
+            if (!handler) continue;
+            var gid = el.getAttribute("data-gid");
+            if (!gid) continue;
+            try {
+                var data = JSON.parse(el.getAttribute("data-g-plugin-init"));
+                handler.init(el, data);
+                pluginState[gid] = true;
+            } catch(e) {}
+            // Remove the init data attribute — no longer needed
+            el.removeAttribute("data-g-plugin-init");
         }
     }
 

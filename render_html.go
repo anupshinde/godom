@@ -78,6 +78,20 @@ func renderElement(sb *strings.Builder, tag, namespace string, facts *Facts, chi
 		sb.WriteByte('"')
 	}
 
+	// Plugin marker — bridge uses this to find the plugin handler
+	if plugin != nil {
+		sb.WriteString(` data-g-plugin="`)
+		sb.WriteString(html.EscapeString(plugin.Name))
+		sb.WriteByte('"')
+		// Embed plugin init data so the bridge can init on first render
+		if plugin.Data != nil {
+			dataJSON, _ := json.Marshal(plugin.Data)
+			sb.WriteString(` data-g-plugin-init="`)
+			sb.WriteString(html.EscapeString(string(dataJSON)))
+			sb.WriteByte('"')
+		}
+	}
+
 	// Render properties that map to HTML attributes
 	if facts != nil {
 		renderFactsAsAttrs(sb, facts)
@@ -290,6 +304,20 @@ func renderElementWithEvents(sb *strings.Builder, tag, namespace string, facts *
 		sb.WriteString(` data-gid="`)
 		sb.WriteString(assignedGID)
 		sb.WriteByte('"')
+	}
+
+	// Plugin marker — bridge uses this to find the plugin handler
+	if plugin != nil {
+		sb.WriteString(` data-g-plugin="`)
+		sb.WriteString(html.EscapeString(plugin.Name))
+		sb.WriteByte('"')
+		// Embed plugin init data so the bridge can init on first render
+		if plugin.Data != nil {
+			dataJSON, _ := json.Marshal(plugin.Data)
+			sb.WriteString(` data-g-plugin-init="`)
+			sb.WriteString(html.EscapeString(string(dataJSON)))
+			sb.WriteByte('"')
+		}
 	}
 
 	// Render properties that map to HTML attributes
