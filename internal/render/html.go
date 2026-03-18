@@ -1,4 +1,4 @@
-package godom
+package render
 
 import (
 	"encoding/json"
@@ -7,16 +7,26 @@ import (
 	"sort"
 	"strings"
 
-	gproto "github.com/anupshinde/godom/proto"
-	"github.com/anupshinde/godom/vdom"
+	gproto "github.com/anupshinde/godom/internal/proto"
+	"github.com/anupshinde/godom/internal/vdom"
 	"google.golang.org/protobuf/proto"
 )
 
-// renderToHTML renders a Node tree to an HTML string.
+// GIDCounter assigns sequential data-gid values during rendering.
+type GIDCounter struct {
+	Seq int
+}
+
+func (g *GIDCounter) Next() string {
+	g.Seq++
+	return fmt.Sprintf("g%d", g.Seq)
+}
+
+// RenderToHTML renders a Node tree to an HTML string.
 // Used for the init message — the bridge receives this as innerHTML.
 // Each element with events or bindings gets a data-gid attribute
-// assigned from the gidCounter, enabling the bridge to target them.
-func renderToHTML(nodes []vdom.Node, gid *gidCounter) string {
+// assigned from the GIDCounter, enabling the bridge to target them.
+func RenderToHTML(nodes []vdom.Node, gid *GIDCounter) string {
 	var sb strings.Builder
 	for _, n := range nodes {
 		renderNode(&sb, n, gid)
@@ -24,18 +34,8 @@ func renderToHTML(nodes []vdom.Node, gid *gidCounter) string {
 	return sb.String()
 }
 
-// gidCounter assigns sequential data-gid values during rendering.
-type gidCounter struct {
-	seq int
-}
-
-func (g *gidCounter) next() string {
-	g.seq++
-	return fmt.Sprintf("g%d", g.seq)
-}
-
 // renderNode writes a single node's HTML to the builder.
-func renderNode(sb *strings.Builder, n vdom.Node, gid *gidCounter) {
+func renderNode(sb *strings.Builder, n vdom.Node, gid *GIDCounter) {
 	switch n := n.(type) {
 	case *vdom.TextNode:
 		sb.WriteString(html.EscapeString(n.Text))
@@ -67,14 +67,14 @@ func renderNode(sb *strings.Builder, n vdom.Node, gid *gidCounter) {
 }
 
 // renderElement writes an HTML element with its facts and children.
-func renderElement(sb *strings.Builder, tag, namespace string, facts *vdom.Facts, children []vdom.Node, plugin *vdom.PluginNode, gid *gidCounter) {
+func renderElement(sb *strings.Builder, tag, namespace string, facts *vdom.Facts, children []vdom.Node, plugin *vdom.PluginNode, gid *GIDCounter) {
 	sb.WriteByte('<')
 	sb.WriteString(tag)
 
 	// Assign data-gid if the element has events, bindings, or is a plugin
 	needsGID := facts != nil && (len(facts.Events) > 0 || len(facts.Props) > 0 || len(facts.Styles) > 0 || plugin != nil)
 	if needsGID {
-		id := gid.next()
+		id := gid.Next()
 		sb.WriteString(` data-gid="`)
 		sb.WriteString(id)
 		sb.WriteByte('"')
@@ -250,10 +250,10 @@ func sortedStringKeys(m map[string]string) []string {
 // Rendering with event collection — used by VDOM init and patch encoding
 // ---------------------------------------------------------------------------
 
-// renderToHTMLWithEvents renders nodes to HTML and collects EventSetup entries
+// RenderToHTMLWithEvents renders nodes to HTML and collects EventSetup entries
 // for all elements that have event handlers. The EventSetup entries include
 // pre-built WSMessage bytes so the bridge can send them back on event fire.
-func renderToHTMLWithEvents(nodes []vdom.Node, gid *gidCounter) (string, []*gproto.EventSetup) {
+func RenderToHTMLWithEvents(nodes []vdom.Node, gid *GIDCounter) (string, []*gproto.EventSetup) {
 	var sb strings.Builder
 	var events []*gproto.EventSetup
 	for _, n := range nodes {
@@ -263,7 +263,7 @@ func renderToHTMLWithEvents(nodes []vdom.Node, gid *gidCounter) (string, []*gpro
 }
 
 // renderNodeWithEvents is like renderNode but also collects EventSetup entries.
-func renderNodeWithEvents(sb *strings.Builder, n vdom.Node, gid *gidCounter, events *[]*gproto.EventSetup) {
+func renderNodeWithEvents(sb *strings.Builder, n vdom.Node, gid *GIDCounter, events *[]*gproto.EventSetup) {
 	switch n := n.(type) {
 	case *vdom.TextNode:
 		sb.WriteString(html.EscapeString(n.Text))
@@ -294,7 +294,7 @@ func renderNodeWithEvents(sb *strings.Builder, n vdom.Node, gid *gidCounter, eve
 }
 
 // renderElementWithEvents writes an HTML element and collects events.
-func renderElementWithEvents(sb *strings.Builder, tag, namespace string, facts *vdom.Facts, children []vdom.Node, plugin *vdom.PluginNode, gid *gidCounter, events *[]*gproto.EventSetup) {
+func renderElementWithEvents(sb *strings.Builder, tag, namespace string, facts *vdom.Facts, children []vdom.Node, plugin *vdom.PluginNode, gid *GIDCounter, events *[]*gproto.EventSetup) {
 	sb.WriteByte('<')
 	sb.WriteString(tag)
 
@@ -302,7 +302,7 @@ func renderElementWithEvents(sb *strings.Builder, tag, namespace string, facts *
 	needsGID := facts != nil && (len(facts.Events) > 0 || len(facts.Props) > 0 || len(facts.Styles) > 0 || plugin != nil)
 	var assignedGID string
 	if needsGID {
-		assignedGID = gid.next()
+		assignedGID = gid.Next()
 		sb.WriteString(` data-gid="`)
 		sb.WriteString(assignedGID)
 		sb.WriteByte('"')
@@ -370,8 +370,6 @@ func renderElementWithEvents(sb *strings.Builder, tag, namespace string, facts *
 }
 
 // buildWSMessageBytes builds a pre-encoded WSMessage for an event handler.
-// For bind handlers: WSMessage{type:"bind", field:"FieldName"}
-// For call handlers: WSMessage{type:"call", method:"MethodName", args:[...]}
 func buildWSMessageBytes(handler vdom.EventHandler) []byte {
 	if handler.Handler == "__bind__" {
 		fieldName, _ := handler.Args[0].(string)

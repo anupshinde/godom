@@ -1,27 +1,27 @@
-package godom
+package render
 
 import (
 	"encoding/json"
 
-	gproto "github.com/anupshinde/godom/proto"
-	"github.com/anupshinde/godom/vdom"
+	gproto "github.com/anupshinde/godom/internal/proto"
+	"github.com/anupshinde/godom/internal/vdom"
 )
 
 // Patch op names sent over the wire — bridge.js dispatches on these.
 const (
-	opRedraw     = "redraw"
-	opText       = "text"
-	opFacts      = "facts"
-	opAppend     = "append"
-	opRemoveLast = "remove-last"
-	opRemove     = "remove"
-	opReorder    = "reorder"
-	opPlugin     = "plugin"
-	opLazy       = "lazy"
+	OpRedraw     = "redraw"
+	OpText       = "text"
+	OpFacts      = "facts"
+	OpAppend     = "append"
+	OpRemoveLast = "remove-last"
+	OpRemove     = "remove"
+	OpReorder    = "reorder"
+	OpPlugin     = "plugin"
+	OpLazy       = "lazy"
 )
 
-// encodeInitMessage builds a VDomMessage for the initial full render.
-func encodeInitMessage(htmlContent string, events []*gproto.EventSetup) *gproto.VDomMessage {
+// EncodeInitMessage builds a VDomMessage for the initial full render.
+func EncodeInitMessage(htmlContent string, events []*gproto.EventSetup) *gproto.VDomMessage {
 	return &gproto.VDomMessage{
 		Type:   "init",
 		Html:   []byte(htmlContent),
@@ -29,8 +29,8 @@ func encodeInitMessage(htmlContent string, events []*gproto.EventSetup) *gproto.
 	}
 }
 
-// encodePatchMessage builds a VDomMessage with patches from a diff.
-func encodePatchMessage(patches []vdom.Patch, gid *gidCounter) *gproto.VDomMessage {
+// EncodePatchMessage builds a VDomMessage with patches from a diff.
+func EncodePatchMessage(patches []vdom.Patch, gid *GIDCounter) *gproto.VDomMessage {
 	msg := &gproto.VDomMessage{Type: "patch"}
 	for _, p := range patches {
 		dp := encodePatch(p, gid)
@@ -42,48 +42,48 @@ func encodePatchMessage(patches []vdom.Patch, gid *gidCounter) *gproto.VDomMessa
 }
 
 // encodePatch converts a Go Patch to a protobuf DomPatch.
-func encodePatch(p vdom.Patch, gid *gidCounter) *gproto.DomPatch {
+func encodePatch(p vdom.Patch, gid *GIDCounter) *gproto.DomPatch {
 	dp := &gproto.DomPatch{
 		Index: int32(p.Index),
 	}
 
 	switch p.Type {
 	case vdom.PatchRedraw:
-		dp.Op = opRedraw
+		dp.Op = OpRedraw
 		data := p.Data.(vdom.PatchRedrawData)
 		// Render the new node to HTML and collect events
-		html, events := renderToHTMLWithEvents([]vdom.Node{data.Node}, gid)
+		html, events := RenderToHTMLWithEvents([]vdom.Node{data.Node}, gid)
 		dp.HtmlContent = []byte(html)
 		dp.PatchEvents = events
 
 	case vdom.PatchText:
-		dp.Op = opText
+		dp.Op = OpText
 		data := p.Data.(vdom.PatchTextData)
 		dp.Text = data.Text
 
 	case vdom.PatchFacts:
-		dp.Op = opFacts
+		dp.Op = OpFacts
 		data := p.Data.(vdom.PatchFactsData)
 		factsJSON, _ := json.Marshal(encodeFactsDiff(&data.Diff))
 		dp.Facts = factsJSON
 
 	case vdom.PatchAppend:
-		dp.Op = opAppend
+		dp.Op = OpAppend
 		data := p.Data.(vdom.PatchAppendData)
-		html, events := renderToHTMLWithEvents(data.Nodes, gid)
+		html, events := RenderToHTMLWithEvents(data.Nodes, gid)
 		dp.HtmlContent = []byte(html)
 		dp.PatchEvents = events
 
 	case vdom.PatchRemoveLast:
-		dp.Op = opRemoveLast
+		dp.Op = OpRemoveLast
 		data := p.Data.(vdom.PatchRemoveLastData)
 		dp.Count = int32(data.Count)
 
 	case vdom.PatchRemove:
-		dp.Op = opRemove
+		dp.Op = OpRemove
 
 	case vdom.PatchReorder:
-		dp.Op = opReorder
+		dp.Op = OpReorder
 		data := p.Data.(vdom.PatchReorderData)
 		reorderJSON, _ := json.Marshal(encodeReorderData(&data))
 		dp.Reorder = reorderJSON
@@ -96,13 +96,13 @@ func encodePatch(p vdom.Patch, gid *gidCounter) *gproto.DomPatch {
 		}
 
 	case vdom.PatchPlugin:
-		dp.Op = opPlugin
+		dp.Op = OpPlugin
 		data := p.Data.(vdom.PatchPluginData)
 		pluginJSON, _ := json.Marshal(data.Data)
 		dp.PluginData = pluginJSON
 
 	case vdom.PatchLazy:
-		dp.Op = opLazy
+		dp.Op = OpLazy
 		data := p.Data.(vdom.PatchLazyData)
 		for _, sp := range data.Patches {
 			sub := encodePatch(sp, gid)
@@ -122,8 +122,8 @@ func encodePatch(p vdom.Patch, gid *gidCounter) *gproto.DomPatch {
 // FactsDiff encoding for JSON transport
 // ---------------------------------------------------------------------------
 
-// wireFactsDiff is the JSON structure sent to the bridge.
-type wireFactsDiff struct {
+// WireFactsDiff is the JSON structure sent to the bridge.
+type WireFactsDiff struct {
 	Props   map[string]any         `json:"p,omitempty"` // properties
 	Attrs   map[string]string      `json:"a,omitempty"` // attributes
 	AttrsNS map[string]wireNSAttr  `json:"an,omitempty"` // namespaced attributes
@@ -145,8 +145,8 @@ type wireEvent struct {
 	PD  bool   `json:"pd,omitempty"` // preventDefault
 }
 
-func encodeFactsDiff(d *vdom.FactsDiff) *wireFactsDiff {
-	w := &wireFactsDiff{}
+func encodeFactsDiff(d *vdom.FactsDiff) *WireFactsDiff {
+	w := &WireFactsDiff{}
 
 	if len(d.Props) > 0 {
 		w.Props = d.Props
@@ -174,8 +174,6 @@ func encodeFactsDiff(d *vdom.FactsDiff) *wireFactsDiff {
 					Key: v.Options.Key,
 					SP:  v.Options.StopPropagation,
 					PD:  v.Options.PreventDefault,
-					// Msg and Gid are filled in when we have the full context
-					// (gid assignment happens during renderToHTML)
 				}
 			}
 		}
@@ -209,7 +207,7 @@ func encodeReorderData(d *vdom.PatchReorderData) *wireReorder {
 	for _, ins := range d.Inserts {
 		wi := wireReorderInsert{Index: ins.Index, Key: ins.Key}
 		if ins.Node != nil {
-			wi.HTML = renderToHTML([]vdom.Node{ins.Node}, &gidCounter{})
+			wi.HTML = RenderToHTML([]vdom.Node{ins.Node}, &GIDCounter{})
 		}
 		w.Inserts = append(w.Inserts, wi)
 	}
@@ -218,7 +216,3 @@ func encodeReorderData(d *vdom.PatchReorderData) *wireReorder {
 	}
 	return w
 }
-
-// Event collection is now integrated into renderToHTMLWithEvents in render_html.go.
-// Events are collected during HTML rendering so that gid assignment and event
-// registration happen in a single pass.

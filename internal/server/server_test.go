@@ -1,19 +1,21 @@
-package godom
+package server
 
 import (
 	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/anupshinde/godom/vdom"
+	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/render"
+	"github.com/anupshinde/godom/internal/vdom"
 	"google.golang.org/protobuf/proto"
 )
 
 // counterApp mirrors the counter example's state struct.
 type counterApp struct {
-	Component
-	Count int
-	Step  int
+	Component struct{} // dummy — matches the field name check
+	Count     int
+	Step      int
 }
 
 func (a *counterApp) Increment() {
@@ -36,7 +38,7 @@ const counterHTML = `<!DOCTYPE html><html><head><title>Counter</title></head><bo
     </div>
 </body></html>`
 
-func makeCounterCI(app *counterApp) *componentInfo {
+func makeCounterCI(app *counterApp) *component.Info {
 	v := reflect.ValueOf(app)
 	t := v.Elem().Type()
 
@@ -45,10 +47,10 @@ func makeCounterCI(app *counterApp) *componentInfo {
 		panic(err)
 	}
 
-	return &componentInfo{
-		value:         v,
-		typ:           t,
-		vdomTemplates: templates,
+	return &component.Info{
+		Value:         v,
+		Typ:           t,
+		VDOMTemplates: templates,
 	}
 }
 
@@ -56,7 +58,7 @@ func TestVDOMBuildInit(t *testing.T) {
 	app := &counterApp{Step: 1, Count: 5}
 	ci := makeCounterCI(app)
 
-	msg := vdomBuildInit(ci)
+	msg := BuildInit(ci)
 
 	if msg.Type != "init" {
 		t.Fatalf("expected type 'init', got %q", msg.Type)
@@ -121,11 +123,11 @@ func TestVDOMBuildUpdate_Increment(t *testing.T) {
 	ci := makeCounterCI(app)
 
 	// Initial render
-	_ = vdomBuildInit(ci)
+	_ = BuildInit(ci)
 
 	// Simulate Increment
 	app.Count = 1
-	msg := vdomBuildUpdate(ci)
+	msg := BuildUpdate(ci)
 
 	if msg == nil {
 		t.Fatal("expected patch message after increment")
@@ -137,7 +139,7 @@ func TestVDOMBuildUpdate_Increment(t *testing.T) {
 	// Should have a text patch changing "0" to "1"
 	var hasTextPatch bool
 	for _, p := range msg.Patches {
-		if p.Op == opText && p.Text == "1" {
+		if p.Op == render.OpText && p.Text == "1" {
 			hasTextPatch = true
 		}
 	}
@@ -159,10 +161,10 @@ func TestVDOMBuildUpdate_NoChange(t *testing.T) {
 	app := &counterApp{Step: 1, Count: 5}
 	ci := makeCounterCI(app)
 
-	_ = vdomBuildInit(ci)
+	_ = BuildInit(ci)
 
 	// No state change
-	msg := vdomBuildUpdate(ci)
+	msg := BuildUpdate(ci)
 	if msg != nil {
 		t.Errorf("expected nil message when nothing changed, got type=%q patches=%d", msg.Type, len(msg.Patches))
 	}
@@ -172,11 +174,11 @@ func TestVDOMBuildUpdate_BindStep(t *testing.T) {
 	app := &counterApp{Step: 1, Count: 0}
 	ci := makeCounterCI(app)
 
-	_ = vdomBuildInit(ci)
+	_ = BuildInit(ci)
 
 	// Simulate step change (as if g-bind updated it)
 	app.Step = 5
-	msg := vdomBuildUpdate(ci)
+	msg := BuildUpdate(ci)
 
 	if msg == nil {
 		t.Fatal("expected patch message after step change")
@@ -185,7 +187,7 @@ func TestVDOMBuildUpdate_BindStep(t *testing.T) {
 	// Should have a facts patch (value property changed on input)
 	var hasFactsPatch bool
 	for _, p := range msg.Patches {
-		if p.Op == opFacts {
+		if p.Op == render.OpFacts {
 			hasFactsPatch = true
 		}
 	}
@@ -198,18 +200,18 @@ func TestVDOMBuildUpdate_MultipleIncrements(t *testing.T) {
 	app := &counterApp{Step: 2, Count: 0}
 	ci := makeCounterCI(app)
 
-	_ = vdomBuildInit(ci)
+	_ = BuildInit(ci)
 
 	// First increment
 	app.Count = 2
-	msg1 := vdomBuildUpdate(ci)
+	msg1 := BuildUpdate(ci)
 	if msg1 == nil {
 		t.Fatal("expected patch for first increment")
 	}
 
 	// Second increment
 	app.Count = 4
-	msg2 := vdomBuildUpdate(ci)
+	msg2 := BuildUpdate(ci)
 	if msg2 == nil {
 		t.Fatal("expected patch for second increment")
 	}
@@ -217,7 +219,7 @@ func TestVDOMBuildUpdate_MultipleIncrements(t *testing.T) {
 	// Check the second patch has text "4"
 	var hasText4 bool
 	for _, p := range msg2.Patches {
-		if p.Op == opText && p.Text == "4" {
+		if p.Op == render.OpText && p.Text == "4" {
 			hasText4 = true
 		}
 	}

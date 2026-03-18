@@ -1,4 +1,4 @@
-package godom
+package template
 
 import (
 	"strings"
@@ -19,30 +19,30 @@ func TestParseForExprParts(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		p := parseForExprParts(tt.expr)
+		p := ParseForExprParts(tt.expr)
 		if p == nil {
-			t.Fatalf("parseForExprParts(%q) returned nil", tt.expr)
+			t.Fatalf("ParseForExprParts(%q) returned nil", tt.expr)
 		}
-		if p.item != tt.wantItem {
-			t.Errorf("item = %q, want %q", p.item, tt.wantItem)
+		if p.Item != tt.wantItem {
+			t.Errorf("Item = %q, want %q", p.Item, tt.wantItem)
 		}
-		if p.index != tt.wantIndex {
-			t.Errorf("index = %q, want %q", p.index, tt.wantIndex)
+		if p.Index != tt.wantIndex {
+			t.Errorf("Index = %q, want %q", p.Index, tt.wantIndex)
 		}
-		if p.list != tt.wantList {
-			t.Errorf("list = %q, want %q", p.list, tt.wantList)
+		if p.List != tt.wantList {
+			t.Errorf("List = %q, want %q", p.List, tt.wantList)
 		}
 	}
 }
 
 func TestParseForExprParts_Invalid(t *testing.T) {
-	if p := parseForExprParts("invalid"); p != nil {
+	if p := ParseForExprParts("invalid"); p != nil {
 		t.Error("expected nil for invalid expression")
 	}
 }
 
 func TestParsePropsAttr(t *testing.T) {
-	props := parsePropsAttr("index:i,todo:todo")
+	props := ParsePropsAttr("index:i,todo:todo")
 	if props["index"] != "i" {
 		t.Errorf("index = %q, want i", props["index"])
 	}
@@ -52,14 +52,14 @@ func TestParsePropsAttr(t *testing.T) {
 }
 
 func TestParsePropsAttr_Empty(t *testing.T) {
-	props := parsePropsAttr("")
+	props := ParsePropsAttr("")
 	if props != nil {
 		t.Errorf("expected nil for empty, got %v", props)
 	}
 }
 
 func TestParsePropsAttr_Whitespace(t *testing.T) {
-	props := parsePropsAttr(" name : expr , other : val ")
+	props := ParsePropsAttr(" name : expr , other : val ")
 	if props["name"] != "expr" {
 		t.Errorf("name = %q, want expr", props["name"])
 	}
@@ -80,8 +80,8 @@ func TestExprRoot(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := exprRoot(tt.expr); got != tt.want {
-			t.Errorf("exprRoot(%q) = %q, want %q", tt.expr, got, tt.want)
+		if got := ExprRoot(tt.expr); got != tt.want {
+			t.Errorf("ExprRoot(%q) = %q, want %q", tt.expr, got, tt.want)
 		}
 	}
 }
@@ -100,9 +100,9 @@ func TestExtractProps(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := extractProps(tt.attrs)
+		got := ExtractProps(tt.attrs)
 		if got != tt.want {
-			t.Errorf("extractProps(%q) = %q, want %q", tt.attrs, got, tt.want)
+			t.Errorf("ExtractProps(%q) = %q, want %q", tt.attrs, got, tt.want)
 		}
 	}
 }
@@ -119,16 +119,16 @@ func TestExtractGAttrs(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := extractGAttrs(tt.attrs)
+		got := ExtractGAttrs(tt.attrs)
 		if got != tt.want {
-			t.Errorf("extractGAttrs(%q) = %q, want %q", tt.attrs, got, tt.want)
+			t.Errorf("ExtractGAttrs(%q) = %q, want %q", tt.attrs, got, tt.want)
 		}
 	}
 }
 
 func TestTransferAttrsToRoot(t *testing.T) {
 	h := `<li class="item">content</li>`
-	got := transferAttrsToRoot(h, `g-for="x in Y"`)
+	got := TransferAttrsToRoot(h, `g-for="x in Y"`)
 	if !strings.Contains(got, `g-for="x in Y"`) {
 		t.Errorf("expected g-for attr in result: %s", got)
 	}
@@ -139,7 +139,7 @@ func TestTransferAttrsToRoot(t *testing.T) {
 
 func TestTransferAttrsToRoot_SelfClosing(t *testing.T) {
 	h := `<input type="text" />`
-	got := transferAttrsToRoot(h, `g-bind="Name"`)
+	got := TransferAttrsToRoot(h, `g-bind="Name"`)
 	if !strings.Contains(got, `g-bind="Name"`) {
 		t.Errorf("expected g-bind in result: %s", got)
 	}
@@ -154,7 +154,7 @@ func TestExpandComponents(t *testing.T) {
 		"my-comp.html": {Data: []byte(`<span>hello</span>`)},
 	}
 
-	result, err := expandComponents(`<div><my-comp></my-comp></div>`, fsys, nil)
+	result, err := ExpandComponents(`<div><my-comp></my-comp></div>`, fsys, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestExpandComponents_WithGAttrs(t *testing.T) {
 		"my-item.html": {Data: []byte(`<li>item</li>`)},
 	}
 
-	result, err := expandComponents(`<my-item g-for="x in Items"></my-item>`, fsys, nil)
+	result, err := ExpandComponents(`<my-item g-for="x in Items"></my-item>`, fsys, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestExpandComponents_WithProps(t *testing.T) {
 		"my-item.html": {Data: []byte(`<li>item</li>`)},
 	}
 
-	result, err := expandComponents(`<my-item :name="item.Name" :index="i"></my-item>`, fsys, nil)
+	result, err := ExpandComponents(`<my-item :name="item.Name" :index="i"></my-item>`, fsys, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestExpandComponents_SelfClosing(t *testing.T) {
 		"my-tag.html": {Data: []byte(`<div>content</div>`)},
 	}
 
-	result, err := expandComponents(`<my-tag />`, fsys, nil)
+	result, err := ExpandComponents(`<my-tag />`, fsys, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestExpandComponents_SelfClosing(t *testing.T) {
 func TestExpandComponents_MissingFile(t *testing.T) {
 	fsys := fstest.MapFS{}
 
-	_, err := expandComponents(`<my-tag></my-tag>`, fsys, nil)
+	_, err := ExpandComponents(`<my-tag></my-tag>`, fsys, nil)
 	if err == nil {
 		t.Error("expected error for missing component file")
 	}
@@ -226,7 +226,7 @@ func TestFindIndexHTML_Root(t *testing.T) {
 		"index.html": {Data: []byte(`<html></html>`)},
 	}
 
-	found, err := findIndexHTML(fsys)
+	found, err := FindIndexHTML(fsys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestFindIndexHTML_Subdir(t *testing.T) {
 		"ui/index.html": {Data: []byte(`<html></html>`)},
 	}
 
-	found, err := findIndexHTML(fsys)
+	found, err := FindIndexHTML(fsys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestFindIndexHTML_NotFound(t *testing.T) {
 		"other.html": {Data: []byte(`<html></html>`)},
 	}
 
-	_, err := findIndexHTML(fsys)
+	_, err := FindIndexHTML(fsys)
 	if err == nil {
 		t.Error("expected error when index.html not found")
 	}

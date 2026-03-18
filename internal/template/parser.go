@@ -1,10 +1,12 @@
-package godom
+package template
 
 import (
 	"fmt"
 	"io/fs"
 	"regexp"
 	"strings"
+
+	"github.com/anupshinde/godom/internal/component"
 )
 
 // --- Template expansion (custom elements → HTML) ---
@@ -18,9 +20,9 @@ var propAttrRe = regexp.MustCompile(`:([a-zA-Z][a-zA-Z0-9_]*)\s*=\s*"([^"]*)"`)
 // gAttrRe matches g-* attributes (including g-class:done etc.) in an attribute string.
 var gAttrRe = regexp.MustCompile(`(g-[a-z]+(?::[a-z-]+)?)\s*=\s*"([^"]*)"`)
 
-// expandComponents takes HTML and recursively replaces custom element tags
+// ExpandComponents takes HTML and recursively replaces custom element tags
 // with the contents of their corresponding HTML files from the filesystem.
-func expandComponents(htmlStr string, fsys fs.FS, registry map[string]*componentReg) (string, error) {
+func ExpandComponents(htmlStr string, fsys fs.FS, registry map[string]*component.Reg) (string, error) {
 	maxDepth := 10
 	for depth := 0; depth < maxDepth; depth++ {
 		loc := openTagRe.FindStringSubmatchIndex(htmlStr)
@@ -60,21 +62,21 @@ func expandComponents(htmlStr string, fsys fs.FS, registry map[string]*component
 
 		// Transfer g-* attributes from the custom tag to the component's root element
 		if attrs != "" {
-			gAttrs := extractGAttrs(attrs)
+			gAttrs := ExtractGAttrs(attrs)
 			if gAttrs != "" {
-				expanded = transferAttrsToRoot(expanded, gAttrs)
+				expanded = TransferAttrsToRoot(expanded, gAttrs)
 			}
 
 			// Extract :prop="expr" attributes and encode as g-props on root element
-			propsAttr := extractProps(attrs)
+			propsAttr := ExtractProps(attrs)
 			if propsAttr != "" {
-				expanded = transferAttrsToRoot(expanded, `g-props="`+propsAttr+`"`)
+				expanded = TransferAttrsToRoot(expanded, `g-props="`+propsAttr+`"`)
 			}
 		}
 
 		// Mark registered (stateful) components so the parser can scope them
 		if _, ok := registry[tagName]; ok {
-			expanded = transferAttrsToRoot(expanded, `data-g-component="`+tagName+`"`)
+			expanded = TransferAttrsToRoot(expanded, `data-g-component="`+tagName+`"`)
 		}
 
 		htmlStr = htmlStr[:loc[0]] + expanded + htmlStr[end:]
@@ -83,8 +85,8 @@ func expandComponents(htmlStr string, fsys fs.FS, registry map[string]*component
 	return htmlStr, nil
 }
 
-// extractProps pulls out :prop="expr" attributes and encodes them as "name:expr,name:expr".
-func extractProps(attrs string) string {
+// ExtractProps pulls out :prop="expr" attributes and encodes them as "name:expr,name:expr".
+func ExtractProps(attrs string) string {
 	matches := propAttrRe.FindAllStringSubmatch(attrs, -1)
 	if len(matches) == 0 {
 		return ""
@@ -96,14 +98,14 @@ func extractProps(attrs string) string {
 	return strings.Join(parts, ",")
 }
 
-// extractGAttrs pulls out g-* attributes (and g-class:* etc.) from an attribute string.
-func extractGAttrs(attrs string) string {
+// ExtractGAttrs pulls out g-* attributes (and g-class:* etc.) from an attribute string.
+func ExtractGAttrs(attrs string) string {
 	matches := gAttrRe.FindAllString(attrs, -1)
 	return strings.Join(matches, " ")
 }
 
-// transferAttrsToRoot inserts attributes into the first opening tag of the HTML.
-func transferAttrsToRoot(htmlStr string, attrs string) string {
+// TransferAttrsToRoot inserts attributes into the first opening tag of the HTML.
+func TransferAttrsToRoot(htmlStr string, attrs string) string {
 	idx := strings.Index(htmlStr, ">")
 	if idx < 0 {
 		return htmlStr
@@ -116,9 +118,9 @@ func transferAttrsToRoot(htmlStr string, attrs string) string {
 	return htmlStr[:idx] + " " + attrs + htmlStr[idx:]
 }
 
-// findIndexHTML locates index.html in the filesystem,
+// FindIndexHTML locates index.html in the filesystem,
 // checking root and one level of subdirectories.
-func findIndexHTML(fsys fs.FS) (fs.FS, error) {
+func FindIndexHTML(fsys fs.FS) (fs.FS, error) {
 	if _, err := fs.ReadFile(fsys, "index.html"); err == nil {
 		return fsys, nil
 	}
@@ -143,15 +145,17 @@ func findIndexHTML(fsys fs.FS) (fs.FS, error) {
 	return nil, fmt.Errorf("index.html not found in filesystem")
 }
 
-// --- Helpers used by validate.go and parser_test.go ---
+// --- Helpers used by validate.go ---
 
-type forParts struct {
-	item  string
-	index string
-	list  string
+// ForParts holds parsed parts of a g-for expression.
+type ForParts struct {
+	Item  string
+	Index string
+	List  string
 }
 
-func parseForExprParts(expr string) *forParts {
+// ParseForExprParts parses a g-for expression like "item, i in List".
+func ParseForExprParts(expr string) *ForParts {
 	parts := strings.SplitN(expr, " in ", 2)
 	if len(parts) != 2 {
 		return nil
@@ -164,12 +168,12 @@ func parseForExprParts(expr string) *forParts {
 	if len(vars) > 1 {
 		idx = strings.TrimSpace(vars[1])
 	}
-	return &forParts{item: item, index: idx, list: list}
+	return &ForParts{Item: item, Index: idx, List: list}
 }
 
-// parsePropsAttr parses a g-props attribute value like "index:i,todo:todo"
+// ParsePropsAttr parses a g-props attribute value like "index:i,todo:todo"
 // into a map of prop name → parent expression.
-func parsePropsAttr(val string) map[string]string {
+func ParsePropsAttr(val string) map[string]string {
 	val = strings.TrimSpace(val)
 	if val == "" {
 		return nil
@@ -184,9 +188,9 @@ func parsePropsAttr(val string) map[string]string {
 	return props
 }
 
-// exprRoot returns the top-level field name from an expression.
+// ExprRoot returns the top-level field name from an expression.
 // "InputText" → "InputText", "todo.Done" → "todo"
-func exprRoot(expr string) string {
+func ExprRoot(expr string) string {
 	expr = strings.TrimSpace(expr)
 	if expr == "" {
 		return ""

@@ -1,11 +1,9 @@
-package godom
+package vdom
 
 import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/anupshinde/godom/vdom"
 )
 
 // ---------------------------------------------------------------------------
@@ -14,7 +12,7 @@ import (
 
 func TestParseTemplate_SimpleText(t *testing.T) {
 	html := `<!DOCTYPE html><html><head></head><body>Hello World</body></html>`
-	nodes, err := vdom.ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +30,7 @@ func TestParseTemplate_SimpleText(t *testing.T) {
 
 func TestParseTemplate_Element(t *testing.T) {
 	html := `<!DOCTYPE html><html><head></head><body><div class="main"><span>hi</span></div></body></html>`
-	nodes, err := vdom.ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +61,7 @@ func TestParseTemplate_Directives(t *testing.T) {
 		<div g-attr:transform="Transform">text</div>
 	</body></html>`
 
-	nodes, err := vdom.ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +93,7 @@ func TestParseTemplate_GFor(t *testing.T) {
 		</ul>
 	</body></html>`
 
-	nodes, err := vdom.ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +104,7 @@ func TestParseTemplate_GFor(t *testing.T) {
 	}
 
 	// Find the g-for node inside ul
-	var forNode *vdom.TemplateNode
+	var forNode *TemplateNode
 	for _, c := range ul.Children {
 		if c.IsFor {
 			forNode = c
@@ -138,7 +136,7 @@ func TestParseTemplate_TextInterpolation(t *testing.T) {
 		<p>Hello {{Name}}, you have {{Count}} items</p>
 	</body></html>`
 
-	nodes, err := vdom.ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,12 +174,12 @@ func TestParseTemplate_Component(t *testing.T) {
 	</body></html>`
 
 	comps := map[string]bool{"todo-item": true}
-	nodes, err := vdom.ParseTemplate(html, comps)
+	nodes, err := ParseTemplate(html, comps)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var comp *vdom.TemplateNode
+	var comp *TemplateNode
 	for _, n := range nodes {
 		if n.IsComponent {
 			comp = n
@@ -218,18 +216,18 @@ func TestResolveTree_SimpleElement(t *testing.T) {
 		<button g-click="Increment">+</button>
 	</body></html>`
 
-	templates, err := vdom.ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	state := &testCounter{Count: 42, Step: 1, Name: "test"}
-	ctx := &vdom.ResolveContext{
+	ctx := &ResolveContext{
 		State: reflect.ValueOf(state),
 		Vars:  make(map[string]any),
 	}
 
-	nodes := vdom.ResolveTree(templates, ctx)
+	nodes := ResolveTree(templates, ctx)
 
 	// Find the span with g-text — should have "42" as text
 	found := findNodeText(nodes, "42")
@@ -257,7 +255,7 @@ func TestResolveTree_GFor(t *testing.T) {
 		</ul>
 	</body></html>`
 
-	templates, err := vdom.ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,12 +266,12 @@ func TestResolveTree_GFor(t *testing.T) {
 			{ID: 2, Text: "Write code", Done: true},
 		},
 	}
-	ctx := &vdom.ResolveContext{
+	ctx := &ResolveContext{
 		State: reflect.ValueOf(state),
 		Vars:  make(map[string]any),
 	}
 
-	nodes := vdom.ResolveTree(templates, ctx)
+	nodes := ResolveTree(templates, ctx)
 
 	// The ul should have 2 li children (expanded from g-for)
 	ul := findElement(nodes, "ul")
@@ -282,7 +280,7 @@ func TestResolveTree_GFor(t *testing.T) {
 	}
 	liCount := 0
 	for _, c := range ul.Children {
-		if el, ok := c.(*vdom.ElementNode); ok && el.Tag == "li" {
+		if el, ok := c.(*ElementNode); ok && el.Tag == "li" {
 			liCount++
 		}
 	}
@@ -304,23 +302,23 @@ func TestResolveTree_GIf(t *testing.T) {
 		<div g-if="Done">completed</div>
 	</body></html>`
 
-	templates, err := vdom.ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Done = true → div should be present
 	state := &testTodo{Done: true}
-	ctx := &vdom.ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
-	nodes := vdom.ResolveTree(templates, ctx)
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+	nodes := ResolveTree(templates, ctx)
 	if findElement(nodes, "div") == nil {
 		t.Error("expected div when Done=true")
 	}
 
 	// Done = false → div should be absent
 	state2 := &testTodo{Done: false}
-	ctx2 := &vdom.ResolveContext{State: reflect.ValueOf(state2), Vars: make(map[string]any)}
-	nodes2 := vdom.ResolveTree(templates, ctx2)
+	ctx2 := &ResolveContext{State: reflect.ValueOf(state2), Vars: make(map[string]any)}
+	nodes2 := ResolveTree(templates, ctx2)
 	if findElement(nodes2, "div") != nil {
 		t.Error("expected no div when Done=false")
 	}
@@ -331,14 +329,14 @@ func TestResolveTree_TextInterpolation(t *testing.T) {
 		<p>Count is {{Count}}</p>
 	</body></html>`
 
-	templates, err := vdom.ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	state := &testCounter{Count: 7}
-	ctx := &vdom.ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
-	nodes := vdom.ResolveTree(templates, ctx)
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+	nodes := ResolveTree(templates, ctx)
 
 	if !findNodeText(nodes, "Count is 7") {
 		t.Error("expected interpolated text 'Count is 7'")
@@ -350,15 +348,15 @@ func TestResolveTree_GShow(t *testing.T) {
 		<div g-show="Done">hidden when false</div>
 	</body></html>`
 
-	templates, err := vdom.ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Done = false → display: none
 	state := &testTodo{Done: false}
-	ctx := &vdom.ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
-	nodes := vdom.ResolveTree(templates, ctx)
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+	nodes := ResolveTree(templates, ctx)
 	div := findElement(nodes, "div")
 	if div == nil {
 		t.Fatal("expected div element (g-show keeps element in DOM)")
@@ -369,8 +367,8 @@ func TestResolveTree_GShow(t *testing.T) {
 
 	// Done = true → no display:none
 	state2 := &testTodo{Done: true}
-	ctx2 := &vdom.ResolveContext{State: reflect.ValueOf(state2), Vars: make(map[string]any)}
-	nodes2 := vdom.ResolveTree(templates, ctx2)
+	ctx2 := &ResolveContext{State: reflect.ValueOf(state2), Vars: make(map[string]any)}
+	nodes2 := ResolveTree(templates, ctx2)
 	div2 := findElement(nodes2, "div")
 	if div2 == nil {
 		t.Fatal("expected div element")
@@ -385,15 +383,15 @@ func TestResolveTree_GClass(t *testing.T) {
 		<div class="base" g-class:active="Done">text</div>
 	</body></html>`
 
-	templates, err := vdom.ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Done = true → class should include "active"
 	state := &testTodo{Done: true}
-	ctx := &vdom.ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
-	nodes := vdom.ResolveTree(templates, ctx)
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+	nodes := ResolveTree(templates, ctx)
 	div := findElement(nodes, "div")
 	if div == nil {
 		t.Fatal("expected div")
@@ -408,8 +406,8 @@ func TestResolveTree_GClass(t *testing.T) {
 
 	// Done = false → class should NOT include "active"
 	state2 := &testTodo{Done: false}
-	ctx2 := &vdom.ResolveContext{State: reflect.ValueOf(state2), Vars: make(map[string]any)}
-	nodes2 := vdom.ResolveTree(templates, ctx2)
+	ctx2 := &ResolveContext{State: reflect.ValueOf(state2), Vars: make(map[string]any)}
+	nodes2 := ResolveTree(templates, ctx2)
 	div2 := findElement(nodes2, "div")
 	className2, _ := div2.Facts.Props["className"].(string)
 	if strings.Contains(className2, "active") {
@@ -418,125 +416,24 @@ func TestResolveTree_GClass(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// renderToHTML tests
-// ---------------------------------------------------------------------------
-
-func TestRenderToHTML_Simple(t *testing.T) {
-	nodes := []vdom.Node{
-		&vdom.ElementNode{
-			Tag: "div",
-			Facts: vdom.Facts{
-				Props: map[string]any{"className": "main"},
-			},
-			Children: []vdom.Node{
-				&vdom.TextNode{Text: "Hello"},
-			},
-		},
-	}
-
-	gid := &gidCounter{}
-	html := renderToHTML(nodes, gid)
-
-	if !strings.Contains(html, `class="main"`) {
-		t.Errorf("expected class attribute, got %q", html)
-	}
-	if !strings.Contains(html, "Hello") {
-		t.Errorf("expected text content, got %q", html)
-	}
-	if !strings.Contains(html, "</div>") {
-		t.Errorf("expected closing div, got %q", html)
-	}
-}
-
-func TestRenderToHTML_VoidElement(t *testing.T) {
-	nodes := []vdom.Node{
-		&vdom.ElementNode{
-			Tag: "input",
-			Facts: vdom.Facts{
-				Props: map[string]any{"value": "test"},
-			},
-		},
-	}
-
-	gid := &gidCounter{}
-	html := renderToHTML(nodes, gid)
-
-	if strings.Contains(html, "</input>") {
-		t.Errorf("input should not have closing tag, got %q", html)
-	}
-}
-
-func TestRenderToHTML_Styles(t *testing.T) {
-	nodes := []vdom.Node{
-		&vdom.ElementNode{
-			Tag: "div",
-			Facts: vdom.Facts{
-				Styles: map[string]string{
-					"display": "none",
-					"width":   "100px",
-				},
-			},
-		},
-	}
-
-	gid := &gidCounter{}
-	html := renderToHTML(nodes, gid)
-
-	if !strings.Contains(html, `style="`) {
-		t.Errorf("expected style attribute, got %q", html)
-	}
-	if !strings.Contains(html, "display: none") {
-		t.Errorf("expected display:none in style, got %q", html)
-	}
-}
-
-func TestRenderToHTML_EndToEnd(t *testing.T) {
-	// Parse → resolve → render round-trip
-	htmlInput := `<!DOCTYPE html><html><head></head><body>
-		<h1><span g-text="Count">0</span></h1>
-		<button g-click="Increment">+</button>
-		<input g-bind="Name"/>
-	</body></html>`
-
-	templates, err := vdom.ParseTemplate(htmlInput, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	state := &testCounter{Count: 99, Name: "Alice"}
-	ctx := &vdom.ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
-	nodes := vdom.ResolveTree(templates, ctx)
-
-	gid := &gidCounter{}
-	output := renderToHTML(nodes, gid)
-
-	if !strings.Contains(output, "99") {
-		t.Errorf("expected '99' in output, got %q", output)
-	}
-	if !strings.Contains(output, `value="Alice"`) {
-		t.Errorf("expected value='Alice' in output, got %q", output)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Node type tests
 // ---------------------------------------------------------------------------
 
 func TestDescendantsCount(t *testing.T) {
-	tree := &vdom.ElementNode{
+	tree := &ElementNode{
 		Tag: "div",
-		Children: []vdom.Node{
-			&vdom.TextNode{Text: "hello"},
-			&vdom.ElementNode{
+		Children: []Node{
+			&TextNode{Text: "hello"},
+			&ElementNode{
 				Tag: "span",
-				Children: []vdom.Node{
-					&vdom.TextNode{Text: "world"},
+				Children: []Node{
+					&TextNode{Text: "world"},
 				},
 			},
 		},
 	}
 
-	count := vdom.ComputeDescendants(tree)
+	count := ComputeDescendants(tree)
 	// div has 2 direct children + span has 1 = 3
 	if count != 3 {
 		t.Errorf("expected 3 descendants, got %d", count)
@@ -553,19 +450,19 @@ func TestDescendantsCount(t *testing.T) {
 func TestParseTextInterpolations(t *testing.T) {
 	tests := []struct {
 		input string
-		want  []vdom.TextPart
+		want  []TextPart
 	}{
 		{
 			"plain text",
-			[]vdom.TextPart{{Static: true, Value: "plain text"}},
+			[]TextPart{{Static: true, Value: "plain text"}},
 		},
 		{
 			"{{Name}}",
-			[]vdom.TextPart{{Static: false, Value: "Name"}},
+			[]TextPart{{Static: false, Value: "Name"}},
 		},
 		{
 			"Hello {{Name}}!",
-			[]vdom.TextPart{
+			[]TextPart{
 				{Static: true, Value: "Hello "},
 				{Static: false, Value: "Name"},
 				{Static: true, Value: "!"},
@@ -573,7 +470,7 @@ func TestParseTextInterpolations(t *testing.T) {
 		},
 		{
 			"A {{B}} C {{D}} E",
-			[]vdom.TextPart{
+			[]TextPart{
 				{Static: true, Value: "A "},
 				{Static: false, Value: "B"},
 				{Static: true, Value: " C "},
@@ -583,12 +480,12 @@ func TestParseTextInterpolations(t *testing.T) {
 		},
 		{
 			"single {brace} not interpolated",
-			[]vdom.TextPart{{Static: true, Value: "single {brace} not interpolated"}},
+			[]TextPart{{Static: true, Value: "single {brace} not interpolated"}},
 		},
 	}
 
 	for _, tt := range tests {
-		got := vdom.ParseTextInterpolations(tt.input)
+		got := ParseTextInterpolations(tt.input)
 		if len(got) != len(tt.want) {
 			t.Errorf("ParseTextInterpolations(%q): got %d parts, want %d\n  got: %+v", tt.input, len(got), len(tt.want), got)
 			continue
@@ -607,7 +504,7 @@ func TestParseTextInterpolations(t *testing.T) {
 
 func TestParseForExpr(t *testing.T) {
 	tests := []struct {
-		input                      string
+		input                        string
 		wantItem, wantIndex, wantList string
 	}{
 		{"todo in Todos", "todo", "", "Todos"},
@@ -617,7 +514,7 @@ func TestParseForExpr(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		item, index, list := vdom.ParseForExpr(tt.input)
+		item, index, list := ParseForExpr(tt.input)
 		if item != tt.wantItem || index != tt.wantIndex || list != tt.wantList {
 			t.Errorf("ParseForExpr(%q) = (%q, %q, %q), want (%q, %q, %q)",
 				tt.input, item, index, list, tt.wantItem, tt.wantIndex, tt.wantList)
@@ -630,64 +527,63 @@ func TestParseForExpr(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestMergeAdjacentText(t *testing.T) {
-	nodes := []vdom.Node{
-		&vdom.TextNode{Text: "a"},
-		&vdom.TextNode{Text: "b"},
-		&vdom.TextNode{Text: "c"},
+	nodes := []Node{
+		&TextNode{Text: "a"},
+		&TextNode{Text: "b"},
+		&TextNode{Text: "c"},
 	}
-	merged := vdom.MergeAdjacentText(nodes)
+	merged := MergeAdjacentText(nodes)
 	if len(merged) != 1 {
 		t.Fatalf("expected 1 node, got %d", len(merged))
 	}
-	if merged[0].(*vdom.TextNode).Text != "abc" {
-		t.Errorf("expected 'abc', got %q", merged[0].(*vdom.TextNode).Text)
+	if merged[0].(*TextNode).Text != "abc" {
+		t.Errorf("expected 'abc', got %q", merged[0].(*TextNode).Text)
 	}
 }
 
 func TestMergeAdjacentText_InterleaveElements(t *testing.T) {
-	nodes := []vdom.Node{
-		&vdom.TextNode{Text: "a"},
-		&vdom.ElementNode{Tag: "div"},
-		&vdom.TextNode{Text: "b"},
-		&vdom.TextNode{Text: "c"},
+	nodes := []Node{
+		&TextNode{Text: "a"},
+		&ElementNode{Tag: "div"},
+		&TextNode{Text: "b"},
+		&TextNode{Text: "c"},
 	}
-	merged := vdom.MergeAdjacentText(nodes)
+	merged := MergeAdjacentText(nodes)
 	if len(merged) != 3 {
 		t.Fatalf("expected 3 nodes, got %d", len(merged))
 	}
-	if merged[0].(*vdom.TextNode).Text != "a" {
-		t.Errorf("first text should be 'a', got %q", merged[0].(*vdom.TextNode).Text)
+	if merged[0].(*TextNode).Text != "a" {
+		t.Errorf("first text should be 'a', got %q", merged[0].(*TextNode).Text)
 	}
-	if merged[2].(*vdom.TextNode).Text != "bc" {
-		t.Errorf("last text should be 'bc', got %q", merged[2].(*vdom.TextNode).Text)
+	if merged[2].(*TextNode).Text != "bc" {
+		t.Errorf("last text should be 'bc', got %q", merged[2].(*TextNode).Text)
 	}
 }
 
 func TestResolveTree_EmptyForMergesAdjacentWhitespace(t *testing.T) {
 	// Simulates: <div>\n  <g-for (empty list)>\n</div>
 	// The whitespace before and after the empty g-for should merge into one TextNode.
-	templates := []*vdom.TemplateNode{
-		{IsText: true, TextParts: []vdom.TextPart{{Static: true, Value: "\n  "}}},
+	templates := []*TemplateNode{
+		{IsText: true, TextParts: []TextPart{{Static: true, Value: "\n  "}}},
 		{IsFor: true, ForItem: "x", ForList: "Items"},
-		{IsText: true, TextParts: []vdom.TextPart{{Static: true, Value: "\n"}}},
+		{IsText: true, TextParts: []TextPart{{Static: true, Value: "\n"}}},
 	}
 
 	type comp struct {
-		Component
 		Items []string
 	}
 	c := &comp{Items: nil}
-	ctx := &vdom.ResolveContext{
+	ctx := &ResolveContext{
 		State: reflect.ValueOf(c),
 		Vars:  make(map[string]any),
 	}
 
-	nodes := vdom.ResolveTree(templates, ctx)
+	nodes := ResolveTree(templates, ctx)
 	// Two whitespace text nodes should be merged into one
 	if len(nodes) != 1 {
 		t.Fatalf("expected 1 merged text node, got %d nodes", len(nodes))
 	}
-	tn, ok := nodes[0].(*vdom.TextNode)
+	tn, ok := nodes[0].(*TextNode)
 	if !ok {
 		t.Fatal("expected a TextNode")
 	}
@@ -697,44 +593,43 @@ func TestResolveTree_EmptyForMergesAdjacentWhitespace(t *testing.T) {
 }
 
 func TestMergeAdjacentText_DropsEmptyText(t *testing.T) {
-	nodes := []vdom.Node{
-		&vdom.TextNode{Text: "a"},
-		&vdom.TextNode{Text: ""},
-		&vdom.ElementNode{Tag: "div"},
-		&vdom.TextNode{Text: ""},
-		&vdom.TextNode{Text: "b"},
+	nodes := []Node{
+		&TextNode{Text: "a"},
+		&TextNode{Text: ""},
+		&ElementNode{Tag: "div"},
+		&TextNode{Text: ""},
+		&TextNode{Text: "b"},
 	}
-	merged := vdom.MergeAdjacentText(nodes)
+	merged := MergeAdjacentText(nodes)
 	// Empty text nodes should be dropped; "a" stands alone, "b" stands alone
 	if len(merged) != 3 {
 		t.Fatalf("expected 3 nodes, got %d", len(merged))
 	}
-	if merged[0].(*vdom.TextNode).Text != "a" {
-		t.Errorf("first = %q, want 'a'", merged[0].(*vdom.TextNode).Text)
+	if merged[0].(*TextNode).Text != "a" {
+		t.Errorf("first = %q, want 'a'", merged[0].(*TextNode).Text)
 	}
-	if merged[2].(*vdom.TextNode).Text != "b" {
-		t.Errorf("last = %q, want 'b'", merged[2].(*vdom.TextNode).Text)
+	if merged[2].(*TextNode).Text != "b" {
+		t.Errorf("last = %q, want 'b'", merged[2].(*TextNode).Text)
 	}
 }
 
 func TestResolveElementNode_GTextEmpty(t *testing.T) {
 	// When g-text resolves to "", the element should have no children
 	// because the browser creates no DOM text node for empty innerHTML.
-	tmpl := &vdom.TemplateNode{
+	tmpl := &TemplateNode{
 		Tag:        "div",
-		Directives: []vdom.Directive{{Type: "text", Expr: "Name"}},
+		Directives: []Directive{{Type: "text", Expr: "Name"}},
 	}
 	type comp struct {
-		Component
 		Name string
 	}
 	c := &comp{Name: ""}
-	ctx := &vdom.ResolveContext{State: reflect.ValueOf(c), Vars: make(map[string]any)}
-	nodes := vdom.ResolveTemplateNode(tmpl, ctx)
+	ctx := &ResolveContext{State: reflect.ValueOf(c), Vars: make(map[string]any)}
+	nodes := ResolveTemplateNode(tmpl, ctx)
 	if len(nodes) != 1 {
 		t.Fatalf("expected 1 element, got %d", len(nodes))
 	}
-	el := nodes[0].(*vdom.ElementNode)
+	el := nodes[0].(*ElementNode)
 	if len(el.Children) != 0 {
 		t.Errorf("expected 0 children for empty g-text, got %d", len(el.Children))
 	}
@@ -744,7 +639,7 @@ func TestResolveElementNode_GTextEmpty(t *testing.T) {
 // Test helpers
 // ---------------------------------------------------------------------------
 
-func findTemplateTag(nodes []*vdom.TemplateNode, tag string) *vdom.TemplateNode {
+func findTemplateTag(nodes []*TemplateNode, tag string) *TemplateNode {
 	for _, n := range nodes {
 		if n.Tag == tag {
 			return n
@@ -756,7 +651,7 @@ func findTemplateTag(nodes []*vdom.TemplateNode, tag string) *vdom.TemplateNode 
 	return nil
 }
 
-func findTemplateTagWithDirective(nodes []*vdom.TemplateNode, tag, dirType string) *vdom.TemplateNode {
+func findTemplateTagWithDirective(nodes []*TemplateNode, tag, dirType string) *TemplateNode {
 	for _, n := range nodes {
 		if n.Tag == tag {
 			for _, d := range n.Directives {
@@ -772,10 +667,10 @@ func findTemplateTagWithDirective(nodes []*vdom.TemplateNode, tag, dirType strin
 	return nil
 }
 
-func findElement(nodes []vdom.Node, tag string) *vdom.ElementNode {
+func findElement(nodes []Node, tag string) *ElementNode {
 	for _, n := range nodes {
 		switch n := n.(type) {
-		case *vdom.ElementNode:
+		case *ElementNode:
 			if n.Tag == tag {
 				return n
 			}
@@ -787,20 +682,20 @@ func findElement(nodes []vdom.Node, tag string) *vdom.ElementNode {
 	return nil
 }
 
-func findNodeText(nodes []vdom.Node, text string) bool {
+func findNodeText(nodes []Node, text string) bool {
 	for _, n := range nodes {
 		switch n := n.(type) {
-		case *vdom.TextNode:
+		case *TextNode:
 			if strings.Contains(n.Text, text) {
 				return true
 			}
-		case *vdom.ElementNode:
+		case *ElementNode:
 			if findNodeText(n.Children, text) {
 				return true
 			}
-		case *vdom.KeyedElementNode:
+		case *KeyedElementNode:
 			for _, kc := range n.Children {
-				if findNodeText([]vdom.Node{kc.Node}, text) {
+				if findNodeText([]Node{kc.Node}, text) {
 					return true
 				}
 			}

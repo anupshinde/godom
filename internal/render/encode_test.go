@@ -1,16 +1,17 @@
-package godom
+package render
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 
-	gproto "github.com/anupshinde/godom/proto"
-	"github.com/anupshinde/godom/vdom"
+	gproto "github.com/anupshinde/godom/internal/proto"
+	"github.com/anupshinde/godom/internal/vdom"
 	"google.golang.org/protobuf/proto"
 )
 
 func TestEncodeInitMessage(t *testing.T) {
-	msg := encodeInitMessage("<div>hello</div>", nil)
+	msg := EncodeInitMessage("<div>hello</div>", nil)
 	if msg.Type != "init" {
 		t.Errorf("expected type 'init', got %q", msg.Type)
 	}
@@ -20,7 +21,7 @@ func TestEncodeInitMessage(t *testing.T) {
 }
 
 func TestEncodeInitMessage_Serializable(t *testing.T) {
-	msg := encodeInitMessage("<div>test</div>", []*gproto.EventSetup{
+	msg := EncodeInitMessage("<div>test</div>", []*gproto.EventSetup{
 		{Gid: "g1", Event: "click", Msg: []byte("test")},
 	})
 	data, err := proto.Marshal(msg)
@@ -47,7 +48,7 @@ func TestEncodePatchMessage_Text(t *testing.T) {
 	patches := []vdom.Patch{
 		{Type: vdom.PatchText, Index: 3, Data: vdom.PatchTextData{Text: "hello"}},
 	}
-	msg := encodePatchMessage(patches, &gidCounter{})
+	msg := EncodePatchMessage(patches, &GIDCounter{})
 	if msg.Type != "patch" {
 		t.Errorf("expected type 'patch', got %q", msg.Type)
 	}
@@ -55,7 +56,7 @@ func TestEncodePatchMessage_Text(t *testing.T) {
 		t.Fatalf("expected 1 patch, got %d", len(msg.Patches))
 	}
 	dp := msg.Patches[0]
-	if dp.Op != opText {
+	if dp.Op != OpText {
 		t.Errorf("expected op 'text', got %q", dp.Op)
 	}
 	if dp.Index != 3 {
@@ -75,13 +76,13 @@ func TestEncodePatchMessage_Facts(t *testing.T) {
 			},
 		}},
 	}
-	msg := encodePatchMessage(patches, &gidCounter{})
+	msg := EncodePatchMessage(patches, &GIDCounter{})
 	dp := msg.Patches[0]
-	if dp.Op != opFacts {
+	if dp.Op != OpFacts {
 		t.Errorf("expected op 'facts', got %q", dp.Op)
 	}
 	// Decode the JSON to verify structure
-	var fd wireFactsDiff
+	var fd WireFactsDiff
 	if err := json.Unmarshal(dp.Facts, &fd); err != nil {
 		t.Fatal(err)
 	}
@@ -99,9 +100,9 @@ func TestEncodePatchMessage_Append(t *testing.T) {
 			Nodes: []vdom.Node{&vdom.TextNode{Text: "new child"}},
 		}},
 	}
-	msg := encodePatchMessage(patches, &gidCounter{})
+	msg := EncodePatchMessage(patches, &GIDCounter{})
 	dp := msg.Patches[0]
-	if dp.Op != opAppend {
+	if dp.Op != OpAppend {
 		t.Errorf("expected op 'append', got %q", dp.Op)
 	}
 	if len(dp.HtmlContent) == 0 {
@@ -113,9 +114,9 @@ func TestEncodePatchMessage_RemoveLast(t *testing.T) {
 	patches := []vdom.Patch{
 		{Type: vdom.PatchRemoveLast, Index: 0, Data: vdom.PatchRemoveLastData{Count: 3}},
 	}
-	msg := encodePatchMessage(patches, &gidCounter{})
+	msg := EncodePatchMessage(patches, &GIDCounter{})
 	dp := msg.Patches[0]
-	if dp.Op != opRemoveLast {
+	if dp.Op != OpRemoveLast {
 		t.Errorf("expected op 'remove-last', got %q", dp.Op)
 	}
 	if dp.Count != 3 {
@@ -132,9 +133,9 @@ func TestEncodePatchMessage_Redraw(t *testing.T) {
 			},
 		}},
 	}
-	msg := encodePatchMessage(patches, &gidCounter{})
+	msg := EncodePatchMessage(patches, &GIDCounter{})
 	dp := msg.Patches[0]
-	if dp.Op != opRedraw {
+	if dp.Op != OpRedraw {
 		t.Errorf("expected op 'redraw', got %q", dp.Op)
 	}
 	html := string(dp.HtmlContent)
@@ -149,9 +150,9 @@ func TestEncodePatchMessage_Plugin(t *testing.T) {
 			Data: map[string]int{"value": 42},
 		}},
 	}
-	msg := encodePatchMessage(patches, &gidCounter{})
+	msg := EncodePatchMessage(patches, &GIDCounter{})
 	dp := msg.Patches[0]
-	if dp.Op != opPlugin {
+	if dp.Op != OpPlugin {
 		t.Errorf("expected op 'plugin', got %q", dp.Op)
 	}
 	var data map[string]int
@@ -171,15 +172,15 @@ func TestEncodePatchMessage_Lazy(t *testing.T) {
 			},
 		}},
 	}
-	msg := encodePatchMessage(patches, &gidCounter{})
+	msg := EncodePatchMessage(patches, &GIDCounter{})
 	dp := msg.Patches[0]
-	if dp.Op != opLazy {
+	if dp.Op != OpLazy {
 		t.Errorf("expected op 'lazy', got %q", dp.Op)
 	}
 	if len(dp.SubPatches) != 1 {
 		t.Fatalf("expected 1 sub-patch, got %d", len(dp.SubPatches))
 	}
-	if dp.SubPatches[0].Op != opText {
+	if dp.SubPatches[0].Op != OpText {
 		t.Errorf("expected sub-patch op 'text', got %q", dp.SubPatches[0].Op)
 	}
 }
@@ -193,7 +194,7 @@ func TestEncodePatchMessage_Serializable(t *testing.T) {
 		}},
 		{Type: vdom.PatchRemoveLast, Index: 0, Data: vdom.PatchRemoveLastData{Count: 1}},
 	}
-	msg := encodePatchMessage(patches, &gidCounter{})
+	msg := EncodePatchMessage(patches, &GIDCounter{})
 
 	data, err := proto.Marshal(msg)
 	if err != nil {
@@ -252,7 +253,7 @@ func TestEndToEnd_ParseResolveDiffEncode(t *testing.T) {
 	}
 
 	// Encode
-	msg := encodePatchMessage(patches, &gidCounter{})
+	msg := EncodePatchMessage(patches, &GIDCounter{})
 	if msg.Type != "patch" {
 		t.Errorf("expected 'patch', got %q", msg.Type)
 	}
@@ -269,11 +270,15 @@ func TestEndToEnd_ParseResolveDiffEncode(t *testing.T) {
 	// Verify content
 	hasTextPatch := false
 	for _, dp := range msg.Patches {
-		if dp.Op == opText && dp.Text == "10" {
+		if dp.Op == OpText && dp.Text == "10" {
 			hasTextPatch = true
 		}
 	}
 	if !hasTextPatch {
 		t.Error("expected text patch '5' → '10'")
 	}
+}
+
+func makeReflectValue(v any) reflect.Value {
+	return reflect.ValueOf(v)
 }

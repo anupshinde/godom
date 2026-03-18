@@ -1,4 +1,4 @@
-package godom
+package component
 
 import (
 	"encoding/json"
@@ -9,77 +9,44 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/anupshinde/godom/vdom"
+	"github.com/anupshinde/godom/internal/vdom"
 )
 
-// Component is embedded in user structs to make them godom components.
-type Component struct {
-	ci *componentInfo // internal: set by godom when creating instances
-}
+// Info holds reflection data about a mounted component.
+type Info struct {
+	Mu    sync.Mutex
+	Value reflect.Value // pointer to the user's struct
+	Typ   reflect.Type  // the struct type (not pointer)
 
-// Refresh triggers a re-render and broadcasts the current state to all
-// connected browsers. Call this from a background goroutine after mutating
-// fields to push updates without user interaction.
-func (c Component) Refresh() {
-	if c.ci == nil {
-		return
-	}
-	if c.ci.refreshFn != nil {
-		c.ci.refreshFn()
-	}
-}
-
-// Emit sends a named event up the component tree. Each ancestor with a matching
-// method name gets called, bottom-up. Arguments are passed to the method.
-func (c Component) Emit(method string, args ...interface{}) {
-	if c.ci == nil {
-		return
-	}
-	current := c.ci.parent
-	for current != nil {
-		if current.hasMethod(method) {
-			// Convert args to json.RawMessage for callMethod
-			jsonArgs := make([]json.RawMessage, len(args))
-			for i, arg := range args {
-				data, _ := json.Marshal(arg)
-				jsonArgs[i] = data
-			}
-			if err := current.callMethod(method, jsonArgs); err != nil {
-				log.Printf("godom: Emit %q: %v", method, err)
-			}
-		}
-		current = current.parent
-	}
-}
-
-// componentInfo holds reflection data about a mounted component.
-type componentInfo struct {
-	mu       sync.Mutex
-	value    reflect.Value  // pointer to the user's struct
-	typ      reflect.Type   // the struct type (not pointer)
-	htmlBody string
+	HTMLBody string
 
 	// Component tree
-	parent   *componentInfo                 // nil for root component
-	children map[string][]*componentInfo    // forLoop GID → child instances
+	Parent   *Info                 // nil for root component
+	Children map[string][]*Info    // forLoop GID → child instances
 
 	// Prop fields (for stateful components)
-	propFields map[string]bool // field names marked with `godom:"prop"`
+	PropFields map[string]bool // field names marked with `godom:"prop"`
 
 	// Registry reference (from App) for creating child instances
-	registry map[string]*componentReg
+	Registry map[string]*Reg
 
-	// refreshFn is set by Start() to broadcast current state to all clients.
-	refreshFn func()
+	// RefreshFn is set by Start() to broadcast current state to all clients.
+	RefreshFn func()
 
 	// VDOM fields
-	vdomTemplates []*vdom.TemplateNode // parsed once at Mount()
-	prevTree      vdom.Node            // last rendered tree (for diffing)
-	gidSeq        int             // gid counter state across renders
+	VDOMTemplates []*vdom.TemplateNode // parsed once at Mount()
+	PrevTree      vdom.Node            // last rendered tree (for diffing)
+	GIDSeq        int                  // gid counter state across renders
 }
 
-// propFieldNames returns the set of fields tagged with `godom:"prop"`.
-func propFieldNames(t reflect.Type) map[string]bool {
+// Reg holds the registration info for a stateful component.
+type Reg struct {
+	Typ   reflect.Type  // the struct type (not pointer)
+	Proto reflect.Value // pointer to the prototype instance
+}
+
+// PropFieldNames returns the set of fields tagged with `godom:"prop"`.
+func PropFieldNames(t reflect.Type) map[string]bool {
 	props := make(map[string]bool)
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
@@ -90,13 +57,13 @@ func propFieldNames(t reflect.Type) map[string]bool {
 	return props
 }
 
-// setProps sets prop fields on the component from a prop name→value map.
+// SetProps sets prop fields on the component from a prop name→value map.
 // Only fields tagged with `godom:"prop"` are written; this prevents parents
 // from accidentally overwriting child-owned state.
-func (ci *componentInfo) setProps(propValues map[string]interface{}) {
-	v := ci.value.Elem()
+func (ci *Info) SetProps(propValues map[string]interface{}) {
+	v := ci.Value.Elem()
 	for name, val := range propValues {
-		if ci.propFields != nil && !ci.propFields[name] {
+		if ci.PropFields != nil && !ci.PropFields[name] {
 			continue
 		}
 		field := v.FieldByName(name)
@@ -121,18 +88,19 @@ func (ci *componentInfo) setProps(propValues map[string]interface{}) {
 	}
 }
 
-// getState serializes all exported fields (excluding Component) to JSON.
-func (ci *componentInfo) getState() ([]byte, error) {
+// GetState serializes all exported fields (excluding the embedded Component) to JSON.
+func (ci *Info) GetState() ([]byte, error) {
 	state := make(map[string]interface{})
-	v := ci.value.Elem()
-	t := ci.typ
+	v := ci.Value.Elem()
+	t := ci.Typ
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		if !field.IsExported() {
 			continue
 		}
-		if field.Type == reflect.TypeOf(Component{}) {
+		// Skip the embedded Component struct (identified by field name)
+		if field.Name == "Component" {
 			continue
 		}
 		state[field.Name] = v.Field(i).Interface()
@@ -141,17 +109,17 @@ func (ci *componentInfo) getState() ([]byte, error) {
 	return json.Marshal(state)
 }
 
-// snapshotState returns a JSON snapshot of the current state.
-func (ci *componentInfo) snapshotState() []byte {
-	data, err := ci.getState()
+// SnapshotState returns a JSON snapshot of the current state.
+func (ci *Info) SnapshotState() []byte {
+	data, err := ci.GetState()
 	if err != nil {
 		log.Fatalf("godom: failed to snapshot state: %v", err)
 	}
 	return data
 }
 
-// changedFields compares two state snapshots and returns the names of changed top-level fields.
-func (ci *componentInfo) changedFields(oldJSON, newJSON []byte) []string {
+// ChangedFields compares two state snapshots and returns the names of changed top-level fields.
+func (ci *Info) ChangedFields(oldJSON, newJSON []byte) []string {
 	var oldState, newState map[string]json.RawMessage
 	if err := json.Unmarshal(oldJSON, &oldState); err != nil {
 		return nil
@@ -175,9 +143,9 @@ func (ci *componentInfo) changedFields(oldJSON, newJSON []byte) []string {
 	return changed
 }
 
-// callMethod calls an exported method on the component by name with the given arguments.
-func (ci *componentInfo) callMethod(name string, args []json.RawMessage) error {
-	method := ci.value.MethodByName(name)
+// CallMethod calls an exported method on the component by name with the given arguments.
+func (ci *Info) CallMethod(name string, args []json.RawMessage) error {
+	method := ci.Value.MethodByName(name)
 	if !method.IsValid() {
 		return fmt.Errorf("method %q not found", name)
 	}
@@ -204,9 +172,9 @@ func (ci *componentInfo) callMethod(name string, args []json.RawMessage) error {
 	return nil
 }
 
-// setField sets an exported field on the component (used for g-bind).
-func (ci *componentInfo) setField(path string, rawValue json.RawMessage) error {
-	v := ci.value.Elem()
+// SetField sets an exported field on the component (used for g-bind).
+func (ci *Info) SetField(path string, rawValue json.RawMessage) error {
+	v := ci.Value.Elem()
 	field := v.FieldByName(path)
 	if !field.IsValid() || !field.CanSet() {
 		return fmt.Errorf("field %q not found or not settable", path)
@@ -247,20 +215,34 @@ func (ci *componentInfo) setField(path string, rawValue json.RawMessage) error {
 	return nil
 }
 
-// allExportedFieldNames returns the names of all exported fields except Component.
-func allExportedFieldNames(t reflect.Type) []string {
+// HasField checks if the component struct has an exported field with the given name.
+func (ci *Info) HasField(name string) bool {
+	f, ok := ci.Typ.FieldByName(name)
+	if !ok {
+		return false
+	}
+	return f.IsExported() && f.Name != "Component"
+}
+
+// HasMethod checks if the component has an exported method with the given name.
+func (ci *Info) HasMethod(name string) bool {
+	return ci.Value.MethodByName(name).IsValid()
+}
+
+// AllExportedFieldNames returns the names of all exported fields except Component.
+func AllExportedFieldNames(t reflect.Type) []string {
 	var names []string
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if f.IsExported() && f.Type != reflect.TypeOf(Component{}) {
+		if f.IsExported() && f.Name != "Component" {
 			names = append(names, f.Name)
 		}
 	}
 	return names
 }
 
-// parseCallExpr parses "MethodName" or "MethodName(arg1, arg2)" into method name and arg strings.
-func parseCallExpr(expr string) (string, []string) {
+// ParseCallExpr parses "MethodName" or "MethodName(arg1, arg2)" into method name and arg strings.
+func ParseCallExpr(expr string) (string, []string) {
 	expr = strings.TrimSpace(expr)
 	parenIdx := strings.Index(expr, "(")
 	if parenIdx == -1 {
@@ -280,4 +262,3 @@ func parseCallExpr(expr string) (string, []string) {
 	}
 	return name, args
 }
-
