@@ -2,6 +2,8 @@ package godom
 
 import (
 	"encoding/json"
+
+	"github.com/anupshinde/godom/vdom"
 )
 
 // Patch op names sent over the wire — bridge.js dispatches on these.
@@ -27,7 +29,7 @@ func encodeInitMessage(htmlContent string, events []*EventSetup) *VDomMessage {
 }
 
 // encodePatchMessage builds a VDomMessage with patches from a diff.
-func encodePatchMessage(patches []Patch, gid *gidCounter) *VDomMessage {
+func encodePatchMessage(patches []vdom.Patch, gid *gidCounter) *VDomMessage {
 	msg := &VDomMessage{Type: "patch"}
 	for _, p := range patches {
 		dp := encodePatch(p, gid)
@@ -39,49 +41,49 @@ func encodePatchMessage(patches []Patch, gid *gidCounter) *VDomMessage {
 }
 
 // encodePatch converts a Go Patch to a protobuf DomPatch.
-func encodePatch(p Patch, gid *gidCounter) *DomPatch {
+func encodePatch(p vdom.Patch, gid *gidCounter) *DomPatch {
 	dp := &DomPatch{
 		Index: int32(p.Index),
 	}
 
 	switch p.Type {
-	case patchRedraw:
+	case vdom.PatchRedraw:
 		dp.Op = opRedraw
-		data := p.Data.(PatchRedrawData)
+		data := p.Data.(vdom.PatchRedrawData)
 		// Render the new node to HTML and collect events
-		html, events := renderToHTMLWithEvents([]Node{data.Node}, gid)
+		html, events := renderToHTMLWithEvents([]vdom.Node{data.Node}, gid)
 		dp.HtmlContent = []byte(html)
 		dp.PatchEvents = events
 
-	case patchText:
+	case vdom.PatchText:
 		dp.Op = opText
-		data := p.Data.(PatchTextData)
+		data := p.Data.(vdom.PatchTextData)
 		dp.Text = data.Text
 
-	case patchFacts:
+	case vdom.PatchFacts:
 		dp.Op = opFacts
-		data := p.Data.(PatchFactsData)
+		data := p.Data.(vdom.PatchFactsData)
 		factsJSON, _ := json.Marshal(encodeFactsDiff(&data.Diff))
 		dp.Facts = factsJSON
 
-	case patchAppend:
+	case vdom.PatchAppend:
 		dp.Op = opAppend
-		data := p.Data.(PatchAppendData)
+		data := p.Data.(vdom.PatchAppendData)
 		html, events := renderToHTMLWithEvents(data.Nodes, gid)
 		dp.HtmlContent = []byte(html)
 		dp.PatchEvents = events
 
-	case patchRemoveLast:
+	case vdom.PatchRemoveLast:
 		dp.Op = opRemoveLast
-		data := p.Data.(PatchRemoveLastData)
+		data := p.Data.(vdom.PatchRemoveLastData)
 		dp.Count = int32(data.Count)
 
-	case patchRemove:
+	case vdom.PatchRemove:
 		dp.Op = opRemove
 
-	case patchReorder:
+	case vdom.PatchReorder:
 		dp.Op = opReorder
-		data := p.Data.(PatchReorderData)
+		data := p.Data.(vdom.PatchReorderData)
 		reorderJSON, _ := json.Marshal(encodeReorderData(&data))
 		dp.Reorder = reorderJSON
 		// Sub-patches for changed keyed children
@@ -92,15 +94,15 @@ func encodePatch(p Patch, gid *gidCounter) *DomPatch {
 			}
 		}
 
-	case patchPlugin:
+	case vdom.PatchPlugin:
 		dp.Op = opPlugin
-		data := p.Data.(PatchPluginData)
+		data := p.Data.(vdom.PatchPluginData)
 		pluginJSON, _ := json.Marshal(data.Data)
 		dp.PluginData = pluginJSON
 
-	case patchLazy:
+	case vdom.PatchLazy:
 		dp.Op = opLazy
-		data := p.Data.(PatchLazyData)
+		data := p.Data.(vdom.PatchLazyData)
 		for _, sp := range data.Patches {
 			sub := encodePatch(sp, gid)
 			if sub != nil {
@@ -142,7 +144,7 @@ type wireEvent struct {
 	PD  bool   `json:"pd,omitempty"` // preventDefault
 }
 
-func encodeFactsDiff(d *FactsDiff) *wireFactsDiff {
+func encodeFactsDiff(d *vdom.FactsDiff) *wireFactsDiff {
 	w := &wireFactsDiff{}
 
 	if len(d.Props) > 0 {
@@ -201,12 +203,12 @@ type wireReorderRemove struct {
 	Key   string `json:"k"`
 }
 
-func encodeReorderData(d *PatchReorderData) *wireReorder {
+func encodeReorderData(d *vdom.PatchReorderData) *wireReorder {
 	w := &wireReorder{}
 	for _, ins := range d.Inserts {
 		wi := wireReorderInsert{Index: ins.Index, Key: ins.Key}
 		if ins.Node != nil {
-			wi.HTML = renderToHTML([]Node{ins.Node}, &gidCounter{})
+			wi.HTML = renderToHTML([]vdom.Node{ins.Node}, &gidCounter{})
 		}
 		w.Inserts = append(w.Inserts, wi)
 	}

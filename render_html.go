@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/anupshinde/godom/vdom"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -14,7 +15,7 @@ import (
 // Used for the init message — the bridge receives this as innerHTML.
 // Each element with events or bindings gets a data-gid attribute
 // assigned from the gidCounter, enabling the bridge to target them.
-func renderToHTML(nodes []Node, gid *gidCounter) string {
+func renderToHTML(nodes []vdom.Node, gid *gidCounter) string {
 	var sb strings.Builder
 	for _, n := range nodes {
 		renderNode(&sb, n, gid)
@@ -33,31 +34,31 @@ func (g *gidCounter) next() string {
 }
 
 // renderNode writes a single node's HTML to the builder.
-func renderNode(sb *strings.Builder, n Node, gid *gidCounter) {
+func renderNode(sb *strings.Builder, n vdom.Node, gid *gidCounter) {
 	switch n := n.(type) {
-	case *TextNode:
+	case *vdom.TextNode:
 		sb.WriteString(html.EscapeString(n.Text))
 
-	case *ElementNode:
+	case *vdom.ElementNode:
 		renderElement(sb, n.Tag, n.Namespace, &n.Facts, n.Children, nil, gid)
 
-	case *KeyedElementNode:
+	case *vdom.KeyedElementNode:
 		// Render keyed children in order
-		children := make([]Node, len(n.Children))
+		children := make([]vdom.Node, len(n.Children))
 		for i, kc := range n.Children {
 			children[i] = kc.Node
 		}
 		renderElement(sb, n.Tag, n.Namespace, &n.Facts, children, nil, gid)
 
-	case *ComponentNode:
+	case *vdom.ComponentNode:
 		if n.SubTree != nil {
 			renderNode(sb, n.SubTree, gid)
 		}
 
-	case *PluginNode:
+	case *vdom.PluginNode:
 		renderElement(sb, n.Tag, "", &n.Facts, nil, n, gid)
 
-	case *LazyNode:
+	case *vdom.LazyNode:
 		if n.Cached != nil {
 			renderNode(sb, n.Cached, gid)
 		}
@@ -65,7 +66,7 @@ func renderNode(sb *strings.Builder, n Node, gid *gidCounter) {
 }
 
 // renderElement writes an HTML element with its facts and children.
-func renderElement(sb *strings.Builder, tag, namespace string, facts *Facts, children []Node, plugin *PluginNode, gid *gidCounter) {
+func renderElement(sb *strings.Builder, tag, namespace string, facts *vdom.Facts, children []vdom.Node, plugin *vdom.PluginNode, gid *gidCounter) {
 	sb.WriteByte('<')
 	sb.WriteString(tag)
 
@@ -115,7 +116,7 @@ func renderElement(sb *strings.Builder, tag, namespace string, facts *Facts, chi
 }
 
 // renderFactsAsAttrs writes Facts as HTML attributes.
-func renderFactsAsAttrs(sb *strings.Builder, f *Facts) {
+func renderFactsAsAttrs(sb *strings.Builder, f *vdom.Facts) {
 	// Properties → HTML attributes
 	if f.Props != nil {
 		// Sort keys for deterministic output
@@ -251,7 +252,7 @@ func sortedStringKeys(m map[string]string) []string {
 // renderToHTMLWithEvents renders nodes to HTML and collects EventSetup entries
 // for all elements that have event handlers. The EventSetup entries include
 // pre-built WSMessage bytes so the bridge can send them back on event fire.
-func renderToHTMLWithEvents(nodes []Node, gid *gidCounter) (string, []*EventSetup) {
+func renderToHTMLWithEvents(nodes []vdom.Node, gid *gidCounter) (string, []*EventSetup) {
 	var sb strings.Builder
 	var events []*EventSetup
 	for _, n := range nodes {
@@ -261,30 +262,30 @@ func renderToHTMLWithEvents(nodes []Node, gid *gidCounter) (string, []*EventSetu
 }
 
 // renderNodeWithEvents is like renderNode but also collects EventSetup entries.
-func renderNodeWithEvents(sb *strings.Builder, n Node, gid *gidCounter, events *[]*EventSetup) {
+func renderNodeWithEvents(sb *strings.Builder, n vdom.Node, gid *gidCounter, events *[]*EventSetup) {
 	switch n := n.(type) {
-	case *TextNode:
+	case *vdom.TextNode:
 		sb.WriteString(html.EscapeString(n.Text))
 
-	case *ElementNode:
+	case *vdom.ElementNode:
 		renderElementWithEvents(sb, n.Tag, n.Namespace, &n.Facts, n.Children, nil, gid, events)
 
-	case *KeyedElementNode:
-		children := make([]Node, len(n.Children))
+	case *vdom.KeyedElementNode:
+		children := make([]vdom.Node, len(n.Children))
 		for i, kc := range n.Children {
 			children[i] = kc.Node
 		}
 		renderElementWithEvents(sb, n.Tag, n.Namespace, &n.Facts, children, nil, gid, events)
 
-	case *ComponentNode:
+	case *vdom.ComponentNode:
 		if n.SubTree != nil {
 			renderNodeWithEvents(sb, n.SubTree, gid, events)
 		}
 
-	case *PluginNode:
+	case *vdom.PluginNode:
 		renderElementWithEvents(sb, n.Tag, "", &n.Facts, nil, n, gid, events)
 
-	case *LazyNode:
+	case *vdom.LazyNode:
 		if n.Cached != nil {
 			renderNodeWithEvents(sb, n.Cached, gid, events)
 		}
@@ -292,7 +293,7 @@ func renderNodeWithEvents(sb *strings.Builder, n Node, gid *gidCounter, events *
 }
 
 // renderElementWithEvents writes an HTML element and collects events.
-func renderElementWithEvents(sb *strings.Builder, tag, namespace string, facts *Facts, children []Node, plugin *PluginNode, gid *gidCounter, events *[]*EventSetup) {
+func renderElementWithEvents(sb *strings.Builder, tag, namespace string, facts *vdom.Facts, children []vdom.Node, plugin *vdom.PluginNode, gid *gidCounter, events *[]*EventSetup) {
 	sb.WriteByte('<')
 	sb.WriteString(tag)
 
@@ -370,7 +371,7 @@ func renderElementWithEvents(sb *strings.Builder, tag, namespace string, facts *
 // buildWSMessageBytes builds a pre-encoded WSMessage for an event handler.
 // For bind handlers: WSMessage{type:"bind", field:"FieldName"}
 // For call handlers: WSMessage{type:"call", method:"MethodName", args:[...]}
-func buildWSMessageBytes(handler EventHandler) []byte {
+func buildWSMessageBytes(handler vdom.EventHandler) []byte {
 	if handler.Handler == "__bind__" {
 		fieldName, _ := handler.Args[0].(string)
 		msg := &WSMessage{Type: "bind", Field: fieldName}

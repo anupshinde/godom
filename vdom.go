@@ -1,17 +1,14 @@
 package godom
 
+import "github.com/anupshinde/godom/vdom"
+
 // vdomBuildInit builds the initial VDomMessage for a new client connection.
-// It resolves the template tree against current state, renders to HTML,
-// collects events, and stores the tree for future diffing.
 func vdomBuildInit(ci *componentInfo) *VDomMessage {
-	// Build node tree from templates + current state
 	gid := &gidCounter{seq: ci.gidSeq}
 	tree := vdomBuildTree(ci)
 
-	// Render to HTML and collect events
 	htmlStr, events := renderToHTMLWithEvents(tree.Children, gid)
 
-	// Store for future diffing
 	ci.prevTree = tree
 	ci.gidSeq = gid.seq
 
@@ -25,14 +22,13 @@ func vdomBuildUpdate(ci *componentInfo) *VDomMessage {
 	newTree := vdomBuildTree(ci)
 
 	if ci.prevTree == nil {
-		// No previous tree — shouldn't happen, but fall back to init-style
 		htmlStr, events := renderToHTMLWithEvents(newTree.Children, gid)
 		ci.prevTree = newTree
 		ci.gidSeq = gid.seq
 		return encodeInitMessage(htmlStr, events)
 	}
 
-	patches := diff(ci.prevTree, newTree)
+	patches := vdom.Diff(ci.prevTree, newTree)
 	if len(patches) == 0 {
 		return nil
 	}
@@ -44,13 +40,13 @@ func vdomBuildUpdate(ci *componentInfo) *VDomMessage {
 }
 
 // vdomBuildTree resolves the template tree against the current component state.
-func vdomBuildTree(ci *componentInfo) *ElementNode {
-	ctx := &resolveContext{
-		State: ci.value, // reflect.Value pointing to the user's struct
+func vdomBuildTree(ci *componentInfo) *vdom.ElementNode {
+	ctx := &vdom.ResolveContext{
+		State: ci.value,
 		Vars:  make(map[string]any),
 	}
-	children := resolveTree(ci.vdomTemplates, ctx)
-	root := &ElementNode{Tag: "body", Children: children}
-	computeDescendants(root)
+	children := vdom.ResolveTree(ci.vdomTemplates, ctx)
+	root := &vdom.ElementNode{Tag: "body", Children: children}
+	vdom.ComputeDescendants(root)
 	return root
 }

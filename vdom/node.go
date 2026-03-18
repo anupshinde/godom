@@ -1,24 +1,24 @@
-package godom
+// Package vdom implements a virtual DOM tree with diffing and patching.
+// It handles template parsing, tree resolution, diffing, and patch generation.
+// The godom runtime uses this package for its rendering pipeline.
+package vdom
 
-// Node types — inspired by Elm's virtual-dom.
-// These represent the virtual DOM tree that godom diffs to produce patches.
-
-// nodeType constants identify each Node variant.
+// Node type constants identify each Node variant.
 const (
-	nodeText      = iota // plain text content
-	nodeElement          // HTML/SVG element with tag, facts, children
-	nodeKeyed            // element with keyed children (for efficient list diffing)
-	nodeComponent        // stateful child component
-	nodePlugin           // opaque JS-managed node (plugin escape hatch)
-	nodeLazy             // deferred computation, skipped if inputs unchanged
+	NodeText      = iota // plain text content
+	NodeElement          // HTML/SVG element with tag, facts, children
+	NodeKeyed            // element with keyed children (for efficient list diffing)
+	NodeComponent        // stateful child component
+	NodePlugin           // opaque JS-managed node (plugin escape hatch)
+	NodeLazy             // deferred computation, skipped if inputs unchanged
 )
 
 // Node is the interface implemented by all virtual DOM node types.
 type Node interface {
-	nodeType() int
-	// descendantsCount returns the total number of descendant nodes.
+	NodeType() int
+	// DescendantsCount returns the total number of descendant nodes.
 	// Used for index-based patch addressing — allows skipping entire subtrees.
-	descendantsCount() int
+	DescendantsCount() int
 }
 
 // ---------------------------------------------------------------------------
@@ -30,8 +30,8 @@ type TextNode struct {
 	Text string
 }
 
-func (n *TextNode) nodeType() int         { return nodeText }
-func (n *TextNode) descendantsCount() int { return 0 }
+func (n *TextNode) NodeType() int         { return NodeText }
+func (n *TextNode) DescendantsCount() int { return 0 }
 
 // ---------------------------------------------------------------------------
 // Element
@@ -44,57 +44,53 @@ type ElementNode struct {
 	Facts     Facts
 	Children  []Node
 
-	descendants int // cached count, set by computeDescendants
+	Descendants int // cached count, set by ComputeDescendants
 }
 
-func (n *ElementNode) nodeType() int         { return nodeElement }
-func (n *ElementNode) descendantsCount() int { return n.descendants }
+func (n *ElementNode) NodeType() int         { return NodeElement }
+func (n *ElementNode) DescendantsCount() int { return n.Descendants }
 
 // ---------------------------------------------------------------------------
 // KeyedElement
 // ---------------------------------------------------------------------------
 
 // KeyedChild pairs a stable key with a child node.
-// The key identifies the child across renders for efficient diffing.
 type KeyedChild struct {
 	Key  string
 	Node Node
 }
 
 // KeyedElementNode is an element whose children have stable keys.
-// Produced by g-for with g-key. Enables insert/remove/move diffing
-// instead of positional append/truncate.
 type KeyedElementNode struct {
 	Tag       string
 	Namespace string
 	Facts     Facts
 	Children  []KeyedChild
 
-	descendants int
+	Descendants int
 }
 
-func (n *KeyedElementNode) nodeType() int         { return nodeKeyed }
-func (n *KeyedElementNode) descendantsCount() int { return n.descendants }
+func (n *KeyedElementNode) NodeType() int         { return NodeKeyed }
+func (n *KeyedElementNode) DescendantsCount() int { return n.Descendants }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 // ComponentNode represents a stateful child component.
-// Props are passed from the parent. SubTree is the component's rendered output.
 type ComponentNode struct {
 	Tag      string         // custom element name, e.g. "todo-item"
 	Props    map[string]any // prop values from parent
-	Instance *componentInfo // resolved at render time
+	Instance any            // resolved at render time (runtime sets this to *componentInfo)
 	SubTree  Node           // rendered by component's own template
 }
 
-func (n *ComponentNode) nodeType() int { return nodeComponent }
-func (n *ComponentNode) descendantsCount() int {
+func (n *ComponentNode) NodeType() int { return NodeComponent }
+func (n *ComponentNode) DescendantsCount() int {
 	if n.SubTree == nil {
 		return 0
 	}
-	return 1 + n.SubTree.descendantsCount()
+	return 1 + n.SubTree.DescendantsCount()
 }
 
 // ---------------------------------------------------------------------------
@@ -102,8 +98,6 @@ func (n *ComponentNode) descendantsCount() int {
 // ---------------------------------------------------------------------------
 
 // PluginNode is an opaque node managed by a JS plugin.
-// The Go side only knows the data; the bridge calls init/update
-// on the registered plugin handler. Analogous to Elm's CUSTOM node.
 type PluginNode struct {
 	Tag   string // host element tag, e.g. "canvas", "div"
 	Name  string // plugin name, e.g. "chart"
@@ -111,28 +105,26 @@ type PluginNode struct {
 	Data  any // JSON-serializable data passed to JS plugin
 }
 
-func (n *PluginNode) nodeType() int         { return nodePlugin }
-func (n *PluginNode) descendantsCount() int { return 0 }
+func (n *PluginNode) NodeType() int         { return NodePlugin }
+func (n *PluginNode) DescendantsCount() int { return 0 }
 
 // ---------------------------------------------------------------------------
 // Lazy
 // ---------------------------------------------------------------------------
 
 // LazyNode defers tree construction until diffing time.
-// If Args are referentially equal to the previous render's Args,
-// the Cached tree is reused without calling Func.
 type LazyNode struct {
 	Func   any   // the view function
 	Args   []any // arguments checked by reference equality
 	Cached Node  // previously computed result (nil on first render)
 }
 
-func (n *LazyNode) nodeType() int { return nodeLazy }
-func (n *LazyNode) descendantsCount() int {
+func (n *LazyNode) NodeType() int { return NodeLazy }
+func (n *LazyNode) DescendantsCount() int {
 	if n.Cached == nil {
 		return 0
 	}
-	return 1 + n.Cached.descendantsCount()
+	return 1 + n.Cached.DescendantsCount()
 }
 
 // ---------------------------------------------------------------------------
@@ -140,15 +132,12 @@ func (n *LazyNode) descendantsCount() int {
 // ---------------------------------------------------------------------------
 
 // Facts holds all the "attributes" of an element, categorized by type.
-// Follows Elm's organizeFacts pattern — different categories require
-// different DOM APIs to apply (property assignment vs setAttribute vs
-// style.setProperty vs addEventListener).
 type Facts struct {
-	Props   map[string]any           // DOM properties: id, className, value, checked, ...
-	Attrs   map[string]string        // HTML attributes: data-*, aria-*, custom
-	AttrsNS map[string]NSAttr        // namespaced attributes: xlink:href, xml:lang
-	Styles  map[string]string        // CSS properties: background-color, width, ...
-	Events  map[string]EventHandler  // event listeners: click, input, keydown, ...
+	Props   map[string]any          // DOM properties: id, className, value, checked, ...
+	Attrs   map[string]string       // HTML attributes: data-*, aria-*, custom
+	AttrsNS map[string]NSAttr       // namespaced attributes: xlink:href, xml:lang
+	Styles  map[string]string       // CSS properties: background-color, width, ...
+	Events  map[string]EventHandler // event listeners: click, input, keydown, ...
 }
 
 // NSAttr is a namespaced attribute value (used for SVG xlink/xml attributes).
@@ -176,37 +165,36 @@ type EventOptions struct {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// computeDescendants recursively calculates and caches descendant counts.
+// ComputeDescendants recursively calculates and caches descendant counts.
 // Must be called after building a tree and before diffing.
-func computeDescendants(n Node) int {
+func ComputeDescendants(n Node) int {
 	switch n := n.(type) {
 	case *TextNode:
 		return 0
 	case *ElementNode:
 		count := 0
 		for _, c := range n.Children {
-			count += 1 + computeDescendants(c)
+			count += 1 + ComputeDescendants(c)
 		}
-		n.descendants = count
+		n.Descendants = count
 		return count
 	case *KeyedElementNode:
 		count := 0
 		for _, kc := range n.Children {
-			count += 1 + computeDescendants(kc.Node)
+			count += 1 + ComputeDescendants(kc.Node)
 		}
-		n.descendants = count
+		n.Descendants = count
 		return count
 	case *ComponentNode:
 		if n.SubTree != nil {
-			n.SubTree = n.SubTree // ensure computed
-			return 1 + computeDescendants(n.SubTree)
+			return 1 + ComputeDescendants(n.SubTree)
 		}
 		return 0
 	case *PluginNode:
 		return 0
 	case *LazyNode:
 		if n.Cached != nil {
-			return 1 + computeDescendants(n.Cached)
+			return 1 + ComputeDescendants(n.Cached)
 		}
 		return 0
 	}

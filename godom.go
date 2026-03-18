@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/anupshinde/godom/vdom"
 	"github.com/gorilla/websocket"
 	qrcode "github.com/skip2/go-qrcode"
 	"google.golang.org/protobuf/proto"
@@ -158,7 +159,7 @@ func (a *App) Mount(comp interface{}, fsys fs.FS) {
 	for tag := range a.components {
 		componentTags[tag] = true
 	}
-	templates, err := parseTemplate(composed, componentTags)
+	templates, err := vdom.ParseTemplate(composed, componentTags)
 	if err != nil {
 		log.Fatalf("godom: failed to parse templates: %v", err)
 	}

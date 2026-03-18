@@ -1,31 +1,29 @@
-package godom
+package vdom
 
 // Patch types — the output of diffing two virtual DOM trees.
-// Each patch targets a specific node by its traversal index and
-// describes the minimal DOM mutation needed.
 
 // Patch operation constants.
 const (
-	patchRedraw     = iota // replace entire node
-	patchText              // update text content
-	patchFacts             // update properties/attributes/styles/events
-	patchAppend            // add children at end
-	patchRemoveLast        // remove N children from end
-	patchRemove            // remove specific child (keyed)
-	patchReorder           // reorder keyed children (inserts/removes/moves)
-	patchPlugin            // plugin data changed
-	patchLazy              // wrapper for patches inside a lazy node
+	PatchRedraw     = iota // replace entire node
+	PatchText              // update text content
+	PatchFacts             // update properties/attributes/styles/events
+	PatchAppend            // add children at end
+	PatchRemoveLast        // remove N children from end
+	PatchRemove            // remove specific child (keyed)
+	PatchReorder           // reorder keyed children (inserts/removes/moves)
+	PatchPlugin            // plugin data changed
+	PatchLazy              // wrapper for patches inside a lazy node
 )
 
 // Patch describes a single DOM mutation produced by the diff algorithm.
 type Patch struct {
-	Type  int // one of the patch* constants
+	Type  int // one of the Patch* constants
 	Index int // position in depth-first tree traversal
 	Data  any // type-specific payload (see below)
 }
 
 // ---------------------------------------------------------------------------
-// Patch payloads — the Data field holds one of these depending on Type.
+// Patch payloads
 // ---------------------------------------------------------------------------
 
 // PatchRedrawData carries the new node to render from scratch.
@@ -56,28 +54,27 @@ type PatchRemoveLastData struct {
 // PatchRemoveData carries info for removing a specific keyed child.
 type PatchRemoveData struct {
 	Key     string
-	Patches []Patch // sub-patches to apply before removal (if node is being moved)
+	Patches []Patch
 }
 
 // PatchReorderData carries the keyed reorder operation.
 type PatchReorderData struct {
 	Inserts []ReorderInsert
 	Removes []ReorderRemove
-	// Sub-patches for children that changed content (applied after reorder).
 	Patches []Patch
 }
 
 // ReorderInsert describes a node to insert at a given position.
 type ReorderInsert struct {
-	Index int    // position to insert at
-	Key   string // key of the node
-	Node  Node   // the node to insert (nil if it's a move from Removes)
+	Index int
+	Key   string
+	Node  Node
 }
 
 // ReorderRemove describes a node to remove (or move) during reorder.
 type ReorderRemove struct {
-	Index int    // current position
-	Key   string // key of the node
+	Index int
+	Key   string
 }
 
 // PatchPluginData carries new data for a plugin node.
@@ -91,18 +88,15 @@ type PatchLazyData struct {
 }
 
 // ---------------------------------------------------------------------------
-// FactsDiff — the diff between two Facts structs.
-// Only non-nil maps contain changes. Within each map:
-//   - present key = add or update to that value
-//   - value is nil/empty = remove
+// FactsDiff
 // ---------------------------------------------------------------------------
 
 // FactsDiff represents changes between two Facts.
 type FactsDiff struct {
-	Props   map[string]any        // changed/added/removed properties
-	Attrs   map[string]string     // changed/added/removed attributes ("" = remove)
-	AttrsNS map[string]NSAttr     // changed/added/removed namespaced attributes
-	Styles  map[string]string     // changed/added/removed styles ("" = remove)
+	Props   map[string]any           // changed/added/removed properties
+	Attrs   map[string]string        // changed/added/removed attributes ("" = remove)
+	AttrsNS map[string]NSAttr        // changed/added/removed namespaced attributes
+	Styles  map[string]string        // changed/added/removed styles ("" = remove)
 	Events  map[string]*EventHandler // changed/added events (nil = remove)
 }
 

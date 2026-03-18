@@ -1,4 +1,4 @@
-package godom
+package vdom
 
 import (
 	"encoding/json"
@@ -14,31 +14,30 @@ import (
 // Template tree — parsed once at Mount() time, reused on every render.
 // ---------------------------------------------------------------------------
 
-// templateNode represents one node in the parsed template tree.
-// It mirrors the HTML structure but carries directive metadata.
-type templateNode struct {
+// TemplateNode represents one node in the parsed template tree.
+type TemplateNode struct {
 	// For element nodes
 	Tag       string
 	Namespace string
 	Attrs     []html.Attribute // static HTML attributes (non-directive)
 
 	// Directives (extracted from g-* attributes)
-	Directives []directive
+	Directives []Directive
 
 	// Children (for elements) or nil (for text)
-	Children []*templateNode
+	Children []*TemplateNode
 
 	// For text nodes
-	IsText   bool
-	TextParts []textPart // static text + {expr} interpolations
+	IsText    bool
+	TextParts []TextPart // static text + {expr} interpolations
 
 	// For g-for nodes
-	IsFor     bool
-	ForItem   string // loop variable name, e.g. "todo"
-	ForIndex  string // index variable name, e.g. "i" (empty if unused)
-	ForList   string // list field, e.g. "Todos"
-	ForKey    string // key expression, e.g. "todo.ID" (empty = positional)
-	ForBody   []*templateNode // template for each item
+	IsFor    bool
+	ForItem  string // loop variable name, e.g. "todo"
+	ForIndex string // index variable name, e.g. "i" (empty if unused)
+	ForList  string // list field, e.g. "Todos"
+	ForKey   string // key expression, e.g. "todo.ID" (empty = positional)
+	ForBody  []*TemplateNode // template for each item
 
 	// For component nodes
 	IsComponent  bool
@@ -51,8 +50,8 @@ type templateNode struct {
 	PluginExpr string // data expression
 }
 
-// directive represents a single g-* directive on an element.
-type directive struct {
+// Directive represents a single g-* directive on an element.
+type Directive struct {
 	Type string // "text", "bind", "checked", "if", "show", "class", "attr", "style",
 	           // "click", "keydown", "mousedown", "mousemove", "mouseup", "wheel", "drop",
 	           // "draggable", "dropzone"
@@ -60,9 +59,8 @@ type directive struct {
 	Expr string // expression: field name, method call, etc.
 }
 
-// textPart represents a segment of text content.
-// Either static text or an {expression} interpolation.
-type textPart struct {
+// TextPart represents a segment of text content.
+type TextPart struct {
 	Static bool
 	Value  string // literal text if Static, expression string if not
 }
@@ -71,21 +69,20 @@ type textPart struct {
 // HTML → Template tree parser
 // ---------------------------------------------------------------------------
 
-// parseTemplate parses HTML into a template tree.
+// ParseTemplate parses HTML into a template tree.
 // componentTags is the set of registered custom element names.
-func parseTemplate(htmlStr string, componentTags map[string]bool) ([]*templateNode, error) {
+func ParseTemplate(htmlStr string, componentTags map[string]bool) ([]*TemplateNode, error) {
 	doc, err := html.Parse(strings.NewReader(htmlStr))
 	if err != nil {
 		return nil, fmt.Errorf("parse HTML: %w", err)
 	}
 
-	// Find the body element — template content lives there
 	body := findBody(doc)
 	if body == nil {
 		return nil, fmt.Errorf("no <body> found in HTML")
 	}
 
-	var nodes []*templateNode
+	var nodes []*TemplateNode
 	for c := body.FirstChild; c != nil; c = c.NextSibling {
 		if tn := htmlToTemplate(c, componentTags); tn != nil {
 			nodes = append(nodes, tn)
@@ -94,22 +91,19 @@ func parseTemplate(htmlStr string, componentTags map[string]bool) ([]*templateNo
 	return nodes, nil
 }
 
-// htmlToTemplate converts an x/net/html node into a templateNode.
-func htmlToTemplate(n *html.Node, componentTags map[string]bool) *templateNode {
+func htmlToTemplate(n *html.Node, componentTags map[string]bool) *TemplateNode {
 	switch n.Type {
 	case html.TextNode:
 		text := n.Data
 		if strings.TrimSpace(text) == "" {
-			// Preserve whitespace-only text nodes for formatting
-			return &templateNode{IsText: true, TextParts: []textPart{{Static: true, Value: text}}}
+			return &TemplateNode{IsText: true, TextParts: []TextPart{{Static: true, Value: text}}}
 		}
-		return &templateNode{IsText: true, TextParts: parseTextInterpolations(text)}
+		return &TemplateNode{IsText: true, TextParts: ParseTextInterpolations(text)}
 
 	case html.ElementNode:
 		return htmlElementToTemplate(n, componentTags)
 
 	case html.CommentNode:
-		// Skip comments in template
 		return nil
 
 	default:
@@ -117,24 +111,20 @@ func htmlToTemplate(n *html.Node, componentTags map[string]bool) *templateNode {
 	}
 }
 
-// htmlElementToTemplate converts an HTML element into a templateNode.
-func htmlElementToTemplate(n *html.Node, componentTags map[string]bool) *templateNode {
-	tag := n.Data // tag name
+func htmlElementToTemplate(n *html.Node, componentTags map[string]bool) *TemplateNode {
+	tag := n.Data
 
-	// Check for g-for — produces a loop template node
 	if forExpr := getAttrVal(n, "g-for"); forExpr != "" {
 		return parseForTemplate(n, forExpr, componentTags)
 	}
 
-	// Check for registered component
 	if componentTags[tag] {
 		return parseComponentTemplate(n, tag, componentTags)
 	}
 
-	// Check for plugin
 	pluginName, pluginExpr := extractPluginDirective(n)
 	if pluginName != "" {
-		tn := &templateNode{
+		tn := &TemplateNode{
 			Tag:        tag,
 			IsPlugin:   true,
 			PluginName: pluginName,
@@ -144,19 +134,15 @@ func htmlElementToTemplate(n *html.Node, componentTags map[string]bool) *templat
 		return tn
 	}
 
-	// Regular element
-	tn := &templateNode{Tag: tag}
+	tn := &TemplateNode{Tag: tag}
 	tn.Attrs, tn.Directives = extractAttrsAndDirectives(n)
 
-	// Detect SVG namespace
 	if tag == "svg" || n.Namespace == "svg" {
 		tn.Namespace = "http://www.w3.org/2000/svg"
 	}
 
-	// Recurse into children
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		if child := htmlToTemplate(c, componentTags); child != nil {
-			// Propagate SVG namespace to children
 			if tn.Namespace != "" && !child.IsText {
 				child.Namespace = tn.Namespace
 			}
@@ -167,13 +153,12 @@ func htmlElementToTemplate(n *html.Node, componentTags map[string]bool) *templat
 	return tn
 }
 
-// parseForTemplate extracts a g-for loop node.
-func parseForTemplate(n *html.Node, forExpr string, componentTags map[string]bool) *templateNode {
-	item, index, list := parseForExpr(forExpr)
+func parseForTemplate(n *html.Node, forExpr string, componentTags map[string]bool) *TemplateNode {
+	item, index, list := ParseForExpr(forExpr)
 
 	keyExpr := getAttrVal(n, "g-key")
 
-	tn := &templateNode{
+	tn := &TemplateNode{
 		IsFor:    true,
 		ForItem:  item,
 		ForIndex: index,
@@ -182,24 +167,19 @@ func parseForTemplate(n *html.Node, forExpr string, componentTags map[string]boo
 		Tag:      n.Data,
 	}
 
-	// The g-for element itself becomes the per-item template.
-	// Remove g-for and g-key attrs, keep everything else.
-	itemTemplate := &templateNode{Tag: n.Data}
+	itemTemplate := &TemplateNode{Tag: n.Data}
 	itemTemplate.Attrs, itemTemplate.Directives = extractAttrsAndDirectives(n)
 
-	// Check if this is also a component
 	if componentTags[n.Data] {
 		itemTemplate.IsComponent = true
 		itemTemplate.ComponentTag = n.Data
 		itemTemplate.PropExprs = extractPropExprs(n)
 	}
 
-	// Detect SVG namespace on the item template
 	if n.Data == "svg" || n.Namespace == "svg" {
 		itemTemplate.Namespace = "http://www.w3.org/2000/svg"
 	}
 
-	// Recurse into children for the item template
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		if child := htmlToTemplate(c, componentTags); child != nil {
 			if itemTemplate.Namespace != "" && !child.IsText {
@@ -209,13 +189,12 @@ func parseForTemplate(n *html.Node, forExpr string, componentTags map[string]boo
 		}
 	}
 
-	tn.ForBody = []*templateNode{itemTemplate}
+	tn.ForBody = []*TemplateNode{itemTemplate}
 	return tn
 }
 
-// parseComponentTemplate extracts a component node.
-func parseComponentTemplate(n *html.Node, tag string, componentTags map[string]bool) *templateNode {
-	tn := &templateNode{
+func parseComponentTemplate(n *html.Node, tag string, componentTags map[string]bool) *TemplateNode {
+	tn := &TemplateNode{
 		Tag:          tag,
 		IsComponent:  true,
 		ComponentTag: tag,
@@ -223,7 +202,6 @@ func parseComponentTemplate(n *html.Node, tag string, componentTags map[string]b
 	}
 	tn.Attrs, tn.Directives = extractAttrsAndDirectives(n)
 
-	// Components may have slot content (children)
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		if child := htmlToTemplate(c, componentTags); child != nil {
 			tn.Children = append(tn.Children, child)
@@ -236,45 +214,38 @@ func parseComponentTemplate(n *html.Node, tag string, componentTags map[string]b
 // Attribute / directive extraction
 // ---------------------------------------------------------------------------
 
-// extractAttrsAndDirectives separates g-* directives from static HTML attributes.
-// Removes g-for, g-key, :prop attributes (handled elsewhere).
-func extractAttrsAndDirectives(n *html.Node) ([]html.Attribute, []directive) {
+func extractAttrsAndDirectives(n *html.Node) ([]html.Attribute, []Directive) {
 	var attrs []html.Attribute
-	var dirs []directive
+	var dirs []Directive
 
 	for _, a := range n.Attr {
 		switch {
-		// Skip directives handled at a higher level
 		case a.Key == "g-for", a.Key == "g-key":
 			continue
 		case strings.HasPrefix(a.Key, ":"):
-			continue // prop expressions handled by extractPropExprs
+			continue
 
-		// Data binding directives
 		case a.Key == "g-text":
-			dirs = append(dirs, directive{Type: "text", Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "text", Expr: a.Val})
 		case a.Key == "g-bind":
-			dirs = append(dirs, directive{Type: "bind", Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "bind", Expr: a.Val})
 		case a.Key == "g-checked":
-			dirs = append(dirs, directive{Type: "checked", Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "checked", Expr: a.Val})
 		case a.Key == "g-if":
-			dirs = append(dirs, directive{Type: "if", Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "if", Expr: a.Val})
 		case a.Key == "g-show":
-			dirs = append(dirs, directive{Type: "show", Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "show", Expr: a.Val})
 
-		// Class/attr/style bindings (Vue-style modifier syntax)
 		case strings.HasPrefix(a.Key, "g-class:"):
-			dirs = append(dirs, directive{Type: "class", Name: a.Key[len("g-class:"):], Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "class", Name: a.Key[len("g-class:"):], Expr: a.Val})
 		case strings.HasPrefix(a.Key, "g-attr:"):
-			dirs = append(dirs, directive{Type: "attr", Name: a.Key[len("g-attr:"):], Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "attr", Name: a.Key[len("g-attr:"):], Expr: a.Val})
 		case strings.HasPrefix(a.Key, "g-style:"):
-			dirs = append(dirs, directive{Type: "style", Name: a.Key[len("g-style:"):], Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "style", Name: a.Key[len("g-style:"):], Expr: a.Val})
 
-		// Event directives
 		case a.Key == "g-click":
-			dirs = append(dirs, directive{Type: "click", Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "click", Expr: a.Val})
 		case a.Key == "g-keydown":
-			// Multiple bindings: "ArrowUp:PanUp;ArrowDown:PanDown"
 			for _, part := range strings.Split(a.Val, ";") {
 				part = strings.TrimSpace(part)
 				if part == "" {
@@ -285,35 +256,31 @@ func extractAttrsAndDirectives(n *html.Node) ([]html.Attribute, []directive) {
 					key = part[:idx]
 					method = part[idx+1:]
 				}
-				dirs = append(dirs, directive{Type: "keydown", Name: key, Expr: method})
+				dirs = append(dirs, Directive{Type: "keydown", Name: key, Expr: method})
 			}
 		case a.Key == "g-mousedown":
-			dirs = append(dirs, directive{Type: "mousedown", Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "mousedown", Expr: a.Val})
 		case a.Key == "g-mousemove":
-			dirs = append(dirs, directive{Type: "mousemove", Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "mousemove", Expr: a.Val})
 		case a.Key == "g-mouseup":
-			dirs = append(dirs, directive{Type: "mouseup", Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "mouseup", Expr: a.Val})
 		case a.Key == "g-wheel":
-			dirs = append(dirs, directive{Type: "wheel", Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "wheel", Expr: a.Val})
 		case a.Key == "g-drop":
-			dirs = append(dirs, directive{Type: "drop", Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "drop", Expr: a.Val})
 
-		// Drag & drop
 		case a.Key == "g-draggable" || strings.HasPrefix(a.Key, "g-draggable:"):
 			group := ""
 			if strings.HasPrefix(a.Key, "g-draggable:") {
 				group = a.Key[len("g-draggable:"):]
 			}
-			dirs = append(dirs, directive{Type: "draggable", Name: group, Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "draggable", Name: group, Expr: a.Val})
 		case a.Key == "g-dropzone":
-			dirs = append(dirs, directive{Type: "dropzone", Expr: a.Val})
+			dirs = append(dirs, Directive{Type: "dropzone", Expr: a.Val})
 
-		// Plugin (also handled at element level, but capture directive for facts)
 		case strings.HasPrefix(a.Key, "g-plugin:"):
-			// Already handled by extractPluginDirective; skip here
 			continue
 
-		// Regular HTML attribute
 		default:
 			attrs = append(attrs, a)
 		}
@@ -322,7 +289,6 @@ func extractAttrsAndDirectives(n *html.Node) ([]html.Attribute, []directive) {
 	return attrs, dirs
 }
 
-// extractPropExprs extracts :prop="expr" bindings from a component element.
 func extractPropExprs(n *html.Node) map[string]string {
 	props := make(map[string]string)
 	for _, a := range n.Attr {
@@ -336,7 +302,6 @@ func extractPropExprs(n *html.Node) map[string]string {
 	return props
 }
 
-// extractPluginDirective looks for a g-plugin:name attribute.
 func extractPluginDirective(n *html.Node) (name, expr string) {
 	for _, a := range n.Attr {
 		if strings.HasPrefix(a.Key, "g-plugin:") {
@@ -347,51 +312,48 @@ func extractPluginDirective(n *html.Node) (name, expr string) {
 }
 
 // ---------------------------------------------------------------------------
-// Text interpolation: "Hello {{Name}}, you have {{Count}} items"
+// Text interpolation
 // ---------------------------------------------------------------------------
 
-// parseTextInterpolations splits text containing {{expr}} into parts.
-func parseTextInterpolations(text string) []textPart {
-	var parts []textPart
+// ParseTextInterpolations splits text containing {{expr}} into parts.
+func ParseTextInterpolations(text string) []TextPart {
+	var parts []TextPart
 	for {
 		start := strings.Index(text, "{{")
 		if start == -1 {
 			if text != "" {
-				parts = append(parts, textPart{Static: true, Value: text})
+				parts = append(parts, TextPart{Static: true, Value: text})
 			}
 			break
 		}
 		end := strings.Index(text[start:], "}}")
 		if end == -1 {
-			// No closing braces — treat rest as static
-			parts = append(parts, textPart{Static: true, Value: text})
+			parts = append(parts, TextPart{Static: true, Value: text})
 			break
 		}
-		end += start // adjust to absolute position
+		end += start
 
-		// Static text before the expression
 		if start > 0 {
-			parts = append(parts, textPart{Static: true, Value: text[:start]})
+			parts = append(parts, TextPart{Static: true, Value: text[:start]})
 		}
-		// The expression (inside the double braces)
 		expr := strings.TrimSpace(text[start+2 : end])
 		if expr != "" {
-			parts = append(parts, textPart{Static: false, Value: expr})
+			parts = append(parts, TextPart{Static: false, Value: expr})
 		}
 		text = text[end+2:]
 	}
 	if len(parts) == 0 {
-		return []textPart{{Static: true, Value: ""}}
+		return []TextPart{{Static: true, Value: ""}}
 	}
 	return parts
 }
 
 // ---------------------------------------------------------------------------
-// g-for expression parsing: "todo in Todos", "todo, i in Todos"
+// g-for expression parsing
 // ---------------------------------------------------------------------------
 
-func parseForExpr(expr string) (item, index, list string) {
-	// "todo, i in Todos" or "todo in Todos"
+// ParseForExpr parses "todo in Todos" or "todo, i in Todos".
+func ParseForExpr(expr string) (item, index, list string) {
 	inIdx := strings.Index(expr, " in ")
 	if inIdx == -1 {
 		return "", "", expr
@@ -412,35 +374,25 @@ func parseForExpr(expr string) (item, index, list string) {
 // Template tree → resolved Node tree
 // ---------------------------------------------------------------------------
 
-// resolveContext holds the state and loop variables available during tree resolution.
-type resolveContext struct {
-	State reflect.Value         // the component struct (or pointer to it)
-	Vars  map[string]any        // loop variables: {todo: item, i: index}
+// ResolveContext holds the state and loop variables available during tree resolution.
+type ResolveContext struct {
+	State reflect.Value  // the component struct (or pointer to it)
+	Vars  map[string]any // loop variables: {todo: item, i: index}
 }
 
-// resolveTree resolves a list of template nodes into concrete Nodes.
-func resolveTree(templates []*templateNode, ctx *resolveContext) []Node {
+// ResolveTree resolves a list of template nodes into concrete Nodes.
+func ResolveTree(templates []*TemplateNode, ctx *ResolveContext) []Node {
 	var nodes []Node
 	for _, t := range templates {
-		resolved := resolveTemplateNode(t, ctx)
+		resolved := ResolveTemplateNode(t, ctx)
 		nodes = append(nodes, resolved...)
 	}
-	// Merge adjacent TextNodes. When g-for/g-if produce 0 nodes, whitespace
-	// text nodes before and after become adjacent in the VDOM. The browser's
-	// HTML parser merges adjacent text into a single DOM text node, so we must
-	// do the same to keep DFS indices in sync between the VDOM and the DOM.
-	return mergeAdjacentText(nodes)
+	return MergeAdjacentText(nodes)
 }
 
-// mergeAdjacentText collapses consecutive TextNode entries into one and
-// removes empty TextNodes. Both operations keep the VDOM in sync with the
-// browser's DOM:
-//   - Adjacent text: when g-for/g-if produce 0 nodes, surrounding whitespace
-//     text nodes become adjacent. The browser merges them into one DOM node.
-//   - Empty text: a TextNode("") renders as nothing in innerHTML, so the
-//     browser creates no DOM node for it. Keeping it in the VDOM would shift
-//     all subsequent DFS indices.
-func mergeAdjacentText(nodes []Node) []Node {
+// MergeAdjacentText collapses consecutive TextNode entries into one and
+// removes empty TextNodes.
+func MergeAdjacentText(nodes []Node) []Node {
 	if len(nodes) == 0 {
 		return nodes
 	}
@@ -448,11 +400,9 @@ func mergeAdjacentText(nodes []Node) []Node {
 	for _, n := range nodes {
 		tn, isText := n.(*TextNode)
 		if isText {
-			// Drop empty text nodes — they produce no DOM node.
 			if tn.Text == "" {
 				continue
 			}
-			// Merge with preceding text node if adjacent.
 			if len(out) > 0 {
 				if prev, prevIsText := out[len(out)-1].(*TextNode); prevIsText {
 					prev.Text += tn.Text
@@ -465,9 +415,8 @@ func mergeAdjacentText(nodes []Node) []Node {
 	return out
 }
 
-// resolveTemplateNode resolves a single template node into zero or more Nodes.
-// May return zero nodes (g-if=false) or many (g-for expansion).
-func resolveTemplateNode(t *templateNode, ctx *resolveContext) []Node {
+// ResolveTemplateNode resolves a single template node into zero or more Nodes.
+func ResolveTemplateNode(t *TemplateNode, ctx *ResolveContext) []Node {
 	if t.IsText {
 		return resolveTextNode(t, ctx)
 	}
@@ -475,11 +424,10 @@ func resolveTemplateNode(t *templateNode, ctx *resolveContext) []Node {
 		return resolveForNode(t, ctx)
 	}
 
-	// Check g-if before building the element
 	for _, d := range t.Directives {
 		if d.Type == "if" {
-			val := resolveExpr(d.Expr, ctx)
-			if !isTruthy(val) {
+			val := ResolveExpr(d.Expr, ctx)
+			if !IsTruthy(val) {
 				return nil
 			}
 		}
@@ -495,40 +443,33 @@ func resolveTemplateNode(t *templateNode, ctx *resolveContext) []Node {
 	return []Node{resolveElementNode(t, ctx)}
 }
 
-// resolveTextNode resolves text interpolations.
-func resolveTextNode(t *templateNode, ctx *resolveContext) []Node {
-	// Optimize: single static part → single TextNode
+func resolveTextNode(t *TemplateNode, ctx *ResolveContext) []Node {
 	if len(t.TextParts) == 1 && t.TextParts[0].Static {
 		return []Node{&TextNode{Text: t.TextParts[0].Value}}
 	}
 
-	// Multiple parts or dynamic: concatenate into one text node
 	var sb strings.Builder
 	for _, p := range t.TextParts {
 		if p.Static {
 			sb.WriteString(p.Value)
 		} else {
-			val := resolveExpr(p.Value, ctx)
+			val := ResolveExpr(p.Value, ctx)
 			sb.WriteString(fmt.Sprint(val))
 		}
 	}
 	return []Node{&TextNode{Text: sb.String()}}
 }
 
-// resolveElementNode resolves a regular element.
-func resolveElementNode(t *templateNode, ctx *resolveContext) Node {
+func resolveElementNode(t *TemplateNode, ctx *ResolveContext) Node {
 	el := &ElementNode{
 		Tag:       t.Tag,
 		Namespace: t.Namespace,
 		Facts:     resolveFacts(t, ctx),
 	}
 
-	// Resolve children
-	// If g-text directive exists, it replaces all children with a single text node.
-	// Empty text produces no DOM node, so we omit it to keep DFS indices aligned.
 	for _, d := range t.Directives {
 		if d.Type == "text" {
-			val := resolveExpr(d.Expr, ctx)
+			val := ResolveExpr(d.Expr, ctx)
 			text := fmt.Sprint(val)
 			if text != "" {
 				el.Children = []Node{&TextNode{Text: text}}
@@ -537,47 +478,32 @@ func resolveElementNode(t *templateNode, ctx *resolveContext) Node {
 		}
 	}
 
-	el.Children = resolveTree(t.Children, ctx)
+	el.Children = ResolveTree(t.Children, ctx)
 	return el
 }
 
-// resolveForNode expands a g-for into children.
-func resolveForNode(t *templateNode, ctx *resolveContext) []Node {
-	listVal := resolveExpr(t.ForList, ctx)
+func resolveForNode(t *TemplateNode, ctx *ResolveContext) []Node {
+	listVal := ResolveExpr(t.ForList, ctx)
 	rv := reflect.ValueOf(listVal)
 	if !rv.IsValid() || rv.Kind() != reflect.Slice {
 		return nil
-	}
-
-	hasKey := t.ForKey != ""
-	if hasKey {
-		// Produce a KeyedElementNode — the parent receives keyed children
-		// We don't have the parent tag here; the caller wraps this.
-		// For now, return individual keyed children that the parent collects.
-		// Actually, g-for replaces itself with its expanded items.
-		// The keyed case needs special handling at the parent level.
-		// For simplicity: return a slice of nodes. If keyed, the parent
-		// should be a KeyedElementNode — but that's decided by the parent.
-		// TODO: revisit when integrating with parent element resolution.
 	}
 
 	var nodes []Node
 	for i := 0; i < rv.Len(); i++ {
 		item := rv.Index(i).Interface()
 
-		// Build child context with loop variables
-		childCtx := &resolveContext{
+		childCtx := &ResolveContext{
 			State: ctx.State,
-			Vars:  copyVars(ctx.Vars),
+			Vars:  CopyVars(ctx.Vars),
 		}
 		childCtx.Vars[t.ForItem] = item
 		if t.ForIndex != "" {
 			childCtx.Vars[t.ForIndex] = i
 		}
 
-		// Resolve the item template (ForBody is the per-item template)
 		for _, bodyTmpl := range t.ForBody {
-			resolved := resolveTemplateNode(bodyTmpl, childCtx)
+			resolved := ResolveTemplateNode(bodyTmpl, childCtx)
 			nodes = append(nodes, resolved...)
 		}
 	}
@@ -585,14 +511,9 @@ func resolveForNode(t *templateNode, ctx *resolveContext) []Node {
 	return nodes
 }
 
-// resolvePluginNode resolves a plugin element.
-func resolvePluginNode(t *templateNode, ctx *resolveContext) Node {
-	data := resolveExpr(t.PluginExpr, ctx)
-	// Deep-copy plugin data via JSON round-trip. Plugin data often contains
-	// slices and maps that are shared with the live component state. Without
-	// a deep copy, mutations to the live state silently change prevTree's data,
-	// making the diff think nothing changed.
-	data = deepCopyJSON(data)
+func resolvePluginNode(t *TemplateNode, ctx *ResolveContext) Node {
+	data := ResolveExpr(t.PluginExpr, ctx)
+	data = DeepCopyJSON(data)
 	return &PluginNode{
 		Tag:   t.Tag,
 		Name:  t.PluginName,
@@ -601,17 +522,14 @@ func resolvePluginNode(t *templateNode, ctx *resolveContext) Node {
 	}
 }
 
-// resolveComponentNode resolves a component element.
-func resolveComponentNode(t *templateNode, ctx *resolveContext) Node {
+func resolveComponentNode(t *TemplateNode, ctx *ResolveContext) Node {
 	props := make(map[string]any)
 	for name, expr := range t.PropExprs {
-		props[name] = resolveExpr(expr, ctx)
+		props[name] = ResolveExpr(expr, ctx)
 	}
 	return &ComponentNode{
 		Tag:   t.ComponentTag,
 		Props: props,
-		// Instance and SubTree are resolved by the framework after diffing
-		// detects prop changes.
 	}
 }
 
@@ -619,14 +537,11 @@ func resolveComponentNode(t *templateNode, ctx *resolveContext) Node {
 // Facts resolution
 // ---------------------------------------------------------------------------
 
-// resolveFacts resolves directives into a Facts struct.
-func resolveFacts(t *templateNode, ctx *resolveContext) Facts {
+func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
 	var f Facts
 
-	// Start with static HTML attributes
 	for _, a := range t.Attrs {
 		if a.Key == "class" || a.Key == "style" || a.Key == "id" {
-			// Common attributes stored as properties for efficiency
 			if f.Props == nil {
 				f.Props = make(map[string]any)
 			}
@@ -643,19 +558,15 @@ func resolveFacts(t *templateNode, ctx *resolveContext) Facts {
 		}
 	}
 
-	// Apply directives
 	for _, d := range t.Directives {
 		switch d.Type {
 		case "text":
-			// Handled at element level (replaces children)
 			continue
 		case "if":
-			// Handled before element creation
 			continue
 
 		case "bind":
-			// Two-way binding: set value property + input event
-			val := resolveExpr(d.Expr, ctx)
+			val := ResolveExpr(d.Expr, ctx)
 			if f.Props == nil {
 				f.Props = make(map[string]any)
 			}
@@ -669,15 +580,15 @@ func resolveFacts(t *templateNode, ctx *resolveContext) Facts {
 			}
 
 		case "checked":
-			val := resolveExpr(d.Expr, ctx)
+			val := ResolveExpr(d.Expr, ctx)
 			if f.Props == nil {
 				f.Props = make(map[string]any)
 			}
-			f.Props["checked"] = isTruthy(val)
+			f.Props["checked"] = IsTruthy(val)
 
 		case "show":
-			val := resolveExpr(d.Expr, ctx)
-			if !isTruthy(val) {
+			val := ResolveExpr(d.Expr, ctx)
+			if !IsTruthy(val) {
 				if f.Styles == nil {
 					f.Styles = make(map[string]string)
 				}
@@ -685,9 +596,8 @@ func resolveFacts(t *templateNode, ctx *resolveContext) Facts {
 			}
 
 		case "class":
-			val := resolveExpr(d.Expr, ctx)
-			if isTruthy(val) {
-				// Add class to existing className
+			val := ResolveExpr(d.Expr, ctx)
+			if IsTruthy(val) {
 				if f.Props == nil {
 					f.Props = make(map[string]any)
 				}
@@ -700,21 +610,21 @@ func resolveFacts(t *templateNode, ctx *resolveContext) Facts {
 			}
 
 		case "attr":
-			val := resolveExpr(d.Expr, ctx)
+			val := ResolveExpr(d.Expr, ctx)
 			if f.Attrs == nil {
 				f.Attrs = make(map[string]string)
 			}
 			f.Attrs[d.Name] = fmt.Sprint(val)
 
 		case "style":
-			val := resolveExpr(d.Expr, ctx)
+			val := ResolveExpr(d.Expr, ctx)
 			if f.Styles == nil {
 				f.Styles = make(map[string]string)
 			}
 			f.Styles[d.Name] = fmt.Sprint(val)
 
 		case "click", "mousedown", "mousemove", "mouseup", "wheel", "drop":
-			method, args := parseMethodCall(d.Expr)
+			method, args := ParseMethodCall(d.Expr)
 			if f.Events == nil {
 				f.Events = make(map[string]EventHandler)
 			}
@@ -725,12 +635,11 @@ func resolveFacts(t *templateNode, ctx *resolveContext) Facts {
 			}
 
 		case "keydown":
-			method, args := parseMethodCall(d.Expr)
+			method, args := ParseMethodCall(d.Expr)
 			if f.Events == nil {
 				f.Events = make(map[string]EventHandler)
 			}
 			resolvedArgs := resolveArgs(args, ctx)
-			// Key-specific keydown events get a composite key in the events map
 			eventKey := "keydown"
 			if d.Name != "" {
 				eventKey = "keydown:" + d.Name
@@ -749,17 +658,17 @@ func resolveFacts(t *templateNode, ctx *resolveContext) Facts {
 			if f.Events == nil {
 				f.Events = make(map[string]EventHandler)
 			}
-			val := resolveExpr(d.Expr, ctx)
+			val := ResolveExpr(d.Expr, ctx)
 			f.Events["dragstart"] = EventHandler{
 				Handler: "__draggable__",
-				Args:    []any{d.Name, val}, // group, value
+				Args:    []any{d.Name, val},
 			}
 
 		case "dropzone":
 			if f.Events == nil {
 				f.Events = make(map[string]EventHandler)
 			}
-			method, args := parseMethodCall(d.Expr)
+			method, args := ParseMethodCall(d.Expr)
 			resolvedArgs := resolveArgs(args, ctx)
 			f.Events["drop"] = EventHandler{
 				Handler: method,
@@ -775,13 +684,10 @@ func resolveFacts(t *templateNode, ctx *resolveContext) Facts {
 // Expression resolution
 // ---------------------------------------------------------------------------
 
-// resolveExpr resolves an expression string against the context.
-// Supports: field names ("Count"), dotted paths ("todo.Text"), loop variables,
-// and literals (true, false, integers, quoted strings).
-func resolveExpr(expr string, ctx *resolveContext) any {
+// ResolveExpr resolves an expression string against the context.
+func ResolveExpr(expr string, ctx *ResolveContext) any {
 	expr = strings.TrimSpace(expr)
 
-	// Literals
 	if expr == "true" {
 		return true
 	}
@@ -789,13 +695,10 @@ func resolveExpr(expr string, ctx *resolveContext) any {
 		return false
 	}
 
-	// Check loop variables first
 	if ctx.Vars != nil {
-		// Direct variable: "todo", "i"
 		if val, ok := ctx.Vars[expr]; ok {
 			return val
 		}
-		// Dotted path starting with loop variable: "todo.Text"
 		if dotIdx := strings.Index(expr, "."); dotIdx != -1 {
 			root := expr[:dotIdx]
 			if val, ok := ctx.Vars[root]; ok {
@@ -804,13 +707,10 @@ func resolveExpr(expr string, ctx *resolveContext) any {
 		}
 	}
 
-	// Resolve against struct state
 	return resolveStructField(ctx.State, expr)
 }
 
-// resolveStructField reads a field (or dotted path) from a reflect.Value struct.
 func resolveStructField(v reflect.Value, path string) any {
-	// Dereference pointers
 	for v.Kind() == reflect.Ptr {
 		if v.IsNil() {
 			return nil
@@ -827,7 +727,6 @@ func resolveStructField(v reflect.Value, path string) any {
 		if !v.IsValid() {
 			return nil
 		}
-		// Dereference intermediate pointers
 		for v.Kind() == reflect.Ptr {
 			if v.IsNil() {
 				return nil
@@ -838,29 +737,28 @@ func resolveStructField(v reflect.Value, path string) any {
 	return v.Interface()
 }
 
-// resolveFieldPath reads a dotted path from an arbitrary value.
 func resolveFieldPath(val any, path string) any {
 	v := reflect.ValueOf(val)
 	return resolveStructField(v, path)
 }
 
-// resolveArgs resolves a list of argument expressions.
-func resolveArgs(argExprs []string, ctx *resolveContext) []any {
+func resolveArgs(argExprs []string, ctx *ResolveContext) []any {
 	if len(argExprs) == 0 {
 		return nil
 	}
 	args := make([]any, len(argExprs))
 	for i, expr := range argExprs {
-		args[i] = resolveExpr(expr, ctx)
+		args[i] = ResolveExpr(expr, ctx)
 	}
 	return args
 }
 
 // ---------------------------------------------------------------------------
-// Method call parsing: "Save", "Toggle(i)", "Remove(i, todo.ID)"
+// Method call parsing
 // ---------------------------------------------------------------------------
 
-func parseMethodCall(expr string) (method string, args []string) {
+// ParseMethodCall parses "Save", "Toggle(i)", "Remove(i, todo.ID)".
+func ParseMethodCall(expr string) (method string, args []string) {
 	expr = strings.TrimSpace(expr)
 	parenIdx := strings.Index(expr, "(")
 	if parenIdx == -1 {
@@ -881,8 +779,8 @@ func parseMethodCall(expr string) (method string, args []string) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// isTruthy returns whether a value is considered true for g-if/g-show/g-class.
-func isTruthy(val any) bool {
+// IsTruthy returns whether a value is considered true for g-if/g-show/g-class.
+func IsTruthy(val any) bool {
 	if val == nil {
 		return false
 	}
@@ -898,7 +796,6 @@ func isTruthy(val any) bool {
 	case string:
 		return v != ""
 	default:
-		// Use reflect for other types (slices, etc.)
 		rv := reflect.ValueOf(val)
 		switch rv.Kind() {
 		case reflect.Slice, reflect.Map:
@@ -909,7 +806,8 @@ func isTruthy(val any) bool {
 	}
 }
 
-func copyVars(vars map[string]any) map[string]any {
+// CopyVars creates a shallow copy of a variable map.
+func CopyVars(vars map[string]any) map[string]any {
 	if vars == nil {
 		return make(map[string]any)
 	}
@@ -929,9 +827,8 @@ func getAttrVal(n *html.Node, key string) string {
 	return ""
 }
 
-// deepCopyJSON deep-copies a value by JSON round-tripping.
-// Returns the original value if marshaling fails.
-func deepCopyJSON(v any) any {
+// DeepCopyJSON deep-copies a value by JSON round-tripping.
+func DeepCopyJSON(v any) any {
 	if v == nil {
 		return nil
 	}

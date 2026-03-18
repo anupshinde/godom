@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/anupshinde/godom/vdom"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -42,8 +43,8 @@ func TestEncodeInitMessage_Serializable(t *testing.T) {
 }
 
 func TestEncodePatchMessage_Text(t *testing.T) {
-	patches := []Patch{
-		{Type: patchText, Index: 3, Data: PatchTextData{Text: "hello"}},
+	patches := []vdom.Patch{
+		{Type: vdom.PatchText, Index: 3, Data: vdom.PatchTextData{Text: "hello"}},
 	}
 	msg := encodePatchMessage(patches, &gidCounter{})
 	if msg.Type != "patch" {
@@ -65,9 +66,9 @@ func TestEncodePatchMessage_Text(t *testing.T) {
 }
 
 func TestEncodePatchMessage_Facts(t *testing.T) {
-	patches := []Patch{
-		{Type: patchFacts, Index: 1, Data: PatchFactsData{
-			Diff: FactsDiff{
+	patches := []vdom.Patch{
+		{Type: vdom.PatchFacts, Index: 1, Data: vdom.PatchFactsData{
+			Diff: vdom.FactsDiff{
 				Props:  map[string]any{"className": "active"},
 				Styles: map[string]string{"display": "none"},
 			},
@@ -92,9 +93,9 @@ func TestEncodePatchMessage_Facts(t *testing.T) {
 }
 
 func TestEncodePatchMessage_Append(t *testing.T) {
-	patches := []Patch{
-		{Type: patchAppend, Index: 0, Data: PatchAppendData{
-			Nodes: []Node{&TextNode{Text: "new child"}},
+	patches := []vdom.Patch{
+		{Type: vdom.PatchAppend, Index: 0, Data: vdom.PatchAppendData{
+			Nodes: []vdom.Node{&vdom.TextNode{Text: "new child"}},
 		}},
 	}
 	msg := encodePatchMessage(patches, &gidCounter{})
@@ -108,8 +109,8 @@ func TestEncodePatchMessage_Append(t *testing.T) {
 }
 
 func TestEncodePatchMessage_RemoveLast(t *testing.T) {
-	patches := []Patch{
-		{Type: patchRemoveLast, Index: 0, Data: PatchRemoveLastData{Count: 3}},
+	patches := []vdom.Patch{
+		{Type: vdom.PatchRemoveLast, Index: 0, Data: vdom.PatchRemoveLastData{Count: 3}},
 	}
 	msg := encodePatchMessage(patches, &gidCounter{})
 	dp := msg.Patches[0]
@@ -122,11 +123,11 @@ func TestEncodePatchMessage_RemoveLast(t *testing.T) {
 }
 
 func TestEncodePatchMessage_Redraw(t *testing.T) {
-	patches := []Patch{
-		{Type: patchRedraw, Index: 2, Data: PatchRedrawData{
-			Node: &ElementNode{
+	patches := []vdom.Patch{
+		{Type: vdom.PatchRedraw, Index: 2, Data: vdom.PatchRedrawData{
+			Node: &vdom.ElementNode{
 				Tag: "span",
-				Children: []Node{&TextNode{Text: "replaced"}},
+				Children: []vdom.Node{&vdom.TextNode{Text: "replaced"}},
 			},
 		}},
 	}
@@ -142,8 +143,8 @@ func TestEncodePatchMessage_Redraw(t *testing.T) {
 }
 
 func TestEncodePatchMessage_Plugin(t *testing.T) {
-	patches := []Patch{
-		{Type: patchPlugin, Index: 5, Data: PatchPluginData{
+	patches := []vdom.Patch{
+		{Type: vdom.PatchPlugin, Index: 5, Data: vdom.PatchPluginData{
 			Data: map[string]int{"value": 42},
 		}},
 	}
@@ -162,10 +163,10 @@ func TestEncodePatchMessage_Plugin(t *testing.T) {
 }
 
 func TestEncodePatchMessage_Lazy(t *testing.T) {
-	patches := []Patch{
-		{Type: patchLazy, Index: 0, Data: PatchLazyData{
-			Patches: []Patch{
-				{Type: patchText, Index: 1, Data: PatchTextData{Text: "inner"}},
+	patches := []vdom.Patch{
+		{Type: vdom.PatchLazy, Index: 0, Data: vdom.PatchLazyData{
+			Patches: []vdom.Patch{
+				{Type: vdom.PatchText, Index: 1, Data: vdom.PatchTextData{Text: "inner"}},
 			},
 		}},
 	}
@@ -184,12 +185,12 @@ func TestEncodePatchMessage_Lazy(t *testing.T) {
 
 func TestEncodePatchMessage_Serializable(t *testing.T) {
 	// Verify the full message survives protobuf round-trip
-	patches := []Patch{
-		{Type: patchText, Index: 1, Data: PatchTextData{Text: "hello"}},
-		{Type: patchFacts, Index: 2, Data: PatchFactsData{
-			Diff: FactsDiff{Styles: map[string]string{"color": "red"}},
+	patches := []vdom.Patch{
+		{Type: vdom.PatchText, Index: 1, Data: vdom.PatchTextData{Text: "hello"}},
+		{Type: vdom.PatchFacts, Index: 2, Data: vdom.PatchFactsData{
+			Diff: vdom.FactsDiff{Styles: map[string]string{"color": "red"}},
 		}},
-		{Type: patchRemoveLast, Index: 0, Data: PatchRemoveLastData{Count: 1}},
+		{Type: vdom.PatchRemoveLast, Index: 0, Data: vdom.PatchRemoveLastData{Count: 1}},
 	}
 	msg := encodePatchMessage(patches, &gidCounter{})
 
@@ -220,7 +221,7 @@ func TestEndToEnd_ParseResolveDiffEncode(t *testing.T) {
 		<button g-click="Increment">+</button>
 	</body></html>`
 
-	templates, err := parseTemplate(htmlStr, nil)
+	templates, err := vdom.ParseTemplate(htmlStr, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,20 +232,20 @@ func TestEndToEnd_ParseResolveDiffEncode(t *testing.T) {
 
 	// Render 1
 	s1 := &counter{Count: 5}
-	ctx1 := &resolveContext{State: makeReflectValue(s1), Vars: make(map[string]any)}
-	tree1 := resolveTree(templates, ctx1)
-	root1 := &ElementNode{Tag: "body", Children: tree1}
-	computeDescendants(root1)
+	ctx1 := &vdom.ResolveContext{State: makeReflectValue(s1), Vars: make(map[string]any)}
+	tree1 := vdom.ResolveTree(templates, ctx1)
+	root1 := &vdom.ElementNode{Tag: "body", Children: tree1}
+	vdom.ComputeDescendants(root1)
 
 	// Render 2
 	s2 := &counter{Count: 10}
-	ctx2 := &resolveContext{State: makeReflectValue(s2), Vars: make(map[string]any)}
-	tree2 := resolveTree(templates, ctx2)
-	root2 := &ElementNode{Tag: "body", Children: tree2}
-	computeDescendants(root2)
+	ctx2 := &vdom.ResolveContext{State: makeReflectValue(s2), Vars: make(map[string]any)}
+	tree2 := vdom.ResolveTree(templates, ctx2)
+	root2 := &vdom.ElementNode{Tag: "body", Children: tree2}
+	vdom.ComputeDescendants(root2)
 
 	// Diff
-	patches := diff(root1, root2)
+	patches := vdom.Diff(root1, root2)
 	if len(patches) == 0 {
 		t.Fatal("expected patches")
 	}

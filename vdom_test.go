@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/anupshinde/godom/vdom"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -39,7 +40,7 @@ func makeCounterCI(app *counterApp) *componentInfo {
 	v := reflect.ValueOf(app)
 	t := v.Elem().Type()
 
-	templates, err := parseTemplate(counterHTML, nil)
+	templates, err := vdom.ParseTemplate(counterHTML, nil)
 	if err != nil {
 		panic(err)
 	}

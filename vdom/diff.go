@@ -1,4 +1,4 @@
-package godom
+package vdom
 
 import (
 	"encoding/json"
@@ -6,26 +6,22 @@ import (
 	"reflect"
 )
 
-// diff computes the minimal set of patches needed to transform oldTree into newTree.
-// Both trees must have had computeDescendants called on them before diffing.
-func diff(oldTree, newTree Node) []Patch {
+// Diff computes the minimal set of patches needed to transform oldTree into newTree.
+// Both trees must have had ComputeDescendants called on them before diffing.
+func Diff(oldTree, newTree Node) []Patch {
 	var patches []Patch
 	diffHelp(oldTree, newTree, &patches, 0)
 	return patches
 }
 
-// diffHelp is the recursive core of the diff algorithm.
-// index is the current position in a depth-first traversal of the old tree.
 func diffHelp(old, new Node, patches *[]Patch, index int) {
-	// Identity check — same pointer means no changes.
 	if old == new {
 		return
 	}
 
-	// Different node types → full redraw.
-	if old.nodeType() != new.nodeType() {
+	if old.NodeType() != new.NodeType() {
 		*patches = append(*patches, Patch{
-			Type:  patchRedraw,
+			Type:  PatchRedraw,
 			Index: index,
 			Data:  PatchRedrawData{Node: new},
 		})
@@ -66,7 +62,7 @@ func diffHelp(old, new Node, patches *[]Patch, index int) {
 func diffText(old, new *TextNode, patches *[]Patch, index int) {
 	if old.Text != new.Text {
 		*patches = append(*patches, Patch{
-			Type:  patchText,
+			Type:  PatchText,
 			Index: index,
 			Data:  PatchTextData{Text: new.Text},
 		})
@@ -78,31 +74,27 @@ func diffText(old, new *TextNode, patches *[]Patch, index int) {
 // ---------------------------------------------------------------------------
 
 func diffElement(old, new *ElementNode, patches *[]Patch, index int) {
-	// Different tag or namespace → full redraw.
 	if old.Tag != new.Tag || old.Namespace != new.Namespace {
 		*patches = append(*patches, Patch{
-			Type:  patchRedraw,
+			Type:  PatchRedraw,
 			Index: index,
 			Data:  PatchRedrawData{Node: new},
 		})
 		return
 	}
 
-	// Diff facts (properties, attributes, styles, events).
-	fd := diffFacts(&old.Facts, &new.Facts)
+	fd := DiffFacts(&old.Facts, &new.Facts)
 	if !fd.IsEmpty() {
 		*patches = append(*patches, Patch{
-			Type:  patchFacts,
+			Type:  PatchFacts,
 			Index: index,
 			Data:  PatchFactsData{Diff: fd},
 		})
 	}
 
-	// Diff children.
 	diffChildren(old.Children, new.Children, patches, index)
 }
 
-// diffChildren diffs two non-keyed child lists.
 func diffChildren(oldKids, newKids []Node, patches *[]Patch, parentIndex int) {
 	oldLen := len(oldKids)
 	newLen := len(newKids)
@@ -111,27 +103,24 @@ func diffChildren(oldKids, newKids []Node, patches *[]Patch, parentIndex int) {
 		minLen = newLen
 	}
 
-	// Diff common prefix — each child's index is parent + 1 + sum of preceding descendants.
 	childIndex := parentIndex
 	for i := 0; i < minLen; i++ {
 		childIndex++
 		diffHelp(oldKids[i], newKids[i], patches, childIndex)
-		childIndex += oldKids[i].descendantsCount()
+		childIndex += oldKids[i].DescendantsCount()
 	}
 
-	// New children appended.
 	if newLen > oldLen {
 		*patches = append(*patches, Patch{
-			Type:  patchAppend,
+			Type:  PatchAppend,
 			Index: parentIndex,
 			Data:  PatchAppendData{Nodes: newKids[oldLen:]},
 		})
 	}
 
-	// Old children removed from end.
 	if oldLen > newLen {
 		*patches = append(*patches, Patch{
-			Type:  patchRemoveLast,
+			Type:  PatchRemoveLast,
 			Index: parentIndex,
 			Data:  PatchRemoveLastData{Count: oldLen - newLen},
 		})
@@ -143,36 +132,27 @@ func diffChildren(oldKids, newKids []Node, patches *[]Patch, parentIndex int) {
 // ---------------------------------------------------------------------------
 
 func diffKeyedElement(old, new *KeyedElementNode, patches *[]Patch, index int) {
-	// Different tag or namespace → full redraw.
 	if old.Tag != new.Tag || old.Namespace != new.Namespace {
 		*patches = append(*patches, Patch{
-			Type:  patchRedraw,
+			Type:  PatchRedraw,
 			Index: index,
 			Data:  PatchRedrawData{Node: new},
 		})
 		return
 	}
 
-	// Diff facts.
-	fd := diffFacts(&old.Facts, &new.Facts)
+	fd := DiffFacts(&old.Facts, &new.Facts)
 	if !fd.IsEmpty() {
 		*patches = append(*patches, Patch{
-			Type:  patchFacts,
+			Type:  PatchFacts,
 			Index: index,
 			Data:  PatchFactsData{Diff: fd},
 		})
 	}
 
-	// For now, keyed diffing falls back to a simple approach:
-	// compare by position, redraw if keys don't match.
-	// Full keyed diffing (Phase 5) will replace this with the
-	// two-pointer lookahead algorithm producing Reorder patches.
 	diffKeyedChildrenSimple(old.Children, new.Children, patches, index)
 }
 
-// diffKeyedChildrenSimple is a temporary placeholder that diffs keyed children
-// by position. If keys match, diff the subtrees. If they don't, redraw.
-// Phase 5 replaces this with proper keyed reordering.
 func diffKeyedChildrenSimple(oldKids, newKids []KeyedChild, patches *[]Patch, parentIndex int) {
 	oldLen := len(oldKids)
 	newLen := len(newKids)
@@ -185,16 +165,15 @@ func diffKeyedChildrenSimple(oldKids, newKids []KeyedChild, patches *[]Patch, pa
 	for i := 0; i < minLen; i++ {
 		childIndex++
 		if oldKids[i].Key != newKids[i].Key {
-			// Different key at same position → redraw this child.
 			*patches = append(*patches, Patch{
-				Type:  patchRedraw,
+				Type:  PatchRedraw,
 				Index: childIndex,
 				Data:  PatchRedrawData{Node: newKids[i].Node},
 			})
 		} else {
 			diffHelp(oldKids[i].Node, newKids[i].Node, patches, childIndex)
 		}
-		childIndex += oldKids[i].Node.descendantsCount()
+		childIndex += oldKids[i].Node.DescendantsCount()
 	}
 
 	if newLen > oldLen {
@@ -203,7 +182,7 @@ func diffKeyedChildrenSimple(oldKids, newKids []KeyedChild, patches *[]Patch, pa
 			appendNodes[i-oldLen] = newKids[i].Node
 		}
 		*patches = append(*patches, Patch{
-			Type:  patchAppend,
+			Type:  PatchAppend,
 			Index: parentIndex,
 			Data:  PatchAppendData{Nodes: appendNodes},
 		})
@@ -211,7 +190,7 @@ func diffKeyedChildrenSimple(oldKids, newKids []KeyedChild, patches *[]Patch, pa
 
 	if oldLen > newLen {
 		*patches = append(*patches, Patch{
-			Type:  patchRemoveLast,
+			Type:  PatchRemoveLast,
 			Index: parentIndex,
 			Data:  PatchRemoveLastData{Count: oldLen - newLen},
 		})
@@ -223,23 +202,20 @@ func diffKeyedChildrenSimple(oldKids, newKids []KeyedChild, patches *[]Patch, pa
 // ---------------------------------------------------------------------------
 
 func diffComponent(old, new *ComponentNode, patches *[]Patch, index int) {
-	// Different component type → full redraw.
 	if old.Tag != new.Tag {
 		*patches = append(*patches, Patch{
-			Type:  patchRedraw,
+			Type:  PatchRedraw,
 			Index: index,
 			Data:  PatchRedrawData{Node: new},
 		})
 		return
 	}
 
-	// If both have subtrees, diff them.
 	if old.SubTree != nil && new.SubTree != nil {
 		diffHelp(old.SubTree, new.SubTree, patches, index)
 	} else if new.SubTree != nil {
-		// Old had no subtree, new does → redraw.
 		*patches = append(*patches, Patch{
-			Type:  patchRedraw,
+			Type:  PatchRedraw,
 			Index: index,
 			Data:  PatchRedrawData{Node: new},
 		})
@@ -251,30 +227,27 @@ func diffComponent(old, new *ComponentNode, patches *[]Patch, index int) {
 // ---------------------------------------------------------------------------
 
 func diffPlugin(old, new *PluginNode, patches *[]Patch, index int) {
-	// Different plugin or tag → full redraw.
 	if old.Name != new.Name || old.Tag != new.Tag {
 		*patches = append(*patches, Patch{
-			Type:  patchRedraw,
+			Type:  PatchRedraw,
 			Index: index,
 			Data:  PatchRedrawData{Node: new},
 		})
 		return
 	}
 
-	// Diff facts.
-	fd := diffFacts(&old.Facts, &new.Facts)
+	fd := DiffFacts(&old.Facts, &new.Facts)
 	if !fd.IsEmpty() {
 		*patches = append(*patches, Patch{
-			Type:  patchFacts,
+			Type:  PatchFacts,
 			Index: index,
 			Data:  PatchFactsData{Diff: fd},
 		})
 	}
 
-	// Diff plugin data (JSON comparison).
 	if !jsonEqual(old.Data, new.Data) {
 		*patches = append(*patches, Patch{
-			Type:  patchPlugin,
+			Type:  PatchPlugin,
 			Index: index,
 			Data:  PatchPluginData{Data: new.Data},
 		})
@@ -286,16 +259,11 @@ func diffPlugin(old, new *PluginNode, patches *[]Patch, index int) {
 // ---------------------------------------------------------------------------
 
 func diffLazy(old, new *LazyNode, patches *[]Patch, index int) {
-	// Check referential equality of function and args.
 	if lazyArgsEqual(old, new) {
-		// Inputs unchanged — reuse cached result.
 		new.Cached = old.Cached
 		return
 	}
 
-	// Inputs changed — force evaluation of the new lazy node.
-	// The caller must have already evaluated new.Cached by calling the Func.
-	// If Cached is nil, we need to evaluate it now.
 	if new.Cached == nil {
 		new.Cached = evaluateLazy(new)
 	}
@@ -303,37 +271,32 @@ func diffLazy(old, new *LazyNode, patches *[]Patch, index int) {
 		old.Cached = evaluateLazy(old)
 	}
 
-	// Diff the cached results.
 	if old.Cached != nil && new.Cached != nil {
 		var subPatches []Patch
 		diffHelp(old.Cached, new.Cached, &subPatches, index)
 		if len(subPatches) > 0 {
 			*patches = append(*patches, Patch{
-				Type:  patchLazy,
+				Type:  PatchLazy,
 				Index: index,
 				Data:  PatchLazyData{Patches: subPatches},
 			})
 		}
 	} else if new.Cached != nil {
 		*patches = append(*patches, Patch{
-			Type:  patchRedraw,
+			Type:  PatchRedraw,
 			Index: index,
 			Data:  PatchRedrawData{Node: new.Cached},
 		})
 	}
 }
 
-// lazyArgsEqual checks if two lazy nodes have the same function and arguments
-// by reference equality (pointer comparison).
 func lazyArgsEqual(old, new *LazyNode) bool {
 	if len(old.Args) != len(new.Args) {
 		return false
 	}
-	// Compare function pointer.
 	if reflect.ValueOf(old.Func).Pointer() != reflect.ValueOf(new.Func).Pointer() {
 		return false
 	}
-	// Compare each argument by pointer/value identity.
 	for i := range old.Args {
 		if !refEqual(old.Args[i], new.Args[i]) {
 			return false
@@ -342,7 +305,6 @@ func lazyArgsEqual(old, new *LazyNode) bool {
 	return true
 }
 
-// refEqual checks reference equality for lazy argument comparison.
 func refEqual(a, b any) bool {
 	if a == nil && b == nil {
 		return true
@@ -359,13 +321,10 @@ func refEqual(a, b any) bool {
 	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
 		return va.Pointer() == vb.Pointer()
 	default:
-		// Value types: use == comparison.
 		return a == b
 	}
 }
 
-// evaluateLazy calls a lazy node's function with its args.
-// Returns nil if the function can't be called.
 func evaluateLazy(n *LazyNode) Node {
 	if n.Func == nil {
 		return nil
@@ -392,8 +351,8 @@ func evaluateLazy(n *LazyNode) Node {
 // Facts diffing
 // ---------------------------------------------------------------------------
 
-// diffFacts computes the difference between two Facts structs.
-func diffFacts(old, new *Facts) FactsDiff {
+// DiffFacts computes the difference between two Facts structs.
+func DiffFacts(old, new *Facts) FactsDiff {
 	var d FactsDiff
 
 	d.Props = diffMapAny(old.Props, new.Props)
@@ -405,7 +364,6 @@ func diffFacts(old, new *Facts) FactsDiff {
 	return d
 }
 
-// diffMapAny diffs two map[string]any — returns changes only.
 func diffMapAny(old, new map[string]any) map[string]any {
 	if len(old) == 0 && len(new) == 0 {
 		return nil
@@ -413,17 +371,14 @@ func diffMapAny(old, new map[string]any) map[string]any {
 
 	var diff map[string]any
 
-	// Check for removals and changes.
 	for k, oldVal := range old {
 		newVal, exists := new[k]
 		if !exists {
-			// Removed.
 			if diff == nil {
 				diff = make(map[string]any)
 			}
 			diff[k] = nil
 		} else if !valEqual(oldVal, newVal) {
-			// Changed.
 			if diff == nil {
 				diff = make(map[string]any)
 			}
@@ -431,7 +386,6 @@ func diffMapAny(old, new map[string]any) map[string]any {
 		}
 	}
 
-	// Check for additions.
 	for k, newVal := range new {
 		if _, exists := old[k]; !exists {
 			if diff == nil {
@@ -444,7 +398,6 @@ func diffMapAny(old, new map[string]any) map[string]any {
 	return diff
 }
 
-// diffMapString diffs two map[string]string.
 func diffMapString(old, new map[string]string) map[string]string {
 	if len(old) == 0 && len(new) == 0 {
 		return nil
@@ -458,7 +411,7 @@ func diffMapString(old, new map[string]string) map[string]string {
 			if diff == nil {
 				diff = make(map[string]string)
 			}
-			diff[k] = "" // empty = remove
+			diff[k] = ""
 		} else if oldVal != newVal {
 			if diff == nil {
 				diff = make(map[string]string)
@@ -479,7 +432,6 @@ func diffMapString(old, new map[string]string) map[string]string {
 	return diff
 }
 
-// diffMapNSAttr diffs two map[string]NSAttr.
 func diffMapNSAttr(old, new map[string]NSAttr) map[string]NSAttr {
 	if len(old) == 0 && len(new) == 0 {
 		return nil
@@ -493,7 +445,7 @@ func diffMapNSAttr(old, new map[string]NSAttr) map[string]NSAttr {
 			if diff == nil {
 				diff = make(map[string]NSAttr)
 			}
-			diff[k] = NSAttr{} // empty = remove
+			diff[k] = NSAttr{}
 		} else if oldVal != newVal {
 			if diff == nil {
 				diff = make(map[string]NSAttr)
@@ -514,7 +466,6 @@ func diffMapNSAttr(old, new map[string]NSAttr) map[string]NSAttr {
 	return diff
 }
 
-// diffEvents diffs two event handler maps.
 func diffEvents(old, new map[string]EventHandler) map[string]*EventHandler {
 	if len(old) == 0 && len(new) == 0 {
 		return nil
@@ -528,7 +479,7 @@ func diffEvents(old, new map[string]EventHandler) map[string]*EventHandler {
 			if diff == nil {
 				diff = make(map[string]*EventHandler)
 			}
-			diff[k] = nil // nil = remove
+			diff[k] = nil
 		} else if !eventHandlerEqual(old[k], newVal) {
 			if diff == nil {
 				diff = make(map[string]*EventHandler)
@@ -555,7 +506,6 @@ func diffEvents(old, new map[string]EventHandler) map[string]*EventHandler {
 // Equality helpers
 // ---------------------------------------------------------------------------
 
-// valEqual compares two property values for equality.
 func valEqual(a, b any) bool {
 	if a == nil && b == nil {
 		return true
@@ -563,7 +513,6 @@ func valEqual(a, b any) bool {
 	if a == nil || b == nil {
 		return false
 	}
-	// Fast path for common types.
 	switch av := a.(type) {
 	case string:
 		bv, ok := b.(string)
@@ -578,11 +527,9 @@ func valEqual(a, b any) bool {
 		bv, ok := b.(float64)
 		return ok && av == bv
 	}
-	// Fallback: reflect.DeepEqual.
 	return reflect.DeepEqual(a, b)
 }
 
-// eventHandlerEqual compares two event handlers.
 func eventHandlerEqual(a, b EventHandler) bool {
 	return a.Handler == b.Handler &&
 		a.Scope == b.Scope &&
@@ -590,7 +537,6 @@ func eventHandlerEqual(a, b EventHandler) bool {
 		argsEqual(a.Args, b.Args)
 }
 
-// argsEqual compares two argument slices.
 func argsEqual(a, b []any) bool {
 	if len(a) != len(b) {
 		return false
@@ -603,8 +549,6 @@ func argsEqual(a, b []any) bool {
 	return true
 }
 
-// jsonEqual compares two values by JSON representation.
-// Used for plugin data comparison.
 func jsonEqual(a, b any) bool {
 	if a == nil && b == nil {
 		return true

@@ -3,6 +3,8 @@ package godom
 import (
 	"reflect"
 	"testing"
+
+	"github.com/anupshinde/godom/vdom"
 )
 
 // ---------------------------------------------------------------------------
@@ -10,33 +12,33 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestDiff_IdenticalText(t *testing.T) {
-	node := &TextNode{Text: "hello"}
-	patches := diff(node, node)
+	node := &vdom.TextNode{Text: "hello"}
+	patches := vdom.Diff(node, node)
 	if len(patches) != 0 {
 		t.Errorf("expected 0 patches for identical nodes, got %d", len(patches))
 	}
 }
 
 func TestDiff_TextChange(t *testing.T) {
-	old := &TextNode{Text: "hello"}
-	new := &TextNode{Text: "world"}
-	patches := diff(old, new)
+	old := &vdom.TextNode{Text: "hello"}
+	new := &vdom.TextNode{Text: "world"}
+	patches := vdom.Diff(old, new)
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d", len(patches))
 	}
-	if patches[0].Type != patchText {
-		t.Errorf("expected patchText, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchText {
+		t.Errorf("expected PatchText, got %d", patches[0].Type)
 	}
-	data := patches[0].Data.(PatchTextData)
+	data := patches[0].Data.(vdom.PatchTextData)
 	if data.Text != "world" {
 		t.Errorf("expected 'world', got %q", data.Text)
 	}
 }
 
 func TestDiff_SameText(t *testing.T) {
-	old := &TextNode{Text: "hello"}
-	new := &TextNode{Text: "hello"}
-	patches := diff(old, new)
+	old := &vdom.TextNode{Text: "hello"}
+	new := &vdom.TextNode{Text: "hello"}
+	patches := vdom.Diff(old, new)
 	if len(patches) != 0 {
 		t.Errorf("expected 0 patches for same text, got %d", len(patches))
 	}
@@ -47,14 +49,14 @@ func TestDiff_SameText(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDiff_DifferentNodeTypes(t *testing.T) {
-	old := &TextNode{Text: "hello"}
-	new := &ElementNode{Tag: "div"}
-	patches := diff(old, new)
+	old := &vdom.TextNode{Text: "hello"}
+	new := &vdom.ElementNode{Tag: "div"}
+	patches := vdom.Diff(old, new)
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d", len(patches))
 	}
-	if patches[0].Type != patchRedraw {
-		t.Errorf("expected patchRedraw, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchRedraw {
+		t.Errorf("expected PatchRedraw, got %d", patches[0].Type)
 	}
 }
 
@@ -63,43 +65,43 @@ func TestDiff_DifferentNodeTypes(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDiff_ElementTagChange(t *testing.T) {
-	old := &ElementNode{Tag: "div"}
-	new := &ElementNode{Tag: "span"}
-	patches := diff(old, new)
+	old := &vdom.ElementNode{Tag: "div"}
+	new := &vdom.ElementNode{Tag: "span"}
+	patches := vdom.Diff(old, new)
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d", len(patches))
 	}
-	if patches[0].Type != patchRedraw {
-		t.Errorf("expected patchRedraw for tag change, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchRedraw {
+		t.Errorf("expected PatchRedraw for tag change, got %d", patches[0].Type)
 	}
 }
 
 func TestDiff_ElementSameTag(t *testing.T) {
-	old := &ElementNode{Tag: "div"}
-	new := &ElementNode{Tag: "div"}
-	patches := diff(old, new)
+	old := &vdom.ElementNode{Tag: "div"}
+	new := &vdom.ElementNode{Tag: "div"}
+	patches := vdom.Diff(old, new)
 	if len(patches) != 0 {
 		t.Errorf("expected 0 patches for identical elements, got %d", len(patches))
 	}
 }
 
 func TestDiff_ElementFactsChange(t *testing.T) {
-	old := &ElementNode{
+	old := &vdom.ElementNode{
 		Tag:   "div",
-		Facts: Facts{Props: map[string]any{"className": "old"}},
+		Facts: vdom.Facts{Props: map[string]any{"className": "old"}},
 	}
-	new := &ElementNode{
+	new := &vdom.ElementNode{
 		Tag:   "div",
-		Facts: Facts{Props: map[string]any{"className": "new"}},
+		Facts: vdom.Facts{Props: map[string]any{"className": "new"}},
 	}
-	patches := diff(old, new)
+	patches := vdom.Diff(old, new)
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d", len(patches))
 	}
-	if patches[0].Type != patchFacts {
-		t.Errorf("expected patchFacts, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchFacts {
+		t.Errorf("expected PatchFacts, got %d", patches[0].Type)
 	}
-	fd := patches[0].Data.(PatchFactsData)
+	fd := patches[0].Data.(vdom.PatchFactsData)
 	if fd.Diff.Props["className"] != "new" {
 		t.Errorf("expected className='new' in diff, got %v", fd.Diff.Props["className"])
 	}
@@ -111,23 +113,23 @@ func TestDiff_ElementFactsChange(t *testing.T) {
 
 func TestDiff_ChildAppend(t *testing.T) {
 	old := makeDiv(
-		&TextNode{Text: "a"},
+		&vdom.TextNode{Text: "a"},
 	)
 	new := makeDiv(
-		&TextNode{Text: "a"},
-		&TextNode{Text: "b"},
+		&vdom.TextNode{Text: "a"},
+		&vdom.TextNode{Text: "b"},
 	)
-	computeDescendants(old)
-	computeDescendants(new)
+	vdom.ComputeDescendants(old)
+	vdom.ComputeDescendants(new)
 
-	patches := diff(old, new)
+	patches := vdom.Diff(old, new)
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
 	}
-	if patches[0].Type != patchAppend {
-		t.Errorf("expected patchAppend, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchAppend {
+		t.Errorf("expected PatchAppend, got %d", patches[0].Type)
 	}
-	data := patches[0].Data.(PatchAppendData)
+	data := patches[0].Data.(vdom.PatchAppendData)
 	if len(data.Nodes) != 1 {
 		t.Errorf("expected 1 appended node, got %d", len(data.Nodes))
 	}
@@ -135,24 +137,24 @@ func TestDiff_ChildAppend(t *testing.T) {
 
 func TestDiff_ChildRemoveLast(t *testing.T) {
 	old := makeDiv(
-		&TextNode{Text: "a"},
-		&TextNode{Text: "b"},
-		&TextNode{Text: "c"},
+		&vdom.TextNode{Text: "a"},
+		&vdom.TextNode{Text: "b"},
+		&vdom.TextNode{Text: "c"},
 	)
 	new := makeDiv(
-		&TextNode{Text: "a"},
+		&vdom.TextNode{Text: "a"},
 	)
-	computeDescendants(old)
-	computeDescendants(new)
+	vdom.ComputeDescendants(old)
+	vdom.ComputeDescendants(new)
 
-	patches := diff(old, new)
+	patches := vdom.Diff(old, new)
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
 	}
-	if patches[0].Type != patchRemoveLast {
-		t.Errorf("expected patchRemoveLast, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchRemoveLast {
+		t.Errorf("expected PatchRemoveLast, got %d", patches[0].Type)
 	}
-	data := patches[0].Data.(PatchRemoveLastData)
+	data := patches[0].Data.(vdom.PatchRemoveLastData)
 	if data.Count != 2 {
 		t.Errorf("expected count=2, got %d", data.Count)
 	}
@@ -160,49 +162,49 @@ func TestDiff_ChildRemoveLast(t *testing.T) {
 
 func TestDiff_ChildChange(t *testing.T) {
 	old := makeDiv(
-		&TextNode{Text: "a"},
-		&TextNode{Text: "b"},
+		&vdom.TextNode{Text: "a"},
+		&vdom.TextNode{Text: "b"},
 	)
 	new := makeDiv(
-		&TextNode{Text: "a"},
-		&TextNode{Text: "c"},
+		&vdom.TextNode{Text: "a"},
+		&vdom.TextNode{Text: "c"},
 	)
-	computeDescendants(old)
-	computeDescendants(new)
+	vdom.ComputeDescendants(old)
+	vdom.ComputeDescendants(new)
 
-	patches := diff(old, new)
+	patches := vdom.Diff(old, new)
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
 	}
-	if patches[0].Type != patchText {
-		t.Errorf("expected patchText for changed child, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchText {
+		t.Errorf("expected PatchText for changed child, got %d", patches[0].Type)
 	}
 }
 
 func TestDiff_NestedChildChange(t *testing.T) {
 	old := makeDiv(
-		&ElementNode{
+		&vdom.ElementNode{
 			Tag:      "span",
-			Children: []Node{&TextNode{Text: "hello"}},
+			Children: []vdom.Node{&vdom.TextNode{Text: "hello"}},
 		},
 	)
 	new := makeDiv(
-		&ElementNode{
+		&vdom.ElementNode{
 			Tag:      "span",
-			Children: []Node{&TextNode{Text: "world"}},
+			Children: []vdom.Node{&vdom.TextNode{Text: "world"}},
 		},
 	)
-	computeDescendants(old)
-	computeDescendants(new)
+	vdom.ComputeDescendants(old)
+	vdom.ComputeDescendants(new)
 
-	patches := diff(old, new)
+	patches := vdom.Diff(old, new)
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
 	}
-	if patches[0].Type != patchText {
-		t.Errorf("expected patchText, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchText {
+		t.Errorf("expected PatchText, got %d", patches[0].Type)
 	}
-	data := patches[0].Data.(PatchTextData)
+	data := patches[0].Data.(vdom.PatchTextData)
 	if data.Text != "world" {
 		t.Errorf("expected 'world', got %q", data.Text)
 	}
@@ -210,26 +212,26 @@ func TestDiff_NestedChildChange(t *testing.T) {
 
 func TestDiff_MultipleChildChanges(t *testing.T) {
 	old := makeDiv(
-		&TextNode{Text: "a"},
-		&TextNode{Text: "b"},
-		&TextNode{Text: "c"},
+		&vdom.TextNode{Text: "a"},
+		&vdom.TextNode{Text: "b"},
+		&vdom.TextNode{Text: "c"},
 	)
 	new := makeDiv(
-		&TextNode{Text: "x"},
-		&TextNode{Text: "b"},
-		&TextNode{Text: "z"},
+		&vdom.TextNode{Text: "x"},
+		&vdom.TextNode{Text: "b"},
+		&vdom.TextNode{Text: "z"},
 	)
-	computeDescendants(old)
-	computeDescendants(new)
+	vdom.ComputeDescendants(old)
+	vdom.ComputeDescendants(new)
 
-	patches := diff(old, new)
+	patches := vdom.Diff(old, new)
 	// Should have 2 patches: change "a"→"x" and "c"→"z"
 	if len(patches) != 2 {
 		t.Fatalf("expected 2 patches, got %d: %+v", len(patches), patches)
 	}
 	for _, p := range patches {
-		if p.Type != patchText {
-			t.Errorf("expected patchText, got %d", p.Type)
+		if p.Type != vdom.PatchText {
+			t.Errorf("expected PatchText, got %d", p.Type)
 		}
 	}
 }
@@ -239,18 +241,18 @@ func TestDiff_MultipleChildChanges(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDiffFacts_PropAdded(t *testing.T) {
-	old := Facts{}
-	new := Facts{Props: map[string]any{"id": "main"}}
-	d := diffFacts(&old, &new)
+	old := vdom.Facts{}
+	new := vdom.Facts{Props: map[string]any{"id": "main"}}
+	d := vdom.DiffFacts(&old, &new)
 	if d.Props["id"] != "main" {
 		t.Errorf("expected id='main' in diff, got %v", d.Props)
 	}
 }
 
 func TestDiffFacts_PropRemoved(t *testing.T) {
-	old := Facts{Props: map[string]any{"id": "main"}}
-	new := Facts{}
-	d := diffFacts(&old, &new)
+	old := vdom.Facts{Props: map[string]any{"id": "main"}}
+	new := vdom.Facts{}
+	d := vdom.DiffFacts(&old, &new)
 	if _, ok := d.Props["id"]; !ok {
 		t.Error("expected id removal in diff")
 	}
@@ -260,29 +262,29 @@ func TestDiffFacts_PropRemoved(t *testing.T) {
 }
 
 func TestDiffFacts_StyleChange(t *testing.T) {
-	old := Facts{Styles: map[string]string{"width": "100px"}}
-	new := Facts{Styles: map[string]string{"width": "200px"}}
-	d := diffFacts(&old, &new)
+	old := vdom.Facts{Styles: map[string]string{"width": "100px"}}
+	new := vdom.Facts{Styles: map[string]string{"width": "200px"}}
+	d := vdom.DiffFacts(&old, &new)
 	if d.Styles["width"] != "200px" {
 		t.Errorf("expected width='200px', got %q", d.Styles["width"])
 	}
 }
 
 func TestDiffFacts_StyleRemoved(t *testing.T) {
-	old := Facts{Styles: map[string]string{"width": "100px"}}
-	new := Facts{}
-	d := diffFacts(&old, &new)
+	old := vdom.Facts{Styles: map[string]string{"width": "100px"}}
+	new := vdom.Facts{}
+	d := vdom.DiffFacts(&old, &new)
 	if d.Styles["width"] != "" {
 		t.Errorf("expected empty string for removed style, got %q", d.Styles["width"])
 	}
 }
 
 func TestDiffFacts_EventAdded(t *testing.T) {
-	old := Facts{}
-	new := Facts{Events: map[string]EventHandler{
+	old := vdom.Facts{}
+	new := vdom.Facts{Events: map[string]vdom.EventHandler{
 		"click": {Handler: "Save"},
 	}}
-	d := diffFacts(&old, &new)
+	d := vdom.DiffFacts(&old, &new)
 	if d.Events["click"] == nil {
 		t.Error("expected click event in diff")
 	}
@@ -292,11 +294,11 @@ func TestDiffFacts_EventAdded(t *testing.T) {
 }
 
 func TestDiffFacts_EventRemoved(t *testing.T) {
-	old := Facts{Events: map[string]EventHandler{
+	old := vdom.Facts{Events: map[string]vdom.EventHandler{
 		"click": {Handler: "Save"},
 	}}
-	new := Facts{}
-	d := diffFacts(&old, &new)
+	new := vdom.Facts{}
+	d := vdom.DiffFacts(&old, &new)
 	if _, ok := d.Events["click"]; !ok {
 		t.Error("expected click removal in diff")
 	}
@@ -306,13 +308,13 @@ func TestDiffFacts_EventRemoved(t *testing.T) {
 }
 
 func TestDiffFacts_EventChanged(t *testing.T) {
-	old := Facts{Events: map[string]EventHandler{
+	old := vdom.Facts{Events: map[string]vdom.EventHandler{
 		"click": {Handler: "Save"},
 	}}
-	new := Facts{Events: map[string]EventHandler{
+	new := vdom.Facts{Events: map[string]vdom.EventHandler{
 		"click": {Handler: "Update"},
 	}}
-	d := diffFacts(&old, &new)
+	d := vdom.DiffFacts(&old, &new)
 	if d.Events["click"] == nil {
 		t.Fatal("expected click change in diff")
 	}
@@ -322,20 +324,20 @@ func TestDiffFacts_EventChanged(t *testing.T) {
 }
 
 func TestDiffFacts_NoChange(t *testing.T) {
-	f := Facts{
+	f := vdom.Facts{
 		Props:  map[string]any{"id": "main"},
 		Styles: map[string]string{"width": "100px"},
 	}
-	d := diffFacts(&f, &f)
+	d := vdom.DiffFacts(&f, &f)
 	if !d.IsEmpty() {
 		t.Error("expected empty diff for identical facts")
 	}
 }
 
 func TestDiffFacts_AttrChange(t *testing.T) {
-	old := Facts{Attrs: map[string]string{"data-id": "1"}}
-	new := Facts{Attrs: map[string]string{"data-id": "2"}}
-	d := diffFacts(&old, &new)
+	old := vdom.Facts{Attrs: map[string]string{"data-id": "1"}}
+	new := vdom.Facts{Attrs: map[string]string{"data-id": "2"}}
+	d := vdom.DiffFacts(&old, &new)
 	if d.Attrs["data-id"] != "2" {
 		t.Errorf("expected data-id='2', got %q", d.Attrs["data-id"])
 	}
@@ -346,34 +348,34 @@ func TestDiffFacts_AttrChange(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDiff_PluginDataChange(t *testing.T) {
-	old := &PluginNode{Tag: "canvas", Name: "chart", Data: map[string]int{"a": 1}}
-	new := &PluginNode{Tag: "canvas", Name: "chart", Data: map[string]int{"a": 2}}
-	patches := diff(old, new)
+	old := &vdom.PluginNode{Tag: "canvas", Name: "chart", Data: map[string]int{"a": 1}}
+	new := &vdom.PluginNode{Tag: "canvas", Name: "chart", Data: map[string]int{"a": 2}}
+	patches := vdom.Diff(old, new)
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d", len(patches))
 	}
-	if patches[0].Type != patchPlugin {
-		t.Errorf("expected patchPlugin, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchPlugin {
+		t.Errorf("expected PatchPlugin, got %d", patches[0].Type)
 	}
 }
 
 func TestDiff_PluginNameChange(t *testing.T) {
-	old := &PluginNode{Tag: "canvas", Name: "chart", Data: nil}
-	new := &PluginNode{Tag: "canvas", Name: "map", Data: nil}
-	patches := diff(old, new)
+	old := &vdom.PluginNode{Tag: "canvas", Name: "chart", Data: nil}
+	new := &vdom.PluginNode{Tag: "canvas", Name: "map", Data: nil}
+	patches := vdom.Diff(old, new)
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d", len(patches))
 	}
-	if patches[0].Type != patchRedraw {
-		t.Errorf("expected patchRedraw for plugin name change, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchRedraw {
+		t.Errorf("expected PatchRedraw for plugin name change, got %d", patches[0].Type)
 	}
 }
 
 func TestDiff_PluginSameData(t *testing.T) {
 	data := map[string]int{"a": 1}
-	old := &PluginNode{Tag: "canvas", Name: "chart", Data: data}
-	new := &PluginNode{Tag: "canvas", Name: "chart", Data: data}
-	patches := diff(old, new)
+	old := &vdom.PluginNode{Tag: "canvas", Name: "chart", Data: data}
+	new := &vdom.PluginNode{Tag: "canvas", Name: "chart", Data: data}
+	patches := vdom.Diff(old, new)
 	if len(patches) != 0 {
 		t.Errorf("expected 0 patches for same plugin data, got %d", len(patches))
 	}
@@ -384,13 +386,13 @@ func TestDiff_PluginSameData(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDiff_LazySameArgs(t *testing.T) {
-	fn := func(n int) Node { return &TextNode{Text: "result"} }
-	cached := &TextNode{Text: "result"}
+	fn := func(n int) vdom.Node { return &vdom.TextNode{Text: "result"} }
+	cached := &vdom.TextNode{Text: "result"}
 
-	old := &LazyNode{Func: fn, Args: []any{42}, Cached: cached}
-	new := &LazyNode{Func: fn, Args: []any{42}, Cached: nil}
+	old := &vdom.LazyNode{Func: fn, Args: []any{42}, Cached: cached}
+	new := &vdom.LazyNode{Func: fn, Args: []any{42}, Cached: nil}
 
-	patches := diff(old, new)
+	patches := vdom.Diff(old, new)
 	if len(patches) != 0 {
 		t.Errorf("expected 0 patches for lazy with same args, got %d", len(patches))
 	}
@@ -401,19 +403,19 @@ func TestDiff_LazySameArgs(t *testing.T) {
 }
 
 func TestDiff_LazyDifferentArgs(t *testing.T) {
-	fn := func(n int) Node { return &TextNode{Text: "new"} }
-	oldCached := &TextNode{Text: "old"}
+	fn := func(n int) vdom.Node { return &vdom.TextNode{Text: "new"} }
+	oldCached := &vdom.TextNode{Text: "old"}
 
-	old := &LazyNode{Func: fn, Args: []any{1}, Cached: oldCached}
-	new := &LazyNode{Func: fn, Args: []any{2}, Cached: nil}
+	old := &vdom.LazyNode{Func: fn, Args: []any{1}, Cached: oldCached}
+	new := &vdom.LazyNode{Func: fn, Args: []any{2}, Cached: nil}
 
-	patches := diff(old, new)
+	patches := vdom.Diff(old, new)
 	// Should have a lazy patch wrapping a text change
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d", len(patches))
 	}
-	if patches[0].Type != patchLazy {
-		t.Errorf("expected patchLazy, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchLazy {
+		t.Errorf("expected PatchLazy, got %d", patches[0].Type)
 	}
 }
 
@@ -422,55 +424,55 @@ func TestDiff_LazyDifferentArgs(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDiff_KeyedSameKeys(t *testing.T) {
-	old := &KeyedElementNode{
+	old := &vdom.KeyedElementNode{
 		Tag: "ul",
-		Children: []KeyedChild{
-			{Key: "a", Node: &TextNode{Text: "A"}},
-			{Key: "b", Node: &TextNode{Text: "B"}},
+		Children: []vdom.KeyedChild{
+			{Key: "a", Node: &vdom.TextNode{Text: "A"}},
+			{Key: "b", Node: &vdom.TextNode{Text: "B"}},
 		},
 	}
-	new := &KeyedElementNode{
+	new := &vdom.KeyedElementNode{
 		Tag: "ul",
-		Children: []KeyedChild{
-			{Key: "a", Node: &TextNode{Text: "A"}},
-			{Key: "b", Node: &TextNode{Text: "B-updated"}},
+		Children: []vdom.KeyedChild{
+			{Key: "a", Node: &vdom.TextNode{Text: "A"}},
+			{Key: "b", Node: &vdom.TextNode{Text: "B-updated"}},
 		},
 	}
-	computeDescendants(old)
-	computeDescendants(new)
+	vdom.ComputeDescendants(old)
+	vdom.ComputeDescendants(new)
 
-	patches := diff(old, new)
+	patches := vdom.Diff(old, new)
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
 	}
-	if patches[0].Type != patchText {
-		t.Errorf("expected patchText, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchText {
+		t.Errorf("expected PatchText, got %d", patches[0].Type)
 	}
 }
 
 func TestDiff_KeyedAppend(t *testing.T) {
-	old := &KeyedElementNode{
+	old := &vdom.KeyedElementNode{
 		Tag: "ul",
-		Children: []KeyedChild{
-			{Key: "a", Node: &TextNode{Text: "A"}},
+		Children: []vdom.KeyedChild{
+			{Key: "a", Node: &vdom.TextNode{Text: "A"}},
 		},
 	}
-	new := &KeyedElementNode{
+	new := &vdom.KeyedElementNode{
 		Tag: "ul",
-		Children: []KeyedChild{
-			{Key: "a", Node: &TextNode{Text: "A"}},
-			{Key: "b", Node: &TextNode{Text: "B"}},
+		Children: []vdom.KeyedChild{
+			{Key: "a", Node: &vdom.TextNode{Text: "A"}},
+			{Key: "b", Node: &vdom.TextNode{Text: "B"}},
 		},
 	}
-	computeDescendants(old)
-	computeDescendants(new)
+	vdom.ComputeDescendants(old)
+	vdom.ComputeDescendants(new)
 
-	patches := diff(old, new)
+	patches := vdom.Diff(old, new)
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d", len(patches))
 	}
-	if patches[0].Type != patchAppend {
-		t.Errorf("expected patchAppend, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchAppend {
+		t.Errorf("expected PatchAppend, got %d", patches[0].Type)
 	}
 }
 
@@ -481,63 +483,63 @@ func TestDiff_KeyedAppend(t *testing.T) {
 func TestDiff_ComplexTree(t *testing.T) {
 	// Simulates a counter app: count changes from 5 to 10
 	old := makeDiv(
-		&ElementNode{
+		&vdom.ElementNode{
 			Tag: "h1",
-			Children: []Node{
-				&ElementNode{
+			Children: []vdom.Node{
+				&vdom.ElementNode{
 					Tag:   "span",
-					Facts: Facts{Props: map[string]any{"data-gid": "g1"}},
-					Children: []Node{
-						&TextNode{Text: "5"},
+					Facts: vdom.Facts{Props: map[string]any{"data-gid": "g1"}},
+					Children: []vdom.Node{
+						&vdom.TextNode{Text: "5"},
 					},
 				},
 			},
 		},
-		&ElementNode{
+		&vdom.ElementNode{
 			Tag: "button",
-			Facts: Facts{
-				Events: map[string]EventHandler{
+			Facts: vdom.Facts{
+				Events: map[string]vdom.EventHandler{
 					"click": {Handler: "Increment"},
 				},
 			},
-			Children: []Node{&TextNode{Text: "+"}},
+			Children: []vdom.Node{&vdom.TextNode{Text: "+"}},
 		},
 	)
 	new := makeDiv(
-		&ElementNode{
+		&vdom.ElementNode{
 			Tag: "h1",
-			Children: []Node{
-				&ElementNode{
+			Children: []vdom.Node{
+				&vdom.ElementNode{
 					Tag:   "span",
-					Facts: Facts{Props: map[string]any{"data-gid": "g1"}},
-					Children: []Node{
-						&TextNode{Text: "10"},
+					Facts: vdom.Facts{Props: map[string]any{"data-gid": "g1"}},
+					Children: []vdom.Node{
+						&vdom.TextNode{Text: "10"},
 					},
 				},
 			},
 		},
-		&ElementNode{
+		&vdom.ElementNode{
 			Tag: "button",
-			Facts: Facts{
-				Events: map[string]EventHandler{
+			Facts: vdom.Facts{
+				Events: map[string]vdom.EventHandler{
 					"click": {Handler: "Increment"},
 				},
 			},
-			Children: []Node{&TextNode{Text: "+"}},
+			Children: []vdom.Node{&vdom.TextNode{Text: "+"}},
 		},
 	)
-	computeDescendants(old)
-	computeDescendants(new)
+	vdom.ComputeDescendants(old)
+	vdom.ComputeDescendants(new)
 
-	patches := diff(old, new)
+	patches := vdom.Diff(old, new)
 	// Only the text "5" → "10" should change
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
 	}
-	if patches[0].Type != patchText {
-		t.Errorf("expected patchText, got %d", patches[0].Type)
+	if patches[0].Type != vdom.PatchText {
+		t.Errorf("expected PatchText, got %d", patches[0].Type)
 	}
-	data := patches[0].Data.(PatchTextData)
+	data := patches[0].Data.(vdom.PatchTextData)
 	if data.Text != "10" {
 		t.Errorf("expected '10', got %q", data.Text)
 	}
@@ -552,25 +554,25 @@ func TestDiff_PatchIndex(t *testing.T) {
 	//       text "b" (3)
 	//     text "c" (4)
 	old := makeDiv(
-		&TextNode{Text: "a"},
-		&ElementNode{
+		&vdom.TextNode{Text: "a"},
+		&vdom.ElementNode{
 			Tag:      "span",
-			Children: []Node{&TextNode{Text: "b"}},
+			Children: []vdom.Node{&vdom.TextNode{Text: "b"}},
 		},
-		&TextNode{Text: "c"},
+		&vdom.TextNode{Text: "c"},
 	)
 	new := makeDiv(
-		&TextNode{Text: "a"},
-		&ElementNode{
+		&vdom.TextNode{Text: "a"},
+		&vdom.ElementNode{
 			Tag:      "span",
-			Children: []Node{&TextNode{Text: "B"}},
+			Children: []vdom.Node{&vdom.TextNode{Text: "B"}},
 		},
-		&TextNode{Text: "C"},
+		&vdom.TextNode{Text: "C"},
 	)
-	computeDescendants(old)
-	computeDescendants(new)
+	vdom.ComputeDescendants(old)
+	vdom.ComputeDescendants(new)
 
-	patches := diff(old, new)
+	patches := vdom.Diff(old, new)
 	if len(patches) != 2 {
 		t.Fatalf("expected 2 patches, got %d: %+v", len(patches), patches)
 	}
@@ -595,7 +597,7 @@ func TestDiff_EndToEnd(t *testing.T) {
 		<div g-if="ShowPanel">panel</div>
 	</body></html>`
 
-	templates, err := parseTemplate(htmlStr, nil)
+	templates, err := vdom.ParseTemplate(htmlStr, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -607,25 +609,25 @@ func TestDiff_EndToEnd(t *testing.T) {
 
 	// First render
 	state1 := &appState{Count: 5, ShowPanel: false}
-	ctx1 := &resolveContext{
+	ctx1 := &vdom.ResolveContext{
 		State: makeReflectValue(state1),
 		Vars:  make(map[string]any),
 	}
-	tree1 := resolveTree(templates, ctx1)
-	root1 := &ElementNode{Tag: "body", Children: tree1}
-	computeDescendants(root1)
+	tree1 := vdom.ResolveTree(templates, ctx1)
+	root1 := &vdom.ElementNode{Tag: "body", Children: tree1}
+	vdom.ComputeDescendants(root1)
 
 	// Second render: count changed, panel now visible
 	state2 := &appState{Count: 10, ShowPanel: true}
-	ctx2 := &resolveContext{
+	ctx2 := &vdom.ResolveContext{
 		State: makeReflectValue(state2),
 		Vars:  make(map[string]any),
 	}
-	tree2 := resolveTree(templates, ctx2)
-	root2 := &ElementNode{Tag: "body", Children: tree2}
-	computeDescendants(root2)
+	tree2 := vdom.ResolveTree(templates, ctx2)
+	root2 := &vdom.ElementNode{Tag: "body", Children: tree2}
+	vdom.ComputeDescendants(root2)
 
-	patches := diff(root1, root2)
+	patches := vdom.Diff(root1, root2)
 	if len(patches) == 0 {
 		t.Fatal("expected patches for count change + panel visibility")
 	}
@@ -633,8 +635,8 @@ func TestDiff_EndToEnd(t *testing.T) {
 	// Should have at least a text change for count
 	hasTextPatch := false
 	for _, p := range patches {
-		if p.Type == patchText {
-			data := p.Data.(PatchTextData)
+		if p.Type == vdom.PatchText {
+			data := p.Data.(vdom.PatchTextData)
 			if data.Text == "10" {
 				hasTextPatch = true
 			}
@@ -649,8 +651,8 @@ func TestDiff_EndToEnd(t *testing.T) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-func makeDiv(children ...Node) *ElementNode {
-	return &ElementNode{Tag: "div", Children: children}
+func makeDiv(children ...vdom.Node) *vdom.ElementNode {
+	return &vdom.ElementNode{Tag: "div", Children: children}
 }
 
 func makeReflectValue(v any) reflect.Value {

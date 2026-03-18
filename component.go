@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/anupshinde/godom/vdom"
 )
 
 // Component is embedded in user structs to make them godom components.
@@ -71,8 +73,8 @@ type componentInfo struct {
 	refreshFn func()
 
 	// VDOM fields
-	vdomTemplates []*templateNode // parsed once at Mount()
-	prevTree      Node            // last rendered tree (for diffing)
+	vdomTemplates []*vdom.TemplateNode // parsed once at Mount()
+	prevTree      vdom.Node            // last rendered tree (for diffing)
 	gidSeq        int             // gid counter state across renders
 }
 
