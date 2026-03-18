@@ -3,6 +3,7 @@ package godom
 import (
 	"encoding/json"
 
+	gproto "github.com/anupshinde/godom/proto"
 	"github.com/anupshinde/godom/vdom"
 )
 
@@ -20,8 +21,8 @@ const (
 )
 
 // encodeInitMessage builds a VDomMessage for the initial full render.
-func encodeInitMessage(htmlContent string, events []*EventSetup) *VDomMessage {
-	return &VDomMessage{
+func encodeInitMessage(htmlContent string, events []*gproto.EventSetup) *gproto.VDomMessage {
+	return &gproto.VDomMessage{
 		Type:   "init",
 		Html:   []byte(htmlContent),
 		Events: events,
@@ -29,8 +30,8 @@ func encodeInitMessage(htmlContent string, events []*EventSetup) *VDomMessage {
 }
 
 // encodePatchMessage builds a VDomMessage with patches from a diff.
-func encodePatchMessage(patches []vdom.Patch, gid *gidCounter) *VDomMessage {
-	msg := &VDomMessage{Type: "patch"}
+func encodePatchMessage(patches []vdom.Patch, gid *gidCounter) *gproto.VDomMessage {
+	msg := &gproto.VDomMessage{Type: "patch"}
 	for _, p := range patches {
 		dp := encodePatch(p, gid)
 		if dp != nil {
@@ -41,8 +42,8 @@ func encodePatchMessage(patches []vdom.Patch, gid *gidCounter) *VDomMessage {
 }
 
 // encodePatch converts a Go Patch to a protobuf DomPatch.
-func encodePatch(p vdom.Patch, gid *gidCounter) *DomPatch {
-	dp := &DomPatch{
+func encodePatch(p vdom.Patch, gid *gidCounter) *gproto.DomPatch {
+	dp := &gproto.DomPatch{
 		Index: int32(p.Index),
 	}
 

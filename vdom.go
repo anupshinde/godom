@@ -1,9 +1,12 @@
 package godom
 
-import "github.com/anupshinde/godom/vdom"
+import (
+	gproto "github.com/anupshinde/godom/proto"
+	"github.com/anupshinde/godom/vdom"
+)
 
 // vdomBuildInit builds the initial VDomMessage for a new client connection.
-func vdomBuildInit(ci *componentInfo) *VDomMessage {
+func vdomBuildInit(ci *componentInfo) *gproto.VDomMessage {
 	gid := &gidCounter{seq: ci.gidSeq}
 	tree := vdomBuildTree(ci)
 
@@ -17,7 +20,7 @@ func vdomBuildInit(ci *componentInfo) *VDomMessage {
 
 // vdomBuildUpdate rebuilds the tree, diffs against the previous tree,
 // and returns a VDomMessage with patches. Returns nil if no changes.
-func vdomBuildUpdate(ci *componentInfo) *VDomMessage {
+func vdomBuildUpdate(ci *componentInfo) *gproto.VDomMessage {
 	gid := &gidCounter{seq: ci.gidSeq}
 	newTree := vdomBuildTree(ci)
 

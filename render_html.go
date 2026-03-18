@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	gproto "github.com/anupshinde/godom/proto"
 	"github.com/anupshinde/godom/vdom"
 	"google.golang.org/protobuf/proto"
 )
@@ -252,9 +253,9 @@ func sortedStringKeys(m map[string]string) []string {
 // renderToHTMLWithEvents renders nodes to HTML and collects EventSetup entries
 // for all elements that have event handlers. The EventSetup entries include
 // pre-built WSMessage bytes so the bridge can send them back on event fire.
-func renderToHTMLWithEvents(nodes []vdom.Node, gid *gidCounter) (string, []*EventSetup) {
+func renderToHTMLWithEvents(nodes []vdom.Node, gid *gidCounter) (string, []*gproto.EventSetup) {
 	var sb strings.Builder
-	var events []*EventSetup
+	var events []*gproto.EventSetup
 	for _, n := range nodes {
 		renderNodeWithEvents(&sb, n, gid, &events)
 	}
@@ -262,7 +263,7 @@ func renderToHTMLWithEvents(nodes []vdom.Node, gid *gidCounter) (string, []*Even
 }
 
 // renderNodeWithEvents is like renderNode but also collects EventSetup entries.
-func renderNodeWithEvents(sb *strings.Builder, n vdom.Node, gid *gidCounter, events *[]*EventSetup) {
+func renderNodeWithEvents(sb *strings.Builder, n vdom.Node, gid *gidCounter, events *[]*gproto.EventSetup) {
 	switch n := n.(type) {
 	case *vdom.TextNode:
 		sb.WriteString(html.EscapeString(n.Text))
@@ -293,7 +294,7 @@ func renderNodeWithEvents(sb *strings.Builder, n vdom.Node, gid *gidCounter, eve
 }
 
 // renderElementWithEvents writes an HTML element and collects events.
-func renderElementWithEvents(sb *strings.Builder, tag, namespace string, facts *vdom.Facts, children []vdom.Node, plugin *vdom.PluginNode, gid *gidCounter, events *[]*EventSetup) {
+func renderElementWithEvents(sb *strings.Builder, tag, namespace string, facts *vdom.Facts, children []vdom.Node, plugin *vdom.PluginNode, gid *gidCounter, events *[]*gproto.EventSetup) {
 	sb.WriteByte('<')
 	sb.WriteString(tag)
 
@@ -341,7 +342,7 @@ func renderElementWithEvents(sb *strings.Builder, tag, namespace string, facts *
 				}
 			}
 
-			es := &EventSetup{
+			es := &gproto.EventSetup{
 				Gid:             assignedGID,
 				Event:           eventName,
 				Key:             keyFilter,
@@ -374,12 +375,12 @@ func renderElementWithEvents(sb *strings.Builder, tag, namespace string, facts *
 func buildWSMessageBytes(handler vdom.EventHandler) []byte {
 	if handler.Handler == "__bind__" {
 		fieldName, _ := handler.Args[0].(string)
-		msg := &WSMessage{Type: "bind", Field: fieldName}
+		msg := &gproto.WSMessage{Type: "bind", Field: fieldName}
 		data, _ := proto.Marshal(msg)
 		return data
 	}
 
-	msg := &WSMessage{Type: "call", Method: handler.Handler}
+	msg := &gproto.WSMessage{Type: "call", Method: handler.Handler}
 	for _, arg := range handler.Args {
 		jsonArg, _ := json.Marshal(arg)
 		msg.Args = append(msg.Args, jsonArg)

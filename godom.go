@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 
+	gproto "github.com/anupshinde/godom/proto"
 	"github.com/anupshinde/godom/vdom"
 	"github.com/gorilla/websocket"
 	qrcode "github.com/skip2/go-qrcode"
@@ -27,10 +28,10 @@ import (
 //go:embed bridge.js
 var bridgeJS string
 
-//go:embed protobuf.min.js
+//go:embed proto/protobuf.min.js
 var protobufMinJS string
 
-//go:embed protocol.js
+//go:embed proto/protocol.js
 var protocolJS string
 
 var upgrader = websocket.Upgrader{
@@ -398,13 +399,13 @@ func (a *App) Start() error {
 				continue
 			}
 
-			env := &Envelope{}
+			env := &gproto.Envelope{}
 			if err := proto.Unmarshal(data, env); err != nil {
 				log.Printf("godom: envelope unmarshal error: %v", err)
 				continue
 			}
 
-			wsMsg := &WSMessage{}
+			wsMsg := &gproto.WSMessage{}
 			if err := proto.Unmarshal(env.Msg, wsMsg); err != nil {
 				log.Printf("godom: wsmessage unmarshal error: %v", err)
 				continue
@@ -531,7 +532,7 @@ func handleInit(wc *wsConn, ci *componentInfo) error {
 }
 
 // handleCall processes a method call message from the bridge.
-func handleCall(ci *componentInfo, wsMsg *WSMessage, envArgs []float64, envValue []byte, pool *connPool) {
+func handleCall(ci *componentInfo, wsMsg *gproto.WSMessage, envArgs []float64, envValue []byte, pool *connPool) {
 	ci.mu.Lock()
 
 	// Merge browser-side args (mouse coords, wheel delta) into WSMessage args
@@ -572,7 +573,7 @@ func handleCall(ci *componentInfo, wsMsg *WSMessage, envArgs []float64, envValue
 }
 
 // handleBind processes a two-way binding update from the bridge.
-func handleBind(ci *componentInfo, wsMsg *WSMessage, value []byte, pool *connPool) {
+func handleBind(ci *componentInfo, wsMsg *gproto.WSMessage, value []byte, pool *connPool) {
 	ci.mu.Lock()
 
 	if err := ci.setField(wsMsg.Field, json.RawMessage(value)); err != nil {

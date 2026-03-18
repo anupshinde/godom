@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package godom;
 
-option go_package = "./;godom";
+option go_package = "./proto";
 
 // --- Go → Browser messages ---
 

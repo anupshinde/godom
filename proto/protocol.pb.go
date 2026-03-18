@@ -4,7 +4,7 @@
 // 	protoc        v5.29.3
 // source: protocol.proto
 
-package godom
+package proto
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"

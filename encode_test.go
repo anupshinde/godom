@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	gproto "github.com/anupshinde/godom/proto"
 	"github.com/anupshinde/godom/vdom"
 	"google.golang.org/protobuf/proto"
 )
@@ -19,7 +20,7 @@ func TestEncodeInitMessage(t *testing.T) {
 }
 
 func TestEncodeInitMessage_Serializable(t *testing.T) {
-	msg := encodeInitMessage("<div>test</div>", []*EventSetup{
+	msg := encodeInitMessage("<div>test</div>", []*gproto.EventSetup{
 		{Gid: "g1", Event: "click", Msg: []byte("test")},
 	})
 	data, err := proto.Marshal(msg)
@@ -30,7 +31,7 @@ func TestEncodeInitMessage_Serializable(t *testing.T) {
 		t.Error("expected non-empty protobuf bytes")
 	}
 	// Round-trip
-	msg2 := &VDomMessage{}
+	msg2 := &gproto.VDomMessage{}
 	if err := proto.Unmarshal(data, msg2); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +200,7 @@ func TestEncodePatchMessage_Serializable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msg2 := &VDomMessage{}
+	msg2 := &gproto.VDomMessage{}
 	if err := proto.Unmarshal(data, msg2); err != nil {
 		t.Fatal(err)
 	}
