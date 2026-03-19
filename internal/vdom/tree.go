@@ -786,6 +786,13 @@ func ResolveExpr(expr string, ctx *ResolveContext) any {
 		return false
 	}
 
+	// Method call with args: Method(arg1, arg2)
+	if strings.Contains(expr, "(") {
+		method, argExprs := ParseMethodCall(expr)
+		resolved := resolveArgs(argExprs, ctx)
+		return callMethodWithArgs(ctx.State, method, resolved)
+	}
+
 	if ctx.Vars != nil {
 		if val, ok := ctx.Vars[expr]; ok {
 			return val
@@ -817,6 +824,28 @@ func callMethod(v reflect.Value, name string) any {
 		return nil
 	}
 	return m.Call(nil)[0].Interface()
+}
+
+// callMethodWithArgs calls a method with pre-resolved arguments and returns its result.
+// Returns nil if the method doesn't exist or has no return value.
+func callMethodWithArgs(v reflect.Value, name string, args []any) any {
+	m := v.MethodByName(name)
+	if !m.IsValid() {
+		return nil
+	}
+	mt := m.Type()
+	if mt.NumOut() != 1 {
+		return nil
+	}
+	in := make([]reflect.Value, len(args))
+	for i, a := range args {
+		if a == nil {
+			in[i] = reflect.Zero(mt.In(i))
+		} else {
+			in[i] = reflect.ValueOf(a)
+		}
+	}
+	return m.Call(in)[0].Interface()
 }
 
 func resolveStructField(v reflect.Value, path string) any {
