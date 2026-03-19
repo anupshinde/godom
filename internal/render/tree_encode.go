@@ -2,6 +2,7 @@ package render
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/anupshinde/godom/internal/vdom"
 
@@ -29,11 +30,12 @@ type WireNode struct {
 
 // WireNodeEvent describes an event listener for the bridge to register.
 type WireNodeEvent struct {
-	On  string `json:"on"`            // event type: "click", "input", etc.
-	Key string `json:"key,omitempty"` // key filter for keydown
-	Msg []byte `json:"msg"`           // pre-built WSMessage bytes
-	SP  bool   `json:"sp,omitempty"`  // stopPropagation
-	PD  bool   `json:"pd,omitempty"`  // preventDefault
+	On     string   `json:"on"`              // event type: "click", "input", etc.
+	Key    string   `json:"key,omitempty"`   // key filter for keydown
+	Method string   `json:"method"`          // Go method name (or "__bind__" for g-bind)
+	Args   [][]byte `json:"args,omitempty"`  // JSON-encoded arguments
+	SP     bool     `json:"sp,omitempty"`    // stopPropagation
+	PD     bool     `json:"pd,omitempty"`    // preventDefault
 }
 
 // EncodeTree converts a vdom.Node tree to a WireNode tree suitable for JSON transport.
@@ -125,8 +127,30 @@ func encodeFacts(f *vdom.Facts, wn *WireNode) {
 	if len(f.Styles) > 0 {
 		wn.Styles = f.Styles
 	}
-	// Layer 1: events are auto-registered by the bridge based on element type.
-	// No pre-built event messages needed on the wire.
+	// Layer 2: encode event handlers for the bridge to register.
+	if len(f.Events) > 0 {
+		for key, eh := range f.Events {
+			eventType := key
+			keyFilter := ""
+			if idx := strings.Index(key, ":"); idx != -1 {
+				eventType = key[:idx]
+				keyFilter = key[idx+1:]
+			}
+			var argBytes [][]byte
+			for _, arg := range eh.Args {
+				b, _ := json.Marshal(arg)
+				argBytes = append(argBytes, b)
+			}
+			wn.Events = append(wn.Events, &WireNodeEvent{
+				On:     eventType,
+				Key:    keyFilter,
+				Method: eh.Handler,
+				Args:   argBytes,
+				SP:     eh.Options.StopPropagation,
+				PD:     eh.Options.PreventDefault,
+			})
+		}
+	}
 }
 
 // EncodeTreeJSON serializes a vdom.Node tree to JSON bytes for the init message.

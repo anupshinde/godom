@@ -2,6 +2,7 @@ package render
 
 import (
 	"encoding/json"
+	"strings"
 
 	gproto "github.com/anupshinde/godom/internal/proto"
 	"github.com/anupshinde/godom/internal/vdom"
@@ -130,11 +131,12 @@ type wireNSAttr struct {
 }
 
 type wireEvent struct {
-	On  string `json:"on"`            // event type
-	Key string `json:"key,omitempty"` // key filter
-	Msg []byte `json:"msg"`           // pre-built WSMessage bytes
-	SP  bool   `json:"sp,omitempty"`  // stopPropagation
-	PD  bool   `json:"pd,omitempty"`  // preventDefault
+	On     string   `json:"on"`              // event type
+	Key    string   `json:"key,omitempty"`   // key filter
+	Method string   `json:"method"`          // Go method name
+	Args   [][]byte `json:"args,omitempty"`  // JSON-encoded arguments
+	SP     bool     `json:"sp,omitempty"`    // stopPropagation
+	PD     bool     `json:"pd,omitempty"`    // preventDefault
 }
 
 func encodeFactsDiff(d *vdom.FactsDiff) *WireFactsDiff {
@@ -161,11 +163,26 @@ func encodeFactsDiff(d *vdom.FactsDiff) *WireFactsDiff {
 			if v == nil {
 				w.Events[k] = nil // removal
 			} else {
+				eventType := k
+				keyFilter := v.Options.Key
+				if idx := strings.Index(k, ":"); idx != -1 {
+					eventType = k[:idx]
+					if keyFilter == "" {
+						keyFilter = k[idx+1:]
+					}
+				}
+				var argBytes [][]byte
+				for _, arg := range v.Args {
+					b, _ := json.Marshal(arg)
+					argBytes = append(argBytes, b)
+				}
 				w.Events[k] = &wireEvent{
-					On:  k,
-					Key: v.Options.Key,
-					SP:  v.Options.StopPropagation,
-					PD:  v.Options.PreventDefault,
+					On:     eventType,
+					Key:    keyFilter,
+					Method: v.Handler,
+					Args:   argBytes,
+					SP:     v.Options.StopPropagation,
+					PD:     v.Options.PreventDefault,
 				}
 			}
 		}

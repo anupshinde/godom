@@ -9,10 +9,16 @@ var godomProto = (function() {
 
     var root = new Root();
 
-    // NodeEvent — browser → Go, Layer 1: just node ID + value
+    // NodeEvent — browser → Go, Layer 1: just node ID + value (tag byte 0x01)
     var NodeEvent = new Type("NodeEvent")
         .add(new Field("nodeId", 1, "int32"))
         .add(new Field("value", 2, "string"));
+
+    // MethodCall — browser → Go, Layer 2: method dispatch (tag byte 0x02)
+    var MethodCall = new Type("MethodCall")
+        .add(new Field("nodeId", 1, "int32"))
+        .add(new Field("method", 2, "string"))
+        .add(new Field("args", 3, "bytes", "repeated"));
 
     // DomPatch — single DOM mutation from diff
     var DomPatch = new Type("DomPatch")
@@ -35,10 +41,12 @@ var godomProto = (function() {
     root.add(VDomMessage);
     root.add(DomPatch);
     root.add(NodeEvent);
+    root.add(MethodCall);
 
     return {
         VDomMessage: VDomMessage,
         DomPatch: DomPatch,
-        NodeEvent: NodeEvent
+        NodeEvent: NodeEvent,
+        MethodCall: MethodCall
     };
 })();

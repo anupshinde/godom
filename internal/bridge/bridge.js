@@ -142,7 +142,12 @@
         applyAttrsNS(el, tree.an);
         applyStyles(el, tree.s);
 
-        // Layer 1: auto-sync input values (no explicit event registration needed)
+        // Layer 2: register event listeners from tree
+        if (tree.ev) {
+            registerEvents(tree.id, el, tree.ev);
+        }
+
+        // Layer 1: auto-sync input values (fallback for inputs without g-bind)
         if (!tree.ns && tree.tag) {
             autoRegisterInputSync(tree.id, el, tree.tag);
         }
@@ -415,6 +420,16 @@
             }
         }
 
+        // Layer 2: register new events from facts diff
+        if (diff.e) {
+            for (var key in diff.e) {
+                var ev = diff.e[key];
+                if (ev) {
+                    registerSingleEvent(nodeId, el, ev);
+                }
+            }
+        }
+
         // Layer 1: re-register input sync if this element was redrawn
         if (el.tagName) {
             var tag = el.tagName.toLowerCase();
@@ -423,17 +438,19 @@
     }
 
     // =========================================================================
-    // 6. Event handling — Layer 1: auto-sync input values via NodeEvent
+    // 6. Event handling
     // =========================================================================
 
+    // --- Layer 1: auto-sync input values via NodeEvent (tag byte 0x01) ---
+
     function sendNodeEvent(nodeId, value) {
-        var evt = Proto.NodeEvent.encode({nodeId: nodeId, value: value}).finish();
-        ws.send(evt);
+        var msg = Proto.NodeEvent.encode({nodeId: nodeId, value: value}).finish();
+        var tagged = new Uint8Array(1 + msg.length);
+        tagged[0] = 1;
+        tagged.set(msg, 1);
+        ws.send(tagged);
     }
 
-    // Auto-register input sync for interactive elements.
-    // The bridge is dumb: it sends node ID + current value. No method names,
-    // no field names, no pre-built messages.
     function autoRegisterInputSync(nodeId, el, tag) {
         if (el._godomSync) return;
         el._godomSync = true;
@@ -447,6 +464,54 @@
                 sendNodeEvent(nodeId, el.value);
             });
         }
+    }
+
+    // --- Layer 2: method dispatch via MethodCall (tag byte 0x02) ---
+
+    function sendMethodCall(nodeId, method, args) {
+        var msg = Proto.MethodCall.encode({
+            nodeId: nodeId,
+            method: method,
+            args: args
+        }).finish();
+        var tagged = new Uint8Array(1 + msg.length);
+        tagged[0] = 2;
+        tagged.set(msg, 1);
+        ws.send(tagged);
+    }
+
+    var textEncoder = new TextEncoder();
+
+    function registerEvents(nodeId, el, events) {
+        for (var i = 0; i < events.length; i++) {
+            registerSingleEvent(nodeId, el, events[i]);
+        }
+    }
+
+    function registerSingleEvent(nodeId, el, ev) {
+        var eventType = ev.on;
+        var listenerKey = "_godom_ev_" + eventType + (ev.key ? "_" + ev.key : "");
+
+        if (el[listenerKey]) return;
+        el[listenerKey] = true;
+
+        // __bind__: sync input value back to Go struct field
+        if (ev.method === "__bind__") {
+            el.addEventListener("input", function() {
+                var fieldArg = ev.args[0]; // already JSON-encoded field name
+                var valArg = textEncoder.encode(JSON.stringify(el.value));
+                sendMethodCall(nodeId, "__bind__", [fieldArg, valArg]);
+            });
+            el._godomSync = true; // prevent autoRegisterInputSync double-registration
+            return;
+        }
+
+        el.addEventListener(eventType, function(domEvent) {
+            if (ev.key && domEvent.key !== ev.key) return;
+            if (ev.sp) domEvent.stopPropagation();
+            if (ev.pd) domEvent.preventDefault();
+            sendMethodCall(nodeId, ev.method, ev.args || []);
+        });
     }
 
     // =========================================================================

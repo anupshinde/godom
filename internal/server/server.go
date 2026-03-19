@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
@@ -159,17 +160,30 @@ func Run(cfg Config) error {
 			if err != nil {
 				return
 			}
-			if msgType != websocket.BinaryMessage {
+			if msgType != websocket.BinaryMessage || len(data) < 2 {
 				continue
 			}
 
-			evt := &gproto.NodeEvent{}
-			if err := proto.Unmarshal(data, evt); err != nil {
-				log.Printf("godom: node event unmarshal error: %v", err)
-				continue
-			}
+			tag := data[0]
+			payload := data[1:]
 
-			handleNodeEvent(ci, evt.NodeId, evt.Value, pool)
+			switch tag {
+			case 1: // NodeEvent (Layer 1)
+				evt := &gproto.NodeEvent{}
+				if err := proto.Unmarshal(payload, evt); err != nil {
+					log.Printf("godom: node event unmarshal error: %v", err)
+					continue
+				}
+				handleNodeEvent(ci, evt.NodeId, evt.Value, pool)
+
+			case 2: // MethodCall (Layer 2)
+				call := &gproto.MethodCall{}
+				if err := proto.Unmarshal(payload, call); err != nil {
+					log.Printf("godom: method call unmarshal error: %v", err)
+					continue
+				}
+				handleMethodCall(ci, call, pool)
+			}
 		}
 	})
 
@@ -517,6 +531,45 @@ func handleNodeEvent(ci *component.Info, nodeID int32, value string, pool *connP
 		Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Props: map[string]any{"value": value}}},
 	}
 	msg := render.EncodePatchMessage([]vdom.Patch{patch})
+	ci.Mu.Unlock()
+
+	data, _ := proto.Marshal(msg)
+	pool.broadcast(data)
+}
+
+// handleMethodCall processes a Layer 2 method call: call the method on the
+// component, then rebuild the tree and broadcast init to all clients.
+func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPool) {
+	ci.Mu.Lock()
+
+	// Convert protobuf [][]byte to []json.RawMessage
+	args := make([]json.RawMessage, len(call.Args))
+	for i, a := range call.Args {
+		args[i] = json.RawMessage(a)
+	}
+
+	// Special handler: __bind__ writes a value to a struct field
+	if call.Method == "__bind__" {
+		if len(args) >= 2 {
+			var field string
+			if err := json.Unmarshal(args[0], &field); err == nil {
+				ci.SetField(field, args[1])
+			}
+		}
+		ci.Mu.Unlock()
+		return
+	}
+
+	// Call the method
+	if err := ci.CallMethod(call.Method, args); err != nil {
+		log.Printf("godom: method call %q error: %v", call.Method, err)
+		ci.Mu.Unlock()
+		return
+	}
+
+	// Rebuild tree and broadcast to all clients
+	ci.PrevTree = nil
+	msg := BuildInit(ci)
 	ci.Mu.Unlock()
 
 	data, _ := proto.Marshal(msg)

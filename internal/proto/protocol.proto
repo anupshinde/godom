@@ -66,12 +66,19 @@ message DomPatch {
   repeated DomPatch sub_patches = 16; // patchLazy: patches inside lazy node
 }
 
-// --- Browser → Go messages (Layer 1) ---
+// --- Browser → Go messages ---
 
-// NodeEvent is sent from the browser when a node's value changes.
-// The bridge is dumb: it only knows node IDs and DOM values.
-// No struct field names, no method names cross the wire.
+// NodeEvent is sent from the browser when a node's value changes (Layer 1).
+// Tag byte: 0x01.
 message NodeEvent {
   int32 node_id = 1;                  // stable node ID (matches nodeMap on bridge)
   string value = 2;                   // current DOM value (e.g. input.value)
+}
+
+// MethodCall is sent from the browser when a user event triggers a Go method (Layer 2).
+// Tag byte: 0x02.
+message MethodCall {
+  int32 node_id = 1;                  // stable node ID of the element that fired
+  string method = 2;                  // Go method name (e.g. "AddTodo", "Toggle")
+  repeated bytes args = 3;            // JSON-encoded arguments
 }
