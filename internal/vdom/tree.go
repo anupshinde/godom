@@ -390,11 +390,36 @@ func (c *IDCounter) Next() int {
 	return c.Seq
 }
 
+// Binding records a dependency: "field X affects node Y's property Z."
+// Used for surgical updates — when a field changes, only the bound nodes are patched.
+type Binding struct {
+	NodeID int
+	Kind   string // "style", "prop", "attr", "text"
+	Prop   string // property/style/attr name (empty for text)
+}
+
 // ResolveContext holds the state and loop variables available during tree resolution.
 type ResolveContext struct {
-	State reflect.Value  // the component struct (or pointer to it)
-	Vars  map[string]any // loop variables: {todo: item, i: index}
-	IDs   *IDCounter     // node ID allocator (must persist across renders)
+	State    reflect.Value        // the component struct (or pointer to it)
+	Vars     map[string]any       // loop variables: {todo: item, i: index}
+	IDs      *IDCounter           // node ID allocator (must persist across renders)
+	Bindings map[string][]Binding // field name → bindings (built during resolve)
+}
+
+// addBinding records a dependency from a field expression to a node.
+func (ctx *ResolveContext) addBinding(expr string, nodeID int, kind, prop string) {
+	// Only record bindings for simple field names (not loop vars, not negated, not dotted)
+	expr = strings.TrimSpace(expr)
+	if strings.HasPrefix(expr, "!") || strings.Contains(expr, ".") {
+		return
+	}
+	if _, isVar := ctx.Vars[expr]; isVar {
+		return
+	}
+	if ctx.Bindings == nil {
+		ctx.Bindings = make(map[string][]Binding)
+	}
+	ctx.Bindings[expr] = append(ctx.Bindings[expr], Binding{NodeID: nodeID, Kind: kind, Prop: prop})
 }
 
 // ResolveTree resolves a list of template nodes into concrete Nodes.
@@ -486,20 +511,23 @@ func resolveTextNode(t *TemplateNode, ctx *ResolveContext) []Node {
 }
 
 func resolveElementNode(t *TemplateNode, ctx *ResolveContext) Node {
+	id := nextID(ctx)
 	el := &ElementNode{
-		NodeBase:  NodeBase{ID: nextID(ctx)},
+		NodeBase:  NodeBase{ID: id},
 		Tag:       t.Tag,
 		Namespace: t.Namespace,
-		Facts:     resolveFacts(t, ctx),
+		Facts:     resolveFacts(t, ctx, id),
 	}
 
 	for _, d := range t.Directives {
 		if d.Type == "text" {
 			val := ResolveExpr(d.Expr, ctx)
 			text := fmt.Sprint(val)
+			textID := nextID(ctx)
 			if text != "" {
-				el.Children = []Node{&TextNode{NodeBase: NodeBase{ID: nextID(ctx)}, Text: text}}
+				el.Children = []Node{&TextNode{NodeBase: NodeBase{ID: textID}, Text: text}}
 			}
+			ctx.addBinding(d.Expr, textID, "text", "")
 			return el
 		}
 	}
@@ -539,13 +567,14 @@ func resolveForNode(t *TemplateNode, ctx *ResolveContext) []Node {
 }
 
 func resolvePluginNode(t *TemplateNode, ctx *ResolveContext) Node {
+	id := nextID(ctx)
 	data := ResolveExpr(t.PluginExpr, ctx)
 	data = DeepCopyJSON(data)
 	return &PluginNode{
-		NodeBase: NodeBase{ID: nextID(ctx)},
+		NodeBase: NodeBase{ID: id},
 		Tag:      t.Tag,
 		Name:     t.PluginName,
-		Facts:    resolveFacts(t, ctx),
+		Facts:    resolveFacts(t, ctx, id),
 		Data:     data,
 	}
 }
@@ -566,7 +595,7 @@ func resolveComponentNode(t *TemplateNode, ctx *ResolveContext) Node {
 // Facts resolution
 // ---------------------------------------------------------------------------
 
-func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
+func resolveFacts(t *TemplateNode, ctx *ResolveContext, nodeID int) Facts {
 	var f Facts
 
 	for _, a := range t.Attrs {
@@ -600,6 +629,7 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
 				f.Props = make(map[string]any)
 			}
 			f.Props["value"] = fmt.Sprint(val)
+			ctx.addBinding(d.Expr, nodeID, "prop", "value")
 			if f.Events == nil {
 				f.Events = make(map[string]EventHandler)
 			}
@@ -614,6 +644,7 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
 				f.Props = make(map[string]any)
 			}
 			f.Props["value"] = fmt.Sprint(val)
+			ctx.addBinding(d.Expr, nodeID, "prop", "value")
 
 		case "checked":
 			val := ResolveExpr(d.Expr, ctx)
@@ -621,6 +652,7 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
 				f.Props = make(map[string]any)
 			}
 			f.Props["checked"] = IsTruthy(val)
+			ctx.addBinding(d.Expr, nodeID, "prop", "checked")
 
 		case "show":
 			val := ResolveExpr(d.Expr, ctx)
@@ -630,6 +662,7 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
 				}
 				f.Styles["display"] = "none"
 			}
+			ctx.addBinding(d.Expr, nodeID, "show", "")
 
 		case "hide":
 			val := ResolveExpr(d.Expr, ctx)
@@ -639,6 +672,7 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
 				}
 				f.Styles["display"] = "none"
 			}
+			ctx.addBinding(d.Expr, nodeID, "hide", "")
 
 		case "class":
 			val := ResolveExpr(d.Expr, ctx)
@@ -653,6 +687,7 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
 					f.Props["className"] = d.Name
 				}
 			}
+			ctx.addBinding(d.Expr, nodeID, "class", d.Name)
 
 		case "attr":
 			val := ResolveExpr(d.Expr, ctx)
@@ -660,6 +695,7 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
 				f.Attrs = make(map[string]string)
 			}
 			f.Attrs[d.Name] = fmt.Sprint(val)
+			ctx.addBinding(d.Expr, nodeID, "attr", d.Name)
 
 		case "style":
 			val := ResolveExpr(d.Expr, ctx)
@@ -667,6 +703,7 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
 				f.Styles = make(map[string]string)
 			}
 			f.Styles[d.Name] = fmt.Sprint(val)
+			ctx.addBinding(d.Expr, nodeID, "style", d.Name)
 
 		case "click", "mousedown", "mousemove", "mouseup", "wheel", "drop":
 			method, args := ParseMethodCall(d.Expr)

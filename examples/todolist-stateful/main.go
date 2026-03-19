@@ -23,11 +23,13 @@ type TodoItem struct {
 }
 
 func (t *TodoItem) Toggle() {
-	t.Emit("ToggleTodo", t.Index)
+	// TODO: replace Emit with new communication mechanism
+	// t.Emit("ToggleTodo", t.Index)
 }
 
 func (t *TodoItem) Remove() {
-	t.Emit("RemoveTodo", t.Index)
+	// TODO: replace Emit with new communication mechanism
+	// t.Emit("RemoveTodo", t.Index)
 }
 
 type TodoApp struct {

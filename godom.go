@@ -2,7 +2,6 @@ package godom
 
 import (
 	_ "embed"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -46,37 +45,15 @@ type Component struct {
 	ci *component.Info
 }
 
-// Refresh triggers a re-render and broadcasts the current state to all
-// connected browsers. Call this from a background goroutine after mutating
-// fields to push updates without user interaction.
-func (c Component) Refresh() {
+// Refresh pushes updates to all connected browsers.
+// With field names: surgical update — only the bound nodes for those fields are patched.
+// Without arguments: full refresh — re-sends the entire tree.
+func (c Component) Refresh(fields ...string) {
 	if c.ci == nil {
 		return
 	}
 	if c.ci.RefreshFn != nil {
-		c.ci.RefreshFn()
-	}
-}
-
-// Emit sends a named event up the component tree. Each ancestor with a matching
-// method name gets called, bottom-up. Arguments are passed to the method.
-func (c Component) Emit(method string, args ...interface{}) {
-	if c.ci == nil {
-		return
-	}
-	current := c.ci.Parent
-	for current != nil {
-		if current.HasMethod(method) {
-			jsonArgs := make([]json.RawMessage, len(args))
-			for i, arg := range args {
-				data, _ := json.Marshal(arg)
-				jsonArgs[i] = data
-			}
-			if err := current.CallMethod(method, jsonArgs); err != nil {
-				log.Printf("godom: Emit %q: %v", method, err)
-			}
-		}
-		current = current.Parent
+		c.ci.RefreshFn(fields...)
 	}
 }
 

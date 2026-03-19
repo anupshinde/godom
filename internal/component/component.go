@@ -31,12 +31,15 @@ type Info struct {
 	Registry map[string]*Reg
 
 	// RefreshFn is set by Start() to broadcast current state to all clients.
-	RefreshFn func()
+	// If fields are given, only those fields' bound nodes are patched (surgical).
+	// If no fields, full init is broadcast.
+	RefreshFn func(fields ...string)
 
 	// VDOM fields
-	VDOMTemplates []*vdom.TemplateNode // parsed once at Mount()
-	PrevTree      vdom.Node            // last rendered tree (for diffing)
-	IDCounter     *vdom.IDCounter      // monotonic node ID allocator (persists across renders)
+	VDOMTemplates []*vdom.TemplateNode    // parsed once at Mount()
+	PrevTree      vdom.Node               // last rendered tree (for diffing)
+	IDCounter     *vdom.IDCounter         // monotonic node ID allocator (persists across renders)
+	Bindings      map[string][]vdom.Binding // field name → node bindings (built during first resolve)
 }
 
 // Reg holds the registration info for a stateful component.

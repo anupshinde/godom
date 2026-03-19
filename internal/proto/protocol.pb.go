@@ -530,32 +530,31 @@ func (x *DomPatch) GetSubPatches() []*DomPatch {
 	return nil
 }
 
-// Envelope is what the bridge sends to Go on every event.
-// The bridge never opens msg — it forwards it untouched.
-// args carries browser-side data (mouse coords, wheel delta).
-type Envelope struct {
+// NodeEvent is sent from the browser when a node's value changes.
+// The bridge is dumb: it only knows node IDs and DOM values.
+// No struct field names, no method names cross the wire.
+type NodeEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Args          []float64              `protobuf:"fixed64,1,rep,packed,name=args,proto3" json:"args,omitempty"` // browser-side args (mouse x/y, wheel deltaY)
-	Msg           []byte                 `protobuf:"bytes,2,opt,name=msg,proto3" json:"msg,omitempty"`            // pre-built WSMessage bytes from Go
-	Value         []byte                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`        // input value for bind events (JSON-encoded)
+	NodeId        int32                  `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"` // stable node ID (matches nodeMap on bridge)
+	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`                  // current DOM value (e.g. input.value)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Envelope) Reset() {
-	*x = Envelope{}
+func (x *NodeEvent) Reset() {
+	*x = NodeEvent{}
 	mi := &file_internal_proto_protocol_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Envelope) String() string {
+func (x *NodeEvent) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Envelope) ProtoMessage() {}
+func (*NodeEvent) ProtoMessage() {}
 
-func (x *Envelope) ProtoReflect() protoreflect.Message {
+func (x *NodeEvent) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_proto_protocol_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -567,114 +566,21 @@ func (x *Envelope) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Envelope.ProtoReflect.Descriptor instead.
-func (*Envelope) Descriptor() ([]byte, []int) {
+// Deprecated: Use NodeEvent.ProtoReflect.Descriptor instead.
+func (*NodeEvent) Descriptor() ([]byte, []int) {
 	return file_internal_proto_protocol_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *Envelope) GetArgs() []float64 {
+func (x *NodeEvent) GetNodeId() int32 {
 	if x != nil {
-		return x.Args
+		return x.NodeId
 	}
-	return nil
+	return 0
 }
 
-func (x *Envelope) GetMsg() []byte {
-	if x != nil {
-		return x.Msg
-	}
-	return nil
-}
-
-func (x *Envelope) GetValue() []byte {
+func (x *NodeEvent) GetValue() string {
 	if x != nil {
 		return x.Value
-	}
-	return nil
-}
-
-// WSMessage is the inner message pre-built by Go at render time.
-// Serialized into EventCommand.msg and Envelope.msg.
-type WSMessage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"` // "call" or "bind"
-	Method        string                 `protobuf:"bytes,2,opt,name=method,proto3" json:"method,omitempty"`
-	Args          [][]byte               `protobuf:"bytes,3,rep,name=args,proto3" json:"args,omitempty"`   // pre-resolved args, each JSON-encoded
-	Field         string                 `protobuf:"bytes,4,opt,name=field,proto3" json:"field,omitempty"` // field name (for bind)
-	Value         []byte                 `protobuf:"bytes,5,opt,name=value,proto3" json:"value,omitempty"` // new value (for bind, added by bridge)
-	Scope         string                 `protobuf:"bytes,6,opt,name=scope,proto3" json:"scope,omitempty"` // "forGID:idx" for child components
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *WSMessage) Reset() {
-	*x = WSMessage{}
-	mi := &file_internal_proto_protocol_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *WSMessage) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*WSMessage) ProtoMessage() {}
-
-func (x *WSMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_protocol_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use WSMessage.ProtoReflect.Descriptor instead.
-func (*WSMessage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_protocol_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *WSMessage) GetType() string {
-	if x != nil {
-		return x.Type
-	}
-	return ""
-}
-
-func (x *WSMessage) GetMethod() string {
-	if x != nil {
-		return x.Method
-	}
-	return ""
-}
-
-func (x *WSMessage) GetArgs() [][]byte {
-	if x != nil {
-		return x.Args
-	}
-	return nil
-}
-
-func (x *WSMessage) GetField() string {
-	if x != nil {
-		return x.Field
-	}
-	return ""
-}
-
-func (x *WSMessage) GetValue() []byte {
-	if x != nil {
-		return x.Value
-	}
-	return nil
-}
-
-func (x *WSMessage) GetScope() string {
-	if x != nil {
-		return x.Scope
 	}
 	return ""
 }
@@ -723,18 +629,10 @@ const file_internal_proto_protocol_proto_rawDesc = "" +
 	"\vplugin_data\x18\x0f \x01(\fR\n" +
 	"pluginData\x120\n" +
 	"\vsub_patches\x18\x10 \x03(\v2\x0f.godom.DomPatchR\n" +
-	"subPatches\"F\n" +
-	"\bEnvelope\x12\x12\n" +
-	"\x04args\x18\x01 \x03(\x01R\x04args\x12\x10\n" +
-	"\x03msg\x18\x02 \x01(\fR\x03msg\x12\x14\n" +
-	"\x05value\x18\x03 \x01(\fR\x05value\"\x8d\x01\n" +
-	"\tWSMessage\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\tR\x04type\x12\x16\n" +
-	"\x06method\x18\x02 \x01(\tR\x06method\x12\x12\n" +
-	"\x04args\x18\x03 \x03(\fR\x04args\x12\x14\n" +
-	"\x05field\x18\x04 \x01(\tR\x05field\x12\x14\n" +
-	"\x05value\x18\x05 \x01(\fR\x05value\x12\x14\n" +
-	"\x05scope\x18\x06 \x01(\tR\x05scopeB\tZ\a./protob\x06proto3"
+	"subPatches\":\n" +
+	"\tNodeEvent\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\x05R\x06nodeId\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05valueB\tZ\a./protob\x06proto3"
 
 var (
 	file_internal_proto_protocol_proto_rawDescOnce sync.Once
@@ -748,7 +646,7 @@ func file_internal_proto_protocol_proto_rawDescGZIP() []byte {
 	return file_internal_proto_protocol_proto_rawDescData
 }
 
-var file_internal_proto_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_internal_proto_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_internal_proto_protocol_proto_goTypes = []any{
 	(*ServerMessage)(nil), // 0: godom.ServerMessage
 	(*Command)(nil),       // 1: godom.Command
@@ -756,8 +654,7 @@ var file_internal_proto_protocol_proto_goTypes = []any{
 	(*EventCommand)(nil),  // 3: godom.EventCommand
 	(*VDomMessage)(nil),   // 4: godom.VDomMessage
 	(*DomPatch)(nil),      // 5: godom.DomPatch
-	(*Envelope)(nil),      // 6: godom.Envelope
-	(*WSMessage)(nil),     // 7: godom.WSMessage
+	(*NodeEvent)(nil),     // 6: godom.NodeEvent
 }
 var file_internal_proto_protocol_proto_depIdxs = []int32{
 	1, // 0: godom.ServerMessage.commands:type_name -> godom.Command
@@ -791,7 +688,7 @@ func file_internal_proto_protocol_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_proto_protocol_proto_rawDesc), len(file_internal_proto_protocol_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

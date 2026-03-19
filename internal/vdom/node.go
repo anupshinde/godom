@@ -172,6 +172,39 @@ type EventOptions struct {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// FindNodeByID searches the tree for a node with the given ID.
+func FindNodeByID(root Node, id int) Node {
+	if root == nil {
+		return nil
+	}
+	if root.NodeID() == id {
+		return root
+	}
+	switch n := root.(type) {
+	case *ElementNode:
+		for _, c := range n.Children {
+			if found := FindNodeByID(c, id); found != nil {
+				return found
+			}
+		}
+	case *KeyedElementNode:
+		for _, kc := range n.Children {
+			if found := FindNodeByID(kc.Node, id); found != nil {
+				return found
+			}
+		}
+	case *ComponentNode:
+		if n.SubTree != nil {
+			return FindNodeByID(n.SubTree, id)
+		}
+	case *LazyNode:
+		if n.Cached != nil {
+			return FindNodeByID(n.Cached, id)
+		}
+	}
+	return nil
+}
+
 // ComputeDescendants recursively calculates and caches descendant counts.
 // Must be called after building a tree and before diffing.
 func ComputeDescendants(n Node) int {

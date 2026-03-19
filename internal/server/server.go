@@ -3,7 +3,6 @@ package server
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
@@ -59,12 +58,22 @@ func Run(cfg Config) error {
 		}
 	}
 
-	// Wire up Refresh: allow Go code to push state to all browsers.
-	ci.RefreshFn = func() {
+	// Wire up Refresh:
+	// With fields: surgical update — patch only the bound nodes.
+	// Without fields: full refresh — re-send the entire tree.
+	ci.RefreshFn = func(fields ...string) {
 		ci.Mu.Lock()
-		msg := BuildUpdate(ci)
-		ci.Mu.Unlock()
-		if msg != nil {
+		if len(fields) > 0 {
+			patches := buildSurgicalPatches(ci, fields)
+			ci.Mu.Unlock()
+			if len(patches) > 0 {
+				msg := render.EncodePatchMessage(patches)
+				data, _ := proto.Marshal(msg)
+				pool.broadcast(data)
+			}
+		} else {
+			msg := BuildInit(ci)
+			ci.Mu.Unlock()
 			data, _ := proto.Marshal(msg)
 			pool.broadcast(data)
 		}
@@ -154,24 +163,13 @@ func Run(cfg Config) error {
 				continue
 			}
 
-			env := &gproto.Envelope{}
-			if err := proto.Unmarshal(data, env); err != nil {
-				log.Printf("godom: envelope unmarshal error: %v", err)
+			evt := &gproto.NodeEvent{}
+			if err := proto.Unmarshal(data, evt); err != nil {
+				log.Printf("godom: node event unmarshal error: %v", err)
 				continue
 			}
 
-			wsMsg := &gproto.WSMessage{}
-			if err := proto.Unmarshal(env.Msg, wsMsg); err != nil {
-				log.Printf("godom: wsmessage unmarshal error: %v", err)
-				continue
-			}
-
-			switch wsMsg.Type {
-			case "call":
-				handleCall(ci, wsMsg, env.Args, env.Value, pool)
-			case "bind":
-				handleBind(ci, wsMsg, env.Value, pool)
-			}
+			handleNodeEvent(ci, evt.NodeId, evt.Value, pool)
 		}
 	})
 
@@ -212,20 +210,23 @@ func Run(cfg Config) error {
 
 // --- VDOM orchestration ---
 
-// BuildInit builds the initial VDomMessage for a new client connection.
+// BuildInit builds the initial VDomMessage for a client connection.
+// If a live tree exists (from prior connections or node events), it encodes
+// that tree as-is so new clients see the current state.
 func BuildInit(ci *component.Info) *gproto.VDomMessage {
-	tree := buildTree(ci)
-	ci.PrevTree = tree
+	if ci.PrevTree == nil {
+		ci.PrevTree = buildTree(ci)
+	}
 
-	msg, err := render.EncodeInitTreeMessage(tree)
+	msg, err := render.EncodeInitTreeMessage(ci.PrevTree)
 	if err != nil {
-		// Should never happen with well-formed trees
 		panic("EncodeInitTreeMessage: " + err.Error())
 	}
 	return msg
 }
 
-// BuildUpdate rebuilds the tree, diffs, and returns patches. Returns nil if no changes.
+// BuildUpdate rebuilds the tree from templates, diffs against PrevTree, and
+// returns a patch message. Returns nil if no changes.
 func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
 	newTree := buildTree(ci)
 
@@ -260,7 +261,155 @@ func buildTree(ci *component.Info) *vdom.ElementNode {
 	children := vdom.ResolveTree(ci.VDOMTemplates, ctx)
 	root := &vdom.ElementNode{NodeBase: vdom.NodeBase{ID: ci.IDCounter.Next()}, Tag: "body", Children: children}
 	vdom.ComputeDescendants(root)
+
+	// Capture bindings from the first resolve
+	if ci.Bindings == nil && ctx.Bindings != nil {
+		ci.Bindings = ctx.Bindings
+	}
+
 	return root
+}
+
+// buildSurgicalPatches reads the current field values and produces targeted
+// patches for only the nodes bound to those fields. No tree rebuild, no diff.
+func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
+	var patches []vdom.Patch
+
+	for _, field := range fields {
+		bindings, ok := ci.Bindings[field]
+		if !ok {
+			continue
+		}
+
+		val := vdom.ResolveExpr(field, &vdom.ResolveContext{State: ci.Value})
+
+		for _, b := range bindings {
+			truthy := vdom.IsTruthy(val)
+			strVal := fmt.Sprint(val)
+
+			switch b.Kind {
+			case "style":
+				patches = append(patches, vdom.Patch{
+					NodeID: b.NodeID,
+					Type:   vdom.PatchFacts,
+					Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Styles: map[string]string{b.Prop: strVal}}},
+				})
+			case "prop":
+				patches = append(patches, vdom.Patch{
+					NodeID: b.NodeID,
+					Type:   vdom.PatchFacts,
+					Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Props: map[string]any{b.Prop: strVal}}},
+				})
+			case "attr":
+				patches = append(patches, vdom.Patch{
+					NodeID: b.NodeID,
+					Type:   vdom.PatchFacts,
+					Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Attrs: map[string]string{b.Prop: strVal}}},
+				})
+			case "text":
+				patches = append(patches, vdom.Patch{
+					NodeID: b.NodeID,
+					Type:   vdom.PatchText,
+					Data:   vdom.PatchTextData{Text: strVal},
+				})
+			case "show":
+				display := ""
+				if !truthy {
+					display = "none"
+				}
+				patches = append(patches, vdom.Patch{
+					NodeID: b.NodeID,
+					Type:   vdom.PatchFacts,
+					Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Styles: map[string]string{"display": display}}},
+				})
+			case "hide":
+				display := ""
+				if truthy {
+					display = "none"
+				}
+				patches = append(patches, vdom.Patch{
+					NodeID: b.NodeID,
+					Type:   vdom.PatchFacts,
+					Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Styles: map[string]string{"display": display}}},
+				})
+			case "class":
+				// For class toggling, we need to add/remove the class name
+				// This is simplified — a full implementation would track existing classes
+				node := vdom.FindNodeByID(ci.PrevTree, b.NodeID)
+				if el, ok := node.(*vdom.ElementNode); ok {
+					existing, _ := el.Facts.Props["className"].(string)
+					if truthy && !strings.Contains(existing, b.Prop) {
+						if existing != "" {
+							existing += " " + b.Prop
+						} else {
+							existing = b.Prop
+						}
+					} else if !truthy {
+						existing = strings.TrimSpace(strings.ReplaceAll(existing, b.Prop, ""))
+					}
+					patches = append(patches, vdom.Patch{
+						NodeID: b.NodeID,
+						Type:   vdom.PatchFacts,
+						Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Props: map[string]any{"className": existing}}},
+					})
+				}
+			}
+
+			// Also update the live tree so it stays in sync
+			node := vdom.FindNodeByID(ci.PrevTree, b.NodeID)
+			switch b.Kind {
+			case "style":
+				if el, ok := node.(*vdom.ElementNode); ok {
+					if el.Facts.Styles == nil {
+						el.Facts.Styles = make(map[string]string)
+					}
+					el.Facts.Styles[b.Prop] = strVal
+				}
+			case "prop":
+				if el, ok := node.(*vdom.ElementNode); ok {
+					if el.Facts.Props == nil {
+						el.Facts.Props = make(map[string]any)
+					}
+					el.Facts.Props[b.Prop] = strVal
+				}
+			case "attr":
+				if el, ok := node.(*vdom.ElementNode); ok {
+					if el.Facts.Attrs == nil {
+						el.Facts.Attrs = make(map[string]string)
+					}
+					el.Facts.Attrs[b.Prop] = strVal
+				}
+			case "show":
+				if el, ok := node.(*vdom.ElementNode); ok {
+					if el.Facts.Styles == nil {
+						el.Facts.Styles = make(map[string]string)
+					}
+					if !truthy {
+						el.Facts.Styles["display"] = "none"
+					} else {
+						delete(el.Facts.Styles, "display")
+					}
+				}
+			case "hide":
+				if el, ok := node.(*vdom.ElementNode); ok {
+					if el.Facts.Styles == nil {
+						el.Facts.Styles = make(map[string]string)
+					}
+					if truthy {
+						el.Facts.Styles["display"] = "none"
+					} else {
+						delete(el.Facts.Styles, "display")
+					}
+				}
+			case "text":
+				if tn, ok := node.(*vdom.TextNode); ok {
+					tn.Text = strVal
+				}
+			}
+		}
+	}
+
+	return patches
 }
 
 // --- WebSocket helpers ---
@@ -336,55 +485,42 @@ func handleInit(wc *wsConn, ci *component.Info) error {
 	return wc.writeBinary(data)
 }
 
-func handleCall(ci *component.Info, wsMsg *gproto.WSMessage, envArgs []float64, envValue []byte, pool *connPool) {
+// handleNodeEvent processes a Layer 1 node event: find the node in the live
+// tree by ID, update its Props["value"], and broadcast a facts patch to all clients.
+func handleNodeEvent(ci *component.Info, nodeID int32, value string, pool *connPool) {
 	ci.Mu.Lock()
 
-	for _, a := range envArgs {
-		jsonArg, _ := json.Marshal(a)
-		wsMsg.Args = append(wsMsg.Args, jsonArg)
-	}
-
-	if len(envValue) > 0 {
-		var extraArgs []json.RawMessage
-		if err := json.Unmarshal(envValue, &extraArgs); err == nil {
-			for _, arg := range extraArgs {
-				wsMsg.Args = append(wsMsg.Args, arg)
-			}
-		}
-	}
-
-	jsonArgs := make([]json.RawMessage, len(wsMsg.Args))
-	for i, a := range wsMsg.Args {
-		jsonArgs[i] = json.RawMessage(a)
-	}
-
-	if err := ci.CallMethod(wsMsg.Method, jsonArgs); err != nil {
-		log.Printf("godom: %v", err)
+	node := vdom.FindNodeByID(ci.PrevTree, int(nodeID))
+	if node == nil {
+		log.Printf("godom: node %d not found in tree", nodeID)
 		ci.Mu.Unlock()
 		return
 	}
 
-	msg := BuildUpdate(ci)
+	el, ok := node.(*vdom.ElementNode)
+	if !ok {
+		log.Printf("godom: node %d is not an element", nodeID)
+		ci.Mu.Unlock()
+		return
+	}
+
+	// Update the live tree in place
+	if el.Facts.Props == nil {
+		el.Facts.Props = make(map[string]any)
+	}
+	el.Facts.Props["value"] = value
+
+	// Build a targeted facts patch — no need for a full diff
+	patch := vdom.Patch{
+		NodeID: int(nodeID),
+		Type:   vdom.PatchFacts,
+		Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Props: map[string]any{"value": value}}},
+	}
+	msg := render.EncodePatchMessage([]vdom.Patch{patch})
 	ci.Mu.Unlock()
-	if msg != nil {
-		data, _ := proto.Marshal(msg)
-		pool.broadcast(data)
-	}
-}
 
-func handleBind(ci *component.Info, wsMsg *gproto.WSMessage, value []byte, pool *connPool) {
-	ci.Mu.Lock()
-
-	if err := ci.SetField(wsMsg.Field, json.RawMessage(value)); err != nil {
-		log.Printf("godom: bind error: %v", err)
-	}
-
-	msg := BuildUpdate(ci)
-	ci.Mu.Unlock()
-	if msg != nil {
-		data, _ := proto.Marshal(msg)
-		pool.broadcast(data)
-	}
+	data, _ := proto.Marshal(msg)
+	pool.broadcast(data)
 }
 
 // --- Helpers ---

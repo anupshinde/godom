@@ -66,24 +66,12 @@ message DomPatch {
   repeated DomPatch sub_patches = 16; // patchLazy: patches inside lazy node
 }
 
-// --- Browser → Go messages ---
+// --- Browser → Go messages (Layer 1) ---
 
-// Envelope is what the bridge sends to Go on every event.
-// The bridge never opens msg — it forwards it untouched.
-// args carries browser-side data (mouse coords, wheel delta).
-message Envelope {
-  repeated double args = 1;           // browser-side args (mouse x/y, wheel deltaY)
-  bytes msg = 2;                      // pre-built WSMessage bytes from Go
-  bytes value = 3;                    // input value for bind events (JSON-encoded)
-}
-
-// WSMessage is the inner message pre-built by Go at render time.
-// Serialized into EventCommand.msg and Envelope.msg.
-message WSMessage {
-  string type = 1;                    // "call" or "bind"
-  string method = 2;
-  repeated bytes args = 3;            // pre-resolved args, each JSON-encoded
-  string field = 4;                   // field name (for bind)
-  bytes value = 5;                    // new value (for bind, added by bridge)
-  string scope = 6;                   // "forGID:idx" for child components
+// NodeEvent is sent from the browser when a node's value changes.
+// The bridge is dumb: it only knows node IDs and DOM values.
+// No struct field names, no method names cross the wire.
+message NodeEvent {
+  int32 node_id = 1;                  // stable node ID (matches nodeMap on bridge)
+  string value = 2;                   // current DOM value (e.g. input.value)
 }

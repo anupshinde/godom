@@ -23,12 +23,10 @@
 
     var ws;
     var nodeMap = {};       // node ID (int) → DOM node
-    var eventMap = {};      // "nodeId:event[:key]" → latest event config
     var pluginState = {};   // node ID → true if plugin init called
     var rootNode;           // the root DOM node (document.body)
 
     var Proto = godomProto;
-    var textEncoder = new TextEncoder();
     var textDecoder = new TextDecoder();
 
     // =========================================================================
@@ -75,7 +73,6 @@
                 hideDisconnectOverlay();
                 reconnectDelay = 1000;
                 nodeMap = {};
-                eventMap = {};
                 pluginState = {};
                 // Build DOM from tree description
                 var tree = JSON.parse(textDecoder.decode(msg.tree));
@@ -145,9 +142,9 @@
         applyAttrsNS(el, tree.an);
         applyStyles(el, tree.s);
 
-        // Register events
-        if (tree.ev) {
-            registerNodeEvents(tree.id, el, tree.ev);
+        // Layer 1: auto-sync input values (no explicit event registration needed)
+        if (!tree.ns && tree.tag) {
+            autoRegisterInputSync(tree.id, el, tree.tag);
         }
 
         // Build children
@@ -418,202 +415,42 @@
             }
         }
 
-        // Events
-        if (diff.e) {
-            for (var key in diff.e) {
-                var evtData = diff.e[key];
-                if (evtData === null) {
-                    delete eventMap[nodeId + ":" + key];
-                } else {
-                    // evtData has {on, key, msg, sp, pd}
-                    registerNodeEvents(nodeId, el, [evtData]);
-                }
-            }
+        // Layer 1: re-register input sync if this element was redrawn
+        if (el.tagName) {
+            var tag = el.tagName.toLowerCase();
+            autoRegisterInputSync(nodeId, el, tag);
         }
     }
 
     // =========================================================================
-    // 6. Event handling — wire DOM events to send messages back to Go
+    // 6. Event handling — Layer 1: auto-sync input values via NodeEvent
     // =========================================================================
 
-    function sendEnvelope(msg, args, value) {
-        var env = {msg: msg};
-        if (args) env.args = args;
-        if (value) env.value = value;
-        ws.send(Proto.Envelope.encode(env).finish());
+    function sendNodeEvent(nodeId, value) {
+        var evt = Proto.NodeEvent.encode({nodeId: nodeId, value: value}).finish();
+        ws.send(evt);
     }
 
-    // Register event listeners on a DOM element using node ID for keying.
-    function registerNodeEvents(nodeId, el, evts) {
-        if (!evts) return;
-        for (var i = 0; i < evts.length; i++) {
-            var e = evts[i];
-            var evtName = e.on;
+    // Auto-register input sync for interactive elements.
+    // The bridge is dumb: it sends node ID + current value. No method names,
+    // no field names, no pre-built messages.
+    function autoRegisterInputSync(nodeId, el, tag) {
+        if (el._godomSync) return;
+        el._godomSync = true;
 
-            var key = nodeId + ":" + evtName;
-            if (evtName === "keydown" && e.key) {
-                key += ":" + e.key;
-            }
-            eventMap[key] = e;
-
-            // Skip if listener already attached for this event type
-            if (el._godomEvt && el._godomEvt[evtName]) continue;
-            if (!el._godomEvt) el._godomEvt = {};
-            el._godomEvt[evtName] = true;
-
-            if (evtName === "input") {
-                (function(k, elem) {
-                    elem.addEventListener("input", function() {
-                        var ev = eventMap[k];
-                        if (!ev) return;
-                        var valBytes = textEncoder.encode(JSON.stringify(elem.value));
-                        sendEnvelope(ev.msg, null, valBytes);
-                    });
-                })(key, el);
-
-            } else if (evtName === "keydown") {
-                (function(nid, elem) {
-                    elem.addEventListener("keydown", function(ke) {
-                        var ev = eventMap[nid + ":keydown:" + ke.key]
-                              || eventMap[nid + ":keydown"];
-                        if (!ev) return;
-                        sendEnvelope(ev.msg);
-                    });
-                })(nodeId, el);
-
-            } else if (evtName === "mousedown" || evtName === "mouseup") {
-                (function(k, elem, en) {
-                    elem.addEventListener(en, function(me) {
-                        var ev = eventMap[k];
-                        if (!ev) return;
-                        sendEnvelope(ev.msg, [me.offsetX, me.offsetY]);
-                    });
-                })(key, el, evtName);
-
-            } else if (evtName === "mousemove") {
-                (function(k, elem) {
-                    var pending = null;
-                    var scheduled = false;
-                    elem.addEventListener("mousemove", function(me) {
-                        var ev = eventMap[k];
-                        if (!ev) return;
-                        pending = me;
-                        if (scheduled) return;
-                        scheduled = true;
-                        requestAnimationFrame(function() {
-                            sendEnvelope(ev.msg, [pending.offsetX, pending.offsetY]);
-                            pending = null;
-                            scheduled = false;
-                        });
-                    });
-                })(key, el);
-
-            } else if (evtName === "wheel") {
-                (function(k, elem) {
-                    elem.addEventListener("wheel", function(we) {
-                        we.preventDefault();
-                        var ev = eventMap[k];
-                        if (!ev) return;
-                        sendEnvelope(ev.msg, [we.deltaY]);
-                    }, {passive: false});
-                })(key, el);
-
-            } else if (evtName === "drop") {
-                setupDropHandler(key, el, e.key || "");
-
-            } else {
-                (function(k, elem, en) {
-                    elem.addEventListener(en, function() {
-                        var ev = eventMap[k];
-                        if (!ev) return;
-                        sendEnvelope(ev.msg);
-                    });
-                })(key, el, evtName);
-            }
-        }
-    }
-
-    // =========================================================================
-    // 7. Drag & drop
-    // =========================================================================
-
-    function setupDraggable(el, group, value) {
-        el.setAttribute("draggable", "true");
-        el.dataset.gDrag = value || "";
-        el.dataset.gDragGroup = group || "";
-        if (!el._godomDragStart) {
-            el._godomDragStart = true;
-            el.addEventListener("dragstart", function(de) {
-                de.dataTransfer.effectAllowed = "move";
-                var dragEl = de.target.closest("[data-g-drag]");
-                var grp = dragEl.dataset.gDragGroup || "";
-                de.dataTransfer.setData("application/x-godom-" + grp, dragEl.dataset.gDrag);
-                dragEl.classList.add("g-dragging");
+        if (tag === "input" || tag === "textarea") {
+            el.addEventListener("input", function() {
+                sendNodeEvent(nodeId, el.value);
             });
-            el.addEventListener("dragend", function(de) {
-                de.target.closest("[data-g-drag]").classList.remove("g-dragging");
-                var overs = document.querySelectorAll(".g-drag-over,.g-drag-over-above,.g-drag-over-below");
-                for (var j = 0; j < overs.length; j++) {
-                    overs[j].classList.remove("g-drag-over", "g-drag-over-above", "g-drag-over-below");
-                }
+        } else if (tag === "select") {
+            el.addEventListener("change", function() {
+                sendNodeEvent(nodeId, el.value);
             });
         }
     }
 
-    function setupDropHandler(key, el, group) {
-        var mimeType = "application/x-godom-" + group;
-        var dragCounter = 0;
-
-        function hasMatch(dt) {
-            for (var t = 0; t < dt.types.length; t++) {
-                if (dt.types[t] === mimeType) return true;
-            }
-            return false;
-        }
-
-        el.addEventListener("dragover", function(de) {
-            if (!hasMatch(de.dataTransfer)) return;
-            de.preventDefault();
-            de.dataTransfer.dropEffect = "move";
-            var rect = el.getBoundingClientRect();
-            var isAbove = de.clientY < rect.top + rect.height / 2;
-            el.classList.remove("g-drag-over-above", "g-drag-over-below");
-            el.classList.add("g-drag-over");
-            el.classList.add(isAbove ? "g-drag-over-above" : "g-drag-over-below");
-        });
-
-        el.addEventListener("dragenter", function(de) {
-            if (!hasMatch(de.dataTransfer)) return;
-            de.preventDefault();
-            dragCounter++;
-        });
-        el.addEventListener("dragleave", function() {
-            if (dragCounter === 0) return;
-            dragCounter--;
-            if (dragCounter === 0) {
-                el.classList.remove("g-drag-over", "g-drag-over-above", "g-drag-over-below");
-            }
-        });
-
-        el.addEventListener("drop", function(de) {
-            dragCounter = 0;
-            el.classList.remove("g-drag-over", "g-drag-over-above", "g-drag-over-below");
-            if (!hasMatch(de.dataTransfer)) return;
-            de.preventDefault();
-            var ev = eventMap[key];
-            if (!ev) return;
-            var fromStr = de.dataTransfer.getData(mimeType);
-            var toStr = el.dataset.gDrop || el.dataset.gDrag || "";
-            var rect = el.getBoundingClientRect();
-            var position = de.clientY < rect.top + rect.height / 2 ? "above" : "below";
-            function smartVal(s) { var n = Number(s); return s !== "" && !isNaN(n) ? n : s; }
-            var dropArgs = [smartVal(fromStr), smartVal(toStr), position];
-            sendEnvelope(ev.msg, null, textEncoder.encode(JSON.stringify(dropArgs)));
-        });
-    }
-
     // =========================================================================
-    // 8. Helpers
+    // 7. Helpers
     // =========================================================================
 
     // Remove a DOM node and clean up all nodeMap references.
@@ -624,12 +461,6 @@
             if (nodeMap[id] === node) {
                 delete nodeMap[id];
                 delete pluginState[id];
-                // Clean eventMap entries for this node ID
-                for (var key in eventMap) {
-                    if (key.indexOf(id + ":") === 0) {
-                        delete eventMap[key];
-                    }
-                }
                 break;
             }
         }
@@ -642,7 +473,7 @@
     }
 
     // =========================================================================
-    // 9. Plugin registration (global API)
+    // 8. Plugin registration (global API)
     // =========================================================================
 
     if (!window.godom) window.godom = {};

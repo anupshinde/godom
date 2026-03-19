@@ -9,20 +9,10 @@ var godomProto = (function() {
 
     var root = new Root();
 
-    // WSMessage — inner pre-built message (call/bind), unchanged
-    var WSMessage = new Type("WSMessage")
-        .add(new Field("type", 1, "string"))
-        .add(new Field("method", 2, "string"))
-        .add(new Field("args", 3, "bytes", "repeated"))
-        .add(new Field("field", 4, "string"))
-        .add(new Field("value", 5, "bytes"))
-        .add(new Field("scope", 6, "string"));
-
-    // Envelope — browser → Go wrapper, unchanged
-    var Envelope = new Type("Envelope")
-        .add(new Field("args", 1, "double", "repeated"))
-        .add(new Field("msg", 2, "bytes"))
-        .add(new Field("value", 3, "bytes"));
+    // NodeEvent — browser → Go, Layer 1: just node ID + value
+    var NodeEvent = new Type("NodeEvent")
+        .add(new Field("nodeId", 1, "int32"))
+        .add(new Field("value", 2, "string"));
 
     // DomPatch — single DOM mutation from diff
     var DomPatch = new Type("DomPatch")
@@ -44,13 +34,11 @@ var godomProto = (function() {
 
     root.add(VDomMessage);
     root.add(DomPatch);
-    root.add(Envelope);
-    root.add(WSMessage);
+    root.add(NodeEvent);
 
     return {
         VDomMessage: VDomMessage,
         DomPatch: DomPatch,
-        Envelope: Envelope,
-        WSMessage: WSMessage
+        NodeEvent: NodeEvent
     };
 })();
