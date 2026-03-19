@@ -20,20 +20,11 @@ const (
 	OpLazy       = "lazy"
 )
 
-// EncodeInitMessage builds a VDomMessage for the initial full render.
-func EncodeInitMessage(htmlContent string, events []*gproto.EventSetup) *gproto.VDomMessage {
-	return &gproto.VDomMessage{
-		Type:   "init",
-		Html:   []byte(htmlContent),
-		Events: events,
-	}
-}
-
 // EncodePatchMessage builds a VDomMessage with patches from a diff.
-func EncodePatchMessage(patches []vdom.Patch, gid *GIDCounter) *gproto.VDomMessage {
+func EncodePatchMessage(patches []vdom.Patch) *gproto.VDomMessage {
 	msg := &gproto.VDomMessage{Type: "patch"}
 	for _, p := range patches {
-		dp := encodePatch(p, gid)
+		dp := encodePatch(p)
 		if dp != nil {
 			msg.Patches = append(msg.Patches, dp)
 		}
@@ -42,19 +33,17 @@ func EncodePatchMessage(patches []vdom.Patch, gid *GIDCounter) *gproto.VDomMessa
 }
 
 // encodePatch converts a Go Patch to a protobuf DomPatch.
-func encodePatch(p vdom.Patch, gid *GIDCounter) *gproto.DomPatch {
+func encodePatch(p vdom.Patch) *gproto.DomPatch {
 	dp := &gproto.DomPatch{
-		Index: int32(p.Index),
+		NodeId: int32(p.NodeID),
 	}
 
 	switch p.Type {
 	case vdom.PatchRedraw:
 		dp.Op = OpRedraw
 		data := p.Data.(vdom.PatchRedrawData)
-		// Render the new node to HTML and collect events
-		html, events := RenderToHTMLWithEvents([]vdom.Node{data.Node}, gid)
-		dp.HtmlContent = []byte(html)
-		dp.PatchEvents = events
+		treeJSON, _ := json.Marshal(EncodeTree(data.Node))
+		dp.TreeContent = treeJSON
 
 	case vdom.PatchText:
 		dp.Op = OpText
@@ -70,9 +59,13 @@ func encodePatch(p vdom.Patch, gid *GIDCounter) *gproto.DomPatch {
 	case vdom.PatchAppend:
 		dp.Op = OpAppend
 		data := p.Data.(vdom.PatchAppendData)
-		html, events := RenderToHTMLWithEvents(data.Nodes, gid)
-		dp.HtmlContent = []byte(html)
-		dp.PatchEvents = events
+		// Encode each appended node as a tree description
+		trees := make([]*WireNode, len(data.Nodes))
+		for i, n := range data.Nodes {
+			trees[i] = EncodeTree(n)
+		}
+		treeJSON, _ := json.Marshal(trees)
+		dp.TreeContent = treeJSON
 
 	case vdom.PatchRemoveLast:
 		dp.Op = OpRemoveLast
@@ -89,7 +82,7 @@ func encodePatch(p vdom.Patch, gid *GIDCounter) *gproto.DomPatch {
 		dp.Reorder = reorderJSON
 		// Sub-patches for changed keyed children
 		for _, sp := range data.Patches {
-			sub := encodePatch(sp, gid)
+			sub := encodePatch(sp)
 			if sub != nil {
 				dp.SubPatches = append(dp.SubPatches, sub)
 			}
@@ -105,7 +98,7 @@ func encodePatch(p vdom.Patch, gid *GIDCounter) *gproto.DomPatch {
 		dp.Op = OpLazy
 		data := p.Data.(vdom.PatchLazyData)
 		for _, sp := range data.Patches {
-			sub := encodePatch(sp, gid)
+			sub := encodePatch(sp)
 			if sub != nil {
 				dp.SubPatches = append(dp.SubPatches, sub)
 			}
@@ -124,11 +117,11 @@ func encodePatch(p vdom.Patch, gid *GIDCounter) *gproto.DomPatch {
 
 // WireFactsDiff is the JSON structure sent to the bridge.
 type WireFactsDiff struct {
-	Props   map[string]any         `json:"p,omitempty"` // properties
-	Attrs   map[string]string      `json:"a,omitempty"` // attributes
-	AttrsNS map[string]wireNSAttr  `json:"an,omitempty"` // namespaced attributes
-	Styles  map[string]string      `json:"s,omitempty"` // styles
-	Events  map[string]*wireEvent  `json:"e,omitempty"` // events
+	Props   map[string]any        `json:"p,omitempty"`  // properties
+	Attrs   map[string]string     `json:"a,omitempty"`  // attributes
+	AttrsNS map[string]wireNSAttr `json:"an,omitempty"` // namespaced attributes
+	Styles  map[string]string     `json:"s,omitempty"`  // styles
+	Events  map[string]*wireEvent `json:"e,omitempty"`  // events
 }
 
 type wireNSAttr struct {
@@ -137,12 +130,11 @@ type wireNSAttr struct {
 }
 
 type wireEvent struct {
-	Gid string `json:"gid"`          // data-gid of the element
-	On  string `json:"on"`           // event type
+	On  string `json:"on"`            // event type
 	Key string `json:"key,omitempty"` // key filter
-	Msg []byte `json:"msg"`          // pre-built WSMessage bytes
-	SP  bool   `json:"sp,omitempty"` // stopPropagation
-	PD  bool   `json:"pd,omitempty"` // preventDefault
+	Msg []byte `json:"msg"`           // pre-built WSMessage bytes
+	SP  bool   `json:"sp,omitempty"`  // stopPropagation
+	PD  bool   `json:"pd,omitempty"`  // preventDefault
 }
 
 func encodeFactsDiff(d *vdom.FactsDiff) *WireFactsDiff {
@@ -192,9 +184,9 @@ type wireReorder struct {
 }
 
 type wireReorderInsert struct {
-	Index int    `json:"i"`
-	Key   string `json:"k"`
-	HTML  string `json:"h,omitempty"` // rendered HTML for new nodes
+	Index int       `json:"i"`
+	Key   string    `json:"k"`
+	Tree  *WireNode `json:"tree,omitempty"` // tree description for new nodes
 }
 
 type wireReorderRemove struct {
@@ -207,7 +199,7 @@ func encodeReorderData(d *vdom.PatchReorderData) *wireReorder {
 	for _, ins := range d.Inserts {
 		wi := wireReorderInsert{Index: ins.Index, Key: ins.Key}
 		if ins.Node != nil {
-			wi.HTML = RenderToHTML([]vdom.Node{ins.Node}, &GIDCounter{})
+			wi.Tree = EncodeTree(ins.Node)
 		}
 		w.Inserts = append(w.Inserts, wi)
 	}

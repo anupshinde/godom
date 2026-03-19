@@ -374,10 +374,23 @@ func ParseForExpr(expr string) (item, index, list string) {
 // Template tree → resolved Node tree
 // ---------------------------------------------------------------------------
 
+// IDCounter assigns monotonically increasing node IDs.
+// It must persist across renders (never reset) so that
+// existing IDs in the bridge's node map remain valid.
+type IDCounter struct {
+	Seq int
+}
+
+func (c *IDCounter) Next() int {
+	c.Seq++
+	return c.Seq
+}
+
 // ResolveContext holds the state and loop variables available during tree resolution.
 type ResolveContext struct {
 	State reflect.Value  // the component struct (or pointer to it)
 	Vars  map[string]any // loop variables: {todo: item, i: index}
+	IDs   *IDCounter     // node ID allocator (must persist across renders)
 }
 
 // ResolveTree resolves a list of template nodes into concrete Nodes.
@@ -443,9 +456,17 @@ func ResolveTemplateNode(t *TemplateNode, ctx *ResolveContext) []Node {
 	return []Node{resolveElementNode(t, ctx)}
 }
 
+// nextID returns the next node ID from the context, or 0 if no counter is set.
+func nextID(ctx *ResolveContext) int {
+	if ctx.IDs != nil {
+		return ctx.IDs.Next()
+	}
+	return 0
+}
+
 func resolveTextNode(t *TemplateNode, ctx *ResolveContext) []Node {
 	if len(t.TextParts) == 1 && t.TextParts[0].Static {
-		return []Node{&TextNode{Text: t.TextParts[0].Value}}
+		return []Node{&TextNode{NodeBase: NodeBase{ID: nextID(ctx)}, Text: t.TextParts[0].Value}}
 	}
 
 	var sb strings.Builder
@@ -457,11 +478,12 @@ func resolveTextNode(t *TemplateNode, ctx *ResolveContext) []Node {
 			sb.WriteString(fmt.Sprint(val))
 		}
 	}
-	return []Node{&TextNode{Text: sb.String()}}
+	return []Node{&TextNode{NodeBase: NodeBase{ID: nextID(ctx)}, Text: sb.String()}}
 }
 
 func resolveElementNode(t *TemplateNode, ctx *ResolveContext) Node {
 	el := &ElementNode{
+		NodeBase:  NodeBase{ID: nextID(ctx)},
 		Tag:       t.Tag,
 		Namespace: t.Namespace,
 		Facts:     resolveFacts(t, ctx),
@@ -472,7 +494,7 @@ func resolveElementNode(t *TemplateNode, ctx *ResolveContext) Node {
 			val := ResolveExpr(d.Expr, ctx)
 			text := fmt.Sprint(val)
 			if text != "" {
-				el.Children = []Node{&TextNode{Text: text}}
+				el.Children = []Node{&TextNode{NodeBase: NodeBase{ID: nextID(ctx)}, Text: text}}
 			}
 			return el
 		}
@@ -496,6 +518,7 @@ func resolveForNode(t *TemplateNode, ctx *ResolveContext) []Node {
 		childCtx := &ResolveContext{
 			State: ctx.State,
 			Vars:  CopyVars(ctx.Vars),
+			IDs:   ctx.IDs,
 		}
 		childCtx.Vars[t.ForItem] = item
 		if t.ForIndex != "" {
@@ -515,10 +538,11 @@ func resolvePluginNode(t *TemplateNode, ctx *ResolveContext) Node {
 	data := ResolveExpr(t.PluginExpr, ctx)
 	data = DeepCopyJSON(data)
 	return &PluginNode{
-		Tag:   t.Tag,
-		Name:  t.PluginName,
-		Facts: resolveFacts(t, ctx),
-		Data:  data,
+		NodeBase: NodeBase{ID: nextID(ctx)},
+		Tag:      t.Tag,
+		Name:     t.PluginName,
+		Facts:    resolveFacts(t, ctx),
+		Data:     data,
 	}
 }
 
@@ -528,8 +552,9 @@ func resolveComponentNode(t *TemplateNode, ctx *ResolveContext) Node {
 		props[name] = ResolveExpr(expr, ctx)
 	}
 	return &ComponentNode{
-		Tag:   t.ComponentTag,
-		Props: props,
+		NodeBase: NodeBase{ID: nextID(ctx)},
+		Tag:      t.ComponentTag,
+		Props:    props,
 	}
 }
 

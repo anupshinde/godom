@@ -1,8 +1,8 @@
 package server
 
 import (
+	"encoding/json"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/anupshinde/godom/internal/component"
@@ -64,48 +64,40 @@ func TestVDOMBuildInit(t *testing.T) {
 		t.Fatalf("expected type 'init', got %q", msg.Type)
 	}
 
-	html := string(msg.Html)
-
-	// Should contain the resolved count (5, not 0)
-	if !strings.Contains(html, ">5<") {
-		t.Errorf("expected count '5' in HTML, got: %s", html)
+	if len(msg.Tree) == 0 {
+		t.Fatal("expected non-empty tree JSON")
 	}
 
-	// Should contain buttons
-	if !strings.Contains(html, "<button") {
-		t.Errorf("expected <button> in HTML, got: %s", html)
+	// Decode tree and verify structure
+	var tree render.WireNode
+	if err := json.Unmarshal(msg.Tree, &tree); err != nil {
+		t.Fatal(err)
 	}
 
-	// Should contain input with value="1" (Step=1)
-	if !strings.Contains(html, `value="1"`) {
-		t.Errorf("expected value=\"1\" in HTML, got: %s", html)
+	if tree.Tag != "body" {
+		t.Errorf("expected root tag 'body', got %q", tree.Tag)
 	}
 
-	// Should have events registered
-	if len(msg.Events) == 0 {
-		t.Fatal("expected events in init message")
+	// Should have children (h1, div.controls, div.step)
+	if len(tree.Children) == 0 {
+		t.Error("expected children in tree")
 	}
 
-	// Should have click events for Decrement and Increment
-	var hasClick bool
-	for _, e := range msg.Events {
-		if e.Event == "click" {
-			hasClick = true
-		}
-	}
-	if !hasClick {
-		t.Error("expected click events")
+	// Find the text node with "5" (the resolved count)
+	found := findTextInTree(&tree, "5")
+	if !found {
+		t.Error("expected count '5' in tree")
 	}
 
-	// Should have input event for bind
-	var hasInput bool
-	for _, e := range msg.Events {
-		if e.Event == "input" {
-			hasInput = true
-		}
+	// Should have events (click, input)
+	foundClick := findEventInTree(&tree, "click")
+	if !foundClick {
+		t.Error("expected click event in tree")
 	}
-	if !hasInput {
-		t.Error("expected input event for g-bind")
+
+	foundInput := findEventInTree(&tree, "input")
+	if !foundInput {
+		t.Error("expected input event in tree")
 	}
 
 	// Should be serializable
@@ -226,4 +218,32 @@ func TestVDOMBuildUpdate_MultipleIncrements(t *testing.T) {
 	if !hasText4 {
 		t.Error("expected text patch '2' → '4'")
 	}
+}
+
+// --- Helpers ---
+
+func findTextInTree(node *render.WireNode, text string) bool {
+	if node.Type == "text" && node.Text == text {
+		return true
+	}
+	for _, child := range node.Children {
+		if findTextInTree(child, text) {
+			return true
+		}
+	}
+	return false
+}
+
+func findEventInTree(node *render.WireNode, eventName string) bool {
+	for _, ev := range node.Events {
+		if ev.On == eventName {
+			return true
+		}
+	}
+	for _, child := range node.Children {
+		if findEventInTree(child, eventName) {
+			return true
+		}
+	}
+	return false
 }

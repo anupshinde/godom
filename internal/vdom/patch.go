@@ -17,9 +17,9 @@ const (
 
 // Patch describes a single DOM mutation produced by the diff algorithm.
 type Patch struct {
-	Type  int // one of the Patch* constants
-	Index int // position in depth-first tree traversal
-	Data  any // type-specific payload (see below)
+	Type   int // one of the Patch* constants
+	NodeID int // ID of the target node in the OLD tree (what the bridge knows)
+	Data   any // type-specific payload (see below)
 }
 
 // ---------------------------------------------------------------------------

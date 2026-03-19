@@ -1,18 +1,19 @@
-// bridge_v2.js — godom VDOM patch executor.
+// bridge.js — godom VDOM bridge.
 //
 // Receives binary protobuf VDomMessage from Go over WebSocket.
-// On "init": sets innerHTML, indexes DOM, registers events.
-// On "patch": applies minimal DOM mutations from the diff algorithm.
+// On "init": builds DOM from tree description, registers events.
+// On "patch": applies minimal DOM mutations using nodeMap[id] lookups.
 //
 // Structure:
 //   1. State & globals
 //   2. Connection — WebSocket with auto-reconnect and disconnect overlay
-//   3. DOM indexing — gid map from data-gid attributes
+//   3. DOM construction — build DOM from tree descriptions
 //   4. Patch execution — apply patches by type
 //   5. Facts application — properties, attributes, styles, events
-//   6. Event registration — wire DOM events to send messages back to Go
+//   6. Event handling — wire DOM events to send messages back to Go
 //   7. Drag & drop — draggable/dropzone setup with group filtering
 //   8. Plugin lifecycle — init/update for JS plugins
+//   9. Helpers
 
 (function() {
 
@@ -21,10 +22,10 @@
     // =========================================================================
 
     var ws;
-    var gidMap = {};        // data-gid → DOM element
-    var eventMap = {};      // "gid:event[:key]" → latest event config
-    var pluginState = {};   // gid → true if plugin init called
-    var rootNode;           // the root DOM node (document.body or a container)
+    var nodeMap = {};       // node ID (int) → DOM node
+    var eventMap = {};      // "nodeId:event[:key]" → latest event config
+    var pluginState = {};   // node ID → true if plugin init called
+    var rootNode;           // the root DOM node (document.body)
 
     var Proto = godomProto;
     var textEncoder = new TextEncoder();
@@ -73,15 +74,28 @@
             if (msg.type === "init") {
                 hideDisconnectOverlay();
                 reconnectDelay = 1000;
-                gidMap = {};
+                nodeMap = {};
                 eventMap = {};
                 pluginState = {};
-                // Set full HTML content
-                document.body.innerHTML = textDecoder.decode(msg.html);
+                // Build DOM from tree description
+                var tree = JSON.parse(textDecoder.decode(msg.tree));
+                document.body.innerHTML = "";
                 rootNode = document.body;
-                indexDOM(rootNode);
-                registerEvents(msg.events);
-                initPlugins(rootNode);
+                if (tree) {
+                    var domNode = buildDOM(tree);
+                    if (domNode) {
+                        // If the tree root is <body>, use its children
+                        if (tree.tag === "body") {
+                            while (domNode.firstChild) {
+                                rootNode.appendChild(domNode.firstChild);
+                            }
+                            // Map body's ID to rootNode
+                            nodeMap[tree.id] = rootNode;
+                        } else {
+                            rootNode.appendChild(domNode);
+                        }
+                    }
+                }
             } else if (msg.type === "patch") {
                 applyPatches(msg.patches);
             }
@@ -102,65 +116,103 @@
     }
 
     // =========================================================================
-    // 3. DOM indexing — map data-gid attributes
+    // 3. DOM construction — build DOM nodes from tree descriptions
     // =========================================================================
 
-    function indexDOM(root) {
-        var all = root.querySelectorAll("[data-gid]");
-        for (var i = 0; i < all.length; i++) {
-            gidMap[all[i].getAttribute("data-gid")] = all[i];
+    // Build a DOM node from a wire tree description and register it in nodeMap.
+    function buildDOM(tree) {
+        if (!tree) return null;
+
+        if (tree.t === "text") {
+            var textNode = document.createTextNode(tree.x || "");
+            if (tree.id) nodeMap[tree.id] = textNode;
+            return textNode;
+        }
+
+        // Element node (including keyed)
+        var el;
+        if (tree.ns) {
+            el = document.createElementNS(tree.ns, tree.tag);
+        } else {
+            el = document.createElement(tree.tag);
+        }
+
+        if (tree.id) nodeMap[tree.id] = el;
+
+        // Apply facts: props, attrs, styles, namespaced attrs
+        applyProps(el, tree.p);
+        applyAttrs(el, tree.a);
+        applyAttrsNS(el, tree.an);
+        applyStyles(el, tree.s);
+
+        // Register events
+        if (tree.ev) {
+            registerNodeEvents(tree.id, el, tree.ev);
+        }
+
+        // Build children
+        if (tree.c) {
+            for (var i = 0; i < tree.c.length; i++) {
+                var child = buildDOM(tree.c[i]);
+                if (child) el.appendChild(child);
+            }
+        }
+
+        // Plugin init
+        if (tree.plug) {
+            var handler = window.godom && window.godom._plugins && window.godom._plugins[tree.plug];
+            if (handler && tree.pd !== undefined) {
+                handler.init(el, tree.pd);
+                pluginState[tree.id] = true;
+            }
+        }
+
+        return el;
+    }
+
+    function applyProps(el, props) {
+        if (!props) return;
+        for (var key in props) {
+            el[key] = props[key];
         }
     }
 
-    function getEl(gid) {
-        return gidMap[gid] || null;
+    function applyAttrs(el, attrs) {
+        if (!attrs) return;
+        for (var key in attrs) {
+            el.setAttribute(key, attrs[key]);
+        }
+    }
+
+    function applyAttrsNS(el, attrsNS) {
+        if (!attrsNS) return;
+        for (var key in attrsNS) {
+            el.setAttributeNS(attrsNS[key].ns, key, attrsNS[key].v);
+        }
+    }
+
+    function applyStyles(el, styles) {
+        if (!styles) return;
+        for (var key in styles) {
+            el.style.setProperty(key, styles[key]);
+        }
     }
 
     // =========================================================================
     // 4. Patch execution — dispatch by op type
     // =========================================================================
 
-    // Get a DOM node by its depth-first traversal index relative to rootNode.
-    // Index 0 = rootNode itself.
-    function getNodeByIndex(index) {
-        if (index === 0) return rootNode;
-        var count = 0;
-        return walkDFS(rootNode, index, {count: 0});
-    }
-
-    // Depth-first walk to find node at given index.
-    function walkDFS(node, target, state) {
-        for (var i = 0; i < node.childNodes.length; i++) {
-            var child = node.childNodes[i];
-            state.count++;
-            if (state.count === target) return child;
-            if (child.childNodes && child.childNodes.length > 0) {
-                var found = walkDFS(child, target, state);
-                if (found) return found;
-            }
-        }
-        return null;
-    }
-
     function applyPatches(patches) {
         if (!patches) return;
-        // Resolve all target DOM nodes BEFORE applying any patches.
-        // Structural patches (append, redraw, remove) change the DOM tree,
-        // which invalidates DFS indices for subsequent patches. By collecting
-        // all target nodes upfront from the unmodified DOM, every patch
-        // operates on the correct node.
-        var resolved = [];
         for (var i = 0; i < patches.length; i++) {
-            resolved.push(getNodeByIndex(patches[i].index));
-        }
-        for (var i = 0; i < patches.length; i++) {
-            applyPatch(resolved[i], patches[i]);
+            var patch = patches[i];
+            var node = nodeMap[patch.nodeId];
+            if (!node) continue;
+            applyPatch(node, patch);
         }
     }
 
     function applyPatch(node, patch) {
-        if (!node) return;
-
         switch (patch.op) {
             case "redraw":
                 execRedraw(node, patch);
@@ -184,45 +236,27 @@
                 execPlugin(node, patch);
                 break;
             case "lazy":
-                // Lazy patches contain sub-patches — apply them recursively.
                 applyPatches(patch.subPatches);
                 break;
         }
     }
 
-    // --- Redraw: replace entire node with new HTML ---
+    // --- Redraw: replace entire node with new tree ---
     function execRedraw(node, patch) {
-        var html = textDecoder.decode(patch.htmlContent);
-        var tmp = document.createElement("div");
-        tmp.innerHTML = html;
-
-        // Replace old node with new content
-        var newNode = tmp.firstChild;
-        if (newNode) {
-            // Clean up old node from caches
-            cleanNode(node);
+        var tree = JSON.parse(textDecoder.decode(patch.treeContent));
+        var newNode = buildDOM(tree);
+        if (newNode && node.parentNode) {
+            // Clean old node from nodeMap
+            cleanNodeMap(node);
             node.parentNode.replaceChild(newNode, node);
-            // Index new node and its children
-            if (newNode.nodeType === 1) {
-                if (newNode.hasAttribute("data-gid")) {
-                    gidMap[newNode.getAttribute("data-gid")] = newNode;
-                }
-                indexDOM(newNode);
-            }
         }
-
-        // Register events and init plugins on the new nodes
-        registerEvents(patch.patchEvents);
-        if (newNode && newNode.nodeType === 1) initPlugins(newNode);
     }
 
     // --- Text: update text content ---
     function execText(node, patch) {
         if (node.nodeType === 3) {
-            // Text node
             node.nodeValue = patch.text;
         } else {
-            // Element node — set textContent
             node.textContent = patch.text;
         }
     }
@@ -231,26 +265,16 @@
     function execFacts(node, patch) {
         if (!patch.facts || !patch.facts.length) return;
         var diff = JSON.parse(textDecoder.decode(patch.facts));
-        applyFactsDiff(node, diff);
+        applyFactsDiff(node, diff, patch.nodeId);
     }
 
-    // --- Append: add children at end ---
+    // --- Append: add children from tree descriptions ---
     function execAppend(node, patch) {
-        var html = textDecoder.decode(patch.htmlContent);
-        // Use contextual container for correct parsing
-        var tmp = createContextContainer(node);
-        tmp.innerHTML = html;
-        while (tmp.firstChild) {
-            var child = tmp.firstChild;
-            node.appendChild(child);
-            if (child.nodeType === 1) {
-                if (child.hasAttribute("data-gid")) {
-                    gidMap[child.getAttribute("data-gid")] = child;
-                }
-                indexDOM(child);
-            }
+        var trees = JSON.parse(textDecoder.decode(patch.treeContent));
+        for (var i = 0; i < trees.length; i++) {
+            var child = buildDOM(trees[i]);
+            if (child) node.appendChild(child);
         }
-        registerEvents(patch.patchEvents);
     }
 
     // --- RemoveLast: remove N children from end ---
@@ -258,7 +282,7 @@
         var count = patch.count;
         for (var i = 0; i < count; i++) {
             if (node.lastChild) {
-                cleanNode(node.lastChild);
+                cleanNodeMap(node.lastChild);
                 node.removeChild(node.lastChild);
             }
         }
@@ -269,42 +293,55 @@
         if (!patch.reorder || !patch.reorder.length) return;
         var data = JSON.parse(textDecoder.decode(patch.reorder));
 
-        // Apply removes first (in reverse order to preserve indices)
-        if (data.rem) {
-            for (var i = data.rem.length - 1; i >= 0; i--) {
-                var rem = data.rem[i];
-                var child = node.childNodes[rem.i];
-                if (child) {
-                    cleanNode(child);
-                    node.removeChild(child);
+        // Phase 1: Identify which removes are moves (have matching insert key without tree).
+        var moveKeys = {};
+        if (data.ins) {
+            for (var m = 0; m < data.ins.length; m++) {
+                if (!data.ins[m].tree) {
+                    moveKeys[data.ins[m].k] = true;
                 }
             }
         }
 
-        // Apply inserts
-        if (data.ins) {
-            for (var j = 0; j < data.ins.length; j++) {
-                var ins = data.ins[j];
-                var newChild;
-                if (ins.h) {
-                    var tmp = createContextContainer(node);
-                    tmp.innerHTML = ins.h;
-                    newChild = tmp.firstChild;
-                }
-                if (newChild) {
-                    var ref = node.childNodes[ins.i] || null;
-                    node.insertBefore(newChild, ref);
-                    if (newChild.nodeType === 1) {
-                        if (newChild.hasAttribute("data-gid")) {
-                            gidMap[newChild.getAttribute("data-gid")] = newChild;
-                        }
-                        indexDOM(newChild);
+        // Phase 2: Detach removed nodes.
+        var stashed = {};
+        if (data.rem) {
+            for (var i = 0; i < data.rem.length; i++) {
+                var rem = data.rem[i];
+                var child = node.childNodes[rem.i];
+                if (child) {
+                    if (moveKeys[rem.k]) {
+                        stashed[rem.k] = child;
+                        node.removeChild(child);
+                    } else {
+                        cleanNodeMap(child);
+                        node.removeChild(child);
                     }
                 }
             }
         }
 
-        // Apply sub-patches for changed children
+        // Phase 3: Apply inserts.
+        if (data.ins) {
+            for (var j = 0; j < data.ins.length; j++) {
+                var ins = data.ins[j];
+                var newChild;
+                if (ins.tree) {
+                    // New node: build from tree description.
+                    newChild = buildDOM(ins.tree);
+                } else if (stashed[ins.k]) {
+                    // Move: reuse stashed DOM node.
+                    newChild = stashed[ins.k];
+                    delete stashed[ins.k];
+                }
+                if (newChild) {
+                    var ref = node.childNodes[ins.i] || null;
+                    node.insertBefore(newChild, ref);
+                }
+            }
+        }
+
+        // Phase 4: Apply sub-patches for changed children.
         if (patch.subPatches) {
             applyPatches(patch.subPatches);
         }
@@ -314,36 +351,17 @@
     function execPlugin(node, patch) {
         if (!patch.pluginData || !patch.pluginData.length) return;
         var data = JSON.parse(textDecoder.decode(patch.pluginData));
-        var gid = node.getAttribute && node.getAttribute("data-gid");
-        var pluginName = node.getAttribute && node.getAttribute("data-g-plugin");
+        var nid = patch.nodeId;
+        // Find plugin name — stored as data attribute during buildDOM
+        var pluginName = node._godomPlugin;
         var handler = window.godom && window.godom._plugins && window.godom._plugins[pluginName];
         if (!handler) return;
 
-        if (gid && !pluginState[gid]) {
+        if (!pluginState[nid]) {
             handler.init(node, data);
-            pluginState[gid] = true;
+            pluginState[nid] = true;
         } else {
             handler.update(node, data);
-        }
-    }
-
-    // --- Plugin init: scan for data-g-plugin-init elements on initial render ---
-    function initPlugins(root) {
-        var els = root.querySelectorAll("[data-g-plugin-init]");
-        for (var i = 0; i < els.length; i++) {
-            var el = els[i];
-            var pluginName = el.getAttribute("data-g-plugin");
-            var handler = window.godom && window.godom._plugins && window.godom._plugins[pluginName];
-            if (!handler) continue;
-            var gid = el.getAttribute("data-gid");
-            if (!gid) continue;
-            try {
-                var data = JSON.parse(el.getAttribute("data-g-plugin-init"));
-                handler.init(el, data);
-                pluginState[gid] = true;
-            } catch(e) {}
-            // Remove the init data attribute — no longer needed
-            el.removeAttribute("data-g-plugin-init");
         }
     }
 
@@ -351,13 +369,12 @@
     // 5. Facts application — properties, attributes, styles, events
     // =========================================================================
 
-    function applyFactsDiff(el, diff) {
+    function applyFactsDiff(el, diff, nodeId) {
         // Properties
         if (diff.p) {
             for (var key in diff.p) {
                 var val = diff.p[key];
                 if (val === null || val === undefined) {
-                    // Remove property
                     el[key] = "";
                 } else {
                     el[key] = val;
@@ -406,20 +423,17 @@
             for (var key in diff.e) {
                 var evtData = diff.e[key];
                 if (evtData === null) {
-                    // Remove event — clear from eventMap
-                    // (DOM listener stays but becomes a no-op since eventMap entry is gone)
-                    var gid = el.getAttribute("data-gid");
-                    if (gid) delete eventMap[gid + ":" + key];
+                    delete eventMap[nodeId + ":" + key];
                 } else {
-                    // Add/update event
-                    registerEvents([evtData]);
+                    // evtData has {on, key, msg, sp, pd}
+                    registerNodeEvents(nodeId, el, [evtData]);
                 }
             }
         }
     }
 
     // =========================================================================
-    // 6. Event registration — wire DOM events to send messages back to Go
+    // 6. Event handling — wire DOM events to send messages back to Go
     // =========================================================================
 
     function sendEnvelope(msg, args, value) {
@@ -429,24 +443,25 @@
         ws.send(Proto.Envelope.encode(env).finish());
     }
 
-    function registerEvents(evts) {
+    // Register event listeners on a DOM element using node ID for keying.
+    function registerNodeEvents(nodeId, el, evts) {
         if (!evts) return;
         for (var i = 0; i < evts.length; i++) {
             var e = evts[i];
-            var el = getEl(e.gid);
-            if (!el) continue;
+            var evtName = e.on;
 
-            var key = e.gid + ":" + e.event;
-            if (e.event === "keydown" && e.key) {
+            var key = nodeId + ":" + evtName;
+            if (evtName === "keydown" && e.key) {
                 key += ":" + e.key;
             }
             eventMap[key] = e;
 
             // Skip if listener already attached for this event type
-            if (el.getAttribute("data-evt-" + e.event)) continue;
-            el.setAttribute("data-evt-" + e.event, "1");
+            if (el._godomEvt && el._godomEvt[evtName]) continue;
+            if (!el._godomEvt) el._godomEvt = {};
+            el._godomEvt[evtName] = true;
 
-            if (e.event === "input") {
+            if (evtName === "input") {
                 (function(k, elem) {
                     elem.addEventListener("input", function() {
                         var ev = eventMap[k];
@@ -456,26 +471,26 @@
                     });
                 })(key, el);
 
-            } else if (e.event === "keydown") {
-                (function(gid, elem) {
+            } else if (evtName === "keydown") {
+                (function(nid, elem) {
                     elem.addEventListener("keydown", function(ke) {
-                        var ev = eventMap[gid + ":keydown:" + ke.key]
-                              || eventMap[gid + ":keydown"];
+                        var ev = eventMap[nid + ":keydown:" + ke.key]
+                              || eventMap[nid + ":keydown"];
                         if (!ev) return;
                         sendEnvelope(ev.msg);
                     });
-                })(e.gid, el);
+                })(nodeId, el);
 
-            } else if (e.event === "mousedown" || e.event === "mouseup") {
-                (function(k, elem, evtName) {
-                    elem.addEventListener(evtName, function(me) {
+            } else if (evtName === "mousedown" || evtName === "mouseup") {
+                (function(k, elem, en) {
+                    elem.addEventListener(en, function(me) {
                         var ev = eventMap[k];
                         if (!ev) return;
                         sendEnvelope(ev.msg, [me.offsetX, me.offsetY]);
                     });
-                })(key, el, e.event);
+                })(key, el, evtName);
 
-            } else if (e.event === "mousemove") {
+            } else if (evtName === "mousemove") {
                 (function(k, elem) {
                     var pending = null;
                     var scheduled = false;
@@ -493,7 +508,7 @@
                     });
                 })(key, el);
 
-            } else if (e.event === "wheel") {
+            } else if (evtName === "wheel") {
                 (function(k, elem) {
                     elem.addEventListener("wheel", function(we) {
                         we.preventDefault();
@@ -503,17 +518,17 @@
                     }, {passive: false});
                 })(key, el);
 
-            } else if (e.event === "drop") {
+            } else if (evtName === "drop") {
                 setupDropHandler(key, el, e.key || "");
 
             } else {
-                (function(k, elem, evtName) {
-                    elem.addEventListener(evtName, function() {
+                (function(k, elem, en) {
+                    elem.addEventListener(en, function() {
                         var ev = eventMap[k];
                         if (!ev) return;
                         sendEnvelope(ev.msg);
                     });
-                })(key, el, e.event);
+                })(key, el, evtName);
             }
         }
     }
@@ -522,12 +537,12 @@
     // 7. Drag & drop
     // =========================================================================
 
-    function setupDraggable(el, gid, group, value) {
+    function setupDraggable(el, group, value) {
         el.setAttribute("draggable", "true");
         el.dataset.gDrag = value || "";
         el.dataset.gDragGroup = group || "";
-        if (!el.getAttribute("data-g-dragstart")) {
-            el.setAttribute("data-g-dragstart", "1");
+        if (!el._godomDragStart) {
+            el._godomDragStart = true;
             el.addEventListener("dragstart", function(de) {
                 de.dataTransfer.effectAllowed = "move";
                 var dragEl = de.target.closest("[data-g-drag]");
@@ -601,43 +616,27 @@
     // 8. Helpers
     // =========================================================================
 
-    // Create a container element with the correct context for HTML parsing.
-    // Handles browser quirks where certain elements (tr, td, option) can only
-    // be children of specific parent elements.
-    function createContextContainer(parentEl) {
-        var tag = parentEl.tagName;
-        if (!tag) return document.createElement("div");
-        tag = tag.toUpperCase();
-        switch (tag) {
-            case "TABLE": case "THEAD": case "TBODY": case "TFOOT":
-                return document.createElement("tbody");
-            case "TR":
-                return document.createElement("tr");
-            case "SELECT": case "OPTGROUP":
-                return document.createElement("select");
-            default:
-                return document.createElement("div");
-        }
-    }
-
-    // Remove a DOM node and clean up all cached references.
-    function cleanNode(node) {
+    // Remove a DOM node and clean up all nodeMap references.
+    function cleanNodeMap(node) {
         if (!node) return;
-        if (node.nodeType === 1) {
-            var gid = node.getAttribute("data-gid");
-            if (gid) {
-                delete gidMap[gid];
-                delete pluginState[gid];
-                // Clean eventMap entries for this gid
+        // Remove this node's ID from nodeMap
+        for (var id in nodeMap) {
+            if (nodeMap[id] === node) {
+                delete nodeMap[id];
+                delete pluginState[id];
+                // Clean eventMap entries for this node ID
                 for (var key in eventMap) {
-                    if (key.indexOf(gid + ":") === 0) {
+                    if (key.indexOf(id + ":") === 0) {
                         delete eventMap[key];
                     }
                 }
+                break;
             }
-            // Recurse into children
+        }
+        // Recurse into children
+        if (node.childNodes) {
             for (var i = 0; i < node.childNodes.length; i++) {
-                cleanNode(node.childNodes[i]);
+                cleanNodeMap(node.childNodes[i]);
             }
         }
     }
@@ -646,8 +645,6 @@
     // 9. Plugin registration (global API)
     // =========================================================================
 
-    // Plugins register themselves via godom.register(name, {init, update}).
-    // This must be available before bridge connects.
     if (!window.godom) window.godom = {};
     if (!window.godom._plugins) window.godom._plugins = {};
     window.godom.register = function(name, handler) {

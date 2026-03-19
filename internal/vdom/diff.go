@@ -10,20 +10,20 @@ import (
 // Both trees must have had ComputeDescendants called on them before diffing.
 func Diff(oldTree, newTree Node) []Patch {
 	var patches []Patch
-	diffHelp(oldTree, newTree, &patches, 0)
+	diffHelp(oldTree, newTree, &patches)
 	return patches
 }
 
-func diffHelp(old, new Node, patches *[]Patch, index int) {
+func diffHelp(old, new Node, patches *[]Patch) {
 	if old == new {
 		return
 	}
 
 	if old.NodeType() != new.NodeType() {
 		*patches = append(*patches, Patch{
-			Type:  PatchRedraw,
-			Index: index,
-			Data:  PatchRedrawData{Node: new},
+			Type:   PatchRedraw,
+			NodeID: old.NodeID(),
+			Data:   PatchRedrawData{Node: new},
 		})
 		return
 	}
@@ -31,27 +31,27 @@ func diffHelp(old, new Node, patches *[]Patch, index int) {
 	switch oldN := old.(type) {
 	case *TextNode:
 		newN := new.(*TextNode)
-		diffText(oldN, newN, patches, index)
+		diffText(oldN, newN, patches)
 
 	case *ElementNode:
 		newN := new.(*ElementNode)
-		diffElement(oldN, newN, patches, index)
+		diffElement(oldN, newN, patches)
 
 	case *KeyedElementNode:
 		newN := new.(*KeyedElementNode)
-		diffKeyedElement(oldN, newN, patches, index)
+		diffKeyedElement(oldN, newN, patches)
 
 	case *ComponentNode:
 		newN := new.(*ComponentNode)
-		diffComponent(oldN, newN, patches, index)
+		diffComponent(oldN, newN, patches)
 
 	case *PluginNode:
 		newN := new.(*PluginNode)
-		diffPlugin(oldN, newN, patches, index)
+		diffPlugin(oldN, newN, patches)
 
 	case *LazyNode:
 		newN := new.(*LazyNode)
-		diffLazy(oldN, newN, patches, index)
+		diffLazy(oldN, newN, patches)
 	}
 }
 
@@ -59,12 +59,12 @@ func diffHelp(old, new Node, patches *[]Patch, index int) {
 // Text
 // ---------------------------------------------------------------------------
 
-func diffText(old, new *TextNode, patches *[]Patch, index int) {
+func diffText(old, new *TextNode, patches *[]Patch) {
 	if old.Text != new.Text {
 		*patches = append(*patches, Patch{
-			Type:  PatchText,
-			Index: index,
-			Data:  PatchTextData{Text: new.Text},
+			Type:   PatchText,
+			NodeID: old.ID,
+			Data:   PatchTextData{Text: new.Text},
 		})
 	}
 }
@@ -73,12 +73,12 @@ func diffText(old, new *TextNode, patches *[]Patch, index int) {
 // Element (non-keyed children)
 // ---------------------------------------------------------------------------
 
-func diffElement(old, new *ElementNode, patches *[]Patch, index int) {
+func diffElement(old, new *ElementNode, patches *[]Patch) {
 	if old.Tag != new.Tag || old.Namespace != new.Namespace {
 		*patches = append(*patches, Patch{
-			Type:  PatchRedraw,
-			Index: index,
-			Data:  PatchRedrawData{Node: new},
+			Type:   PatchRedraw,
+			NodeID: old.ID,
+			Data:   PatchRedrawData{Node: new},
 		})
 		return
 	}
@@ -86,16 +86,16 @@ func diffElement(old, new *ElementNode, patches *[]Patch, index int) {
 	fd := DiffFacts(&old.Facts, &new.Facts)
 	if !fd.IsEmpty() {
 		*patches = append(*patches, Patch{
-			Type:  PatchFacts,
-			Index: index,
-			Data:  PatchFactsData{Diff: fd},
+			Type:   PatchFacts,
+			NodeID: old.ID,
+			Data:   PatchFactsData{Diff: fd},
 		})
 	}
 
-	diffChildren(old.Children, new.Children, patches, index)
+	diffChildren(old.Children, new.Children, patches, old.ID)
 }
 
-func diffChildren(oldKids, newKids []Node, patches *[]Patch, parentIndex int) {
+func diffChildren(oldKids, newKids []Node, patches *[]Patch, parentNodeID int) {
 	oldLen := len(oldKids)
 	newLen := len(newKids)
 	minLen := oldLen
@@ -103,26 +103,23 @@ func diffChildren(oldKids, newKids []Node, patches *[]Patch, parentIndex int) {
 		minLen = newLen
 	}
 
-	childIndex := parentIndex
 	for i := 0; i < minLen; i++ {
-		childIndex++
-		diffHelp(oldKids[i], newKids[i], patches, childIndex)
-		childIndex += oldKids[i].DescendantsCount()
+		diffHelp(oldKids[i], newKids[i], patches)
 	}
 
 	if newLen > oldLen {
 		*patches = append(*patches, Patch{
-			Type:  PatchAppend,
-			Index: parentIndex,
-			Data:  PatchAppendData{Nodes: newKids[oldLen:]},
+			Type:   PatchAppend,
+			NodeID: parentNodeID,
+			Data:   PatchAppendData{Nodes: newKids[oldLen:]},
 		})
 	}
 
 	if oldLen > newLen {
 		*patches = append(*patches, Patch{
-			Type:  PatchRemoveLast,
-			Index: parentIndex,
-			Data:  PatchRemoveLastData{Count: oldLen - newLen},
+			Type:   PatchRemoveLast,
+			NodeID: parentNodeID,
+			Data:   PatchRemoveLastData{Count: oldLen - newLen},
 		})
 	}
 }
@@ -131,12 +128,12 @@ func diffChildren(oldKids, newKids []Node, patches *[]Patch, parentIndex int) {
 // KeyedElement
 // ---------------------------------------------------------------------------
 
-func diffKeyedElement(old, new *KeyedElementNode, patches *[]Patch, index int) {
+func diffKeyedElement(old, new *KeyedElementNode, patches *[]Patch) {
 	if old.Tag != new.Tag || old.Namespace != new.Namespace {
 		*patches = append(*patches, Patch{
-			Type:  PatchRedraw,
-			Index: index,
-			Data:  PatchRedrawData{Node: new},
+			Type:   PatchRedraw,
+			NodeID: old.ID,
+			Data:   PatchRedrawData{Node: new},
 		})
 		return
 	}
@@ -144,80 +141,157 @@ func diffKeyedElement(old, new *KeyedElementNode, patches *[]Patch, index int) {
 	fd := DiffFacts(&old.Facts, &new.Facts)
 	if !fd.IsEmpty() {
 		*patches = append(*patches, Patch{
-			Type:  PatchFacts,
-			Index: index,
-			Data:  PatchFactsData{Diff: fd},
+			Type:   PatchFacts,
+			NodeID: old.ID,
+			Data:   PatchFactsData{Diff: fd},
 		})
 	}
 
-	diffKeyedChildrenSimple(old.Children, new.Children, patches, index)
+	diffKeyedChildren(old.Children, new.Children, patches, old.ID)
 }
 
-func diffKeyedChildrenSimple(oldKids, newKids []KeyedChild, patches *[]Patch, parentIndex int) {
+func diffKeyedChildren(oldKids, newKids []KeyedChild, patches *[]Patch, parentNodeID int) {
 	oldLen := len(oldKids)
 	newLen := len(newKids)
-	minLen := oldLen
-	if newLen < minLen {
-		minLen = newLen
+
+	if oldLen == 0 && newLen == 0 {
+		return
 	}
 
-	childIndex := parentIndex
-	for i := 0; i < minLen; i++ {
-		childIndex++
-		if oldKids[i].Key != newKids[i].Key {
-			*patches = append(*patches, Patch{
-				Type:  PatchRedraw,
-				Index: childIndex,
-				Data:  PatchRedrawData{Node: newKids[i].Node},
+	// Build map from key → old index for cross-position matching.
+	oldKeyIndex := make(map[string]int, oldLen)
+	for i, kc := range oldKids {
+		oldKeyIndex[kc.Key] = i
+	}
+
+	// Build map from key → new index.
+	newKeyIndex := make(map[string]int, newLen)
+	for i, kc := range newKids {
+		newKeyIndex[kc.Key] = i
+	}
+
+	// Track which old children are consumed (matched or removed).
+	oldUsed := make([]bool, oldLen)
+
+	// For each new child, find its match in old children.
+	// matchedOld[newIdx] = oldIdx if matched, -1 if new insert.
+	matchedOld := make([]int, newLen)
+	for i := range matchedOld {
+		matchedOld[i] = -1
+	}
+	for i, kc := range newKids {
+		if oi, ok := oldKeyIndex[kc.Key]; ok {
+			matchedOld[i] = oi
+			oldUsed[oi] = true
+		}
+	}
+
+	// Collect removes: old children not present in new list.
+	// We process removes in reverse order so that indices stay valid.
+	var removes []ReorderRemove
+	for i := oldLen - 1; i >= 0; i-- {
+		if !oldUsed[i] {
+			removes = append(removes, ReorderRemove{Index: i, Key: oldKids[i].Key})
+		}
+	}
+
+	// Build the old key order after removes are applied.
+	var survivingOldKeys []string
+	for i := 0; i < oldLen; i++ {
+		if oldUsed[i] {
+			survivingOldKeys = append(survivingOldKeys, oldKids[i].Key)
+		}
+	}
+
+	// Determine inserts and moves.
+	currentKeys := make([]string, len(survivingOldKeys))
+	copy(currentKeys, survivingOldKeys)
+
+	var inserts []ReorderInsert
+	var subPatches []Patch
+
+	for ni := 0; ni < newLen; ni++ {
+		newKey := newKids[ni].Key
+		oi := matchedOld[ni]
+
+		if oi == -1 {
+			// Pure insert — new key not in old list.
+			inserts = append(inserts, ReorderInsert{
+				Index: ni,
+				Key:   newKey,
+				Node:  newKids[ni].Node,
 			})
-		} else {
-			diffHelp(oldKids[i].Node, newKids[i].Node, patches, childIndex)
+			currentKeys = sliceInsert(currentKeys, ni, newKey)
+			continue
 		}
-		childIndex += oldKids[i].Node.DescendantsCount()
+
+		// Matched. Check if it's already in the right position.
+		currentPos := sliceIndexOf(currentKeys, newKey)
+		if currentPos == ni {
+			// Already in correct position — just diff the nodes.
+			diffHelp(oldKids[oi].Node, newKids[ni].Node, &subPatches)
+			continue
+		}
+
+		// Move: remove from current position, insert at target position.
+		currentKeys = sliceRemove(currentKeys, currentPos)
+		removes = append(removes, ReorderRemove{Index: currentPos, Key: newKey})
+		inserts = append(inserts, ReorderInsert{
+			Index: ni,
+			Key:   newKey,
+		})
+		currentKeys = sliceInsert(currentKeys, ni, newKey)
+
+		// Diff the matched nodes.
+		diffHelp(oldKids[oi].Node, newKids[ni].Node, &subPatches)
 	}
 
-	if newLen > oldLen {
-		appendNodes := make([]Node, newLen-oldLen)
-		for i := oldLen; i < newLen; i++ {
-			appendNodes[i-oldLen] = newKids[i].Node
-		}
-		*patches = append(*patches, Patch{
-			Type:  PatchAppend,
-			Index: parentIndex,
-			Data:  PatchAppendData{Nodes: appendNodes},
-		})
+	// Only emit a reorder patch if there are actual changes.
+	if len(removes) == 0 && len(inserts) == 0 && len(subPatches) == 0 {
+		return
 	}
 
-	if oldLen > newLen {
-		*patches = append(*patches, Patch{
-			Type:  PatchRemoveLast,
-			Index: parentIndex,
-			Data:  PatchRemoveLastData{Count: oldLen - newLen},
-		})
+	// If there are no structural changes (no removes, no inserts) just emit sub-patches directly.
+	if len(removes) == 0 && len(inserts) == 0 {
+		*patches = append(*patches, subPatches...)
+		return
 	}
+
+	// Sort removes in descending order so indices remain valid during application.
+	sortRemovesDesc(removes)
+
+	*patches = append(*patches, Patch{
+		Type:   PatchReorder,
+		NodeID: parentNodeID,
+		Data: PatchReorderData{
+			Inserts: inserts,
+			Removes: removes,
+			Patches: subPatches,
+		},
+	})
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-func diffComponent(old, new *ComponentNode, patches *[]Patch, index int) {
+func diffComponent(old, new *ComponentNode, patches *[]Patch) {
 	if old.Tag != new.Tag {
 		*patches = append(*patches, Patch{
-			Type:  PatchRedraw,
-			Index: index,
-			Data:  PatchRedrawData{Node: new},
+			Type:   PatchRedraw,
+			NodeID: old.ID,
+			Data:   PatchRedrawData{Node: new},
 		})
 		return
 	}
 
 	if old.SubTree != nil && new.SubTree != nil {
-		diffHelp(old.SubTree, new.SubTree, patches, index)
+		diffHelp(old.SubTree, new.SubTree, patches)
 	} else if new.SubTree != nil {
 		*patches = append(*patches, Patch{
-			Type:  PatchRedraw,
-			Index: index,
-			Data:  PatchRedrawData{Node: new},
+			Type:   PatchRedraw,
+			NodeID: old.ID,
+			Data:   PatchRedrawData{Node: new},
 		})
 	}
 }
@@ -226,12 +300,12 @@ func diffComponent(old, new *ComponentNode, patches *[]Patch, index int) {
 // Plugin
 // ---------------------------------------------------------------------------
 
-func diffPlugin(old, new *PluginNode, patches *[]Patch, index int) {
+func diffPlugin(old, new *PluginNode, patches *[]Patch) {
 	if old.Name != new.Name || old.Tag != new.Tag {
 		*patches = append(*patches, Patch{
-			Type:  PatchRedraw,
-			Index: index,
-			Data:  PatchRedrawData{Node: new},
+			Type:   PatchRedraw,
+			NodeID: old.ID,
+			Data:   PatchRedrawData{Node: new},
 		})
 		return
 	}
@@ -239,17 +313,17 @@ func diffPlugin(old, new *PluginNode, patches *[]Patch, index int) {
 	fd := DiffFacts(&old.Facts, &new.Facts)
 	if !fd.IsEmpty() {
 		*patches = append(*patches, Patch{
-			Type:  PatchFacts,
-			Index: index,
-			Data:  PatchFactsData{Diff: fd},
+			Type:   PatchFacts,
+			NodeID: old.ID,
+			Data:   PatchFactsData{Diff: fd},
 		})
 	}
 
 	if !jsonEqual(old.Data, new.Data) {
 		*patches = append(*patches, Patch{
-			Type:  PatchPlugin,
-			Index: index,
-			Data:  PatchPluginData{Data: new.Data},
+			Type:   PatchPlugin,
+			NodeID: old.ID,
+			Data:   PatchPluginData{Data: new.Data},
 		})
 	}
 }
@@ -258,7 +332,7 @@ func diffPlugin(old, new *PluginNode, patches *[]Patch, index int) {
 // Lazy
 // ---------------------------------------------------------------------------
 
-func diffLazy(old, new *LazyNode, patches *[]Patch, index int) {
+func diffLazy(old, new *LazyNode, patches *[]Patch) {
 	if lazyArgsEqual(old, new) {
 		new.Cached = old.Cached
 		return
@@ -273,19 +347,19 @@ func diffLazy(old, new *LazyNode, patches *[]Patch, index int) {
 
 	if old.Cached != nil && new.Cached != nil {
 		var subPatches []Patch
-		diffHelp(old.Cached, new.Cached, &subPatches, index)
+		diffHelp(old.Cached, new.Cached, &subPatches)
 		if len(subPatches) > 0 {
 			*patches = append(*patches, Patch{
-				Type:  PatchLazy,
-				Index: index,
-				Data:  PatchLazyData{Patches: subPatches},
+				Type:   PatchLazy,
+				NodeID: old.ID,
+				Data:   PatchLazyData{Patches: subPatches},
 			})
 		}
 	} else if new.Cached != nil {
 		*patches = append(*patches, Patch{
-			Type:  PatchRedraw,
-			Index: index,
-			Data:  PatchRedrawData{Node: new.Cached},
+			Type:   PatchRedraw,
+			NodeID: old.ID,
+			Data:   PatchRedrawData{Node: new.Cached},
 		})
 	}
 }
@@ -562,4 +636,42 @@ func jsonEqual(a, b any) bool {
 		return fmt.Sprint(a) == fmt.Sprint(b)
 	}
 	return string(ja) == string(jb)
+}
+
+// ---------------------------------------------------------------------------
+// Slice helpers for simulating DOM order
+// ---------------------------------------------------------------------------
+
+func sliceInsert(s []string, i int, val string) []string {
+	if i >= len(s) {
+		return append(s, val)
+	}
+	s = append(s, "")
+	copy(s[i+1:], s[i:])
+	s[i] = val
+	return s
+}
+
+func sliceRemove(s []string, i int) []string {
+	return append(s[:i], s[i+1:]...)
+}
+
+func sliceIndexOf(s []string, val string) int {
+	for i, v := range s {
+		if v == val {
+			return i
+		}
+	}
+	return -1
+}
+
+func sortRemovesDesc(removes []ReorderRemove) {
+	// Simple insertion sort — remove lists are typically small.
+	for i := 1; i < len(removes); i++ {
+		j := i
+		for j > 0 && removes[j].Index > removes[j-1].Index {
+			removes[j], removes[j-1] = removes[j-1], removes[j]
+			j--
+		}
+	}
 }

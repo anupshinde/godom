@@ -36,7 +36,6 @@ type Info struct {
 	// VDOM fields
 	VDOMTemplates []*vdom.TemplateNode // parsed once at Mount()
 	PrevTree      vdom.Node            // last rendered tree (for diffing)
-	GIDSeq        int                  // gid counter state across renders
 }
 
 // Reg holds the registration info for a stateful component.

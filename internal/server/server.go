@@ -214,27 +214,28 @@ func Run(cfg Config) error {
 
 // BuildInit builds the initial VDomMessage for a new client connection.
 func BuildInit(ci *component.Info) *gproto.VDomMessage {
-	gid := &render.GIDCounter{Seq: ci.GIDSeq}
 	tree := buildTree(ci)
-
-	htmlStr, events := render.RenderToHTMLWithEvents(tree.Children, gid)
-
 	ci.PrevTree = tree
-	ci.GIDSeq = gid.Seq
 
-	return render.EncodeInitMessage(htmlStr, events)
+	msg, err := render.EncodeInitTreeMessage(tree)
+	if err != nil {
+		// Should never happen with well-formed trees
+		panic("EncodeInitTreeMessage: " + err.Error())
+	}
+	return msg
 }
 
 // BuildUpdate rebuilds the tree, diffs, and returns patches. Returns nil if no changes.
 func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
-	gid := &render.GIDCounter{Seq: ci.GIDSeq}
 	newTree := buildTree(ci)
 
 	if ci.PrevTree == nil {
-		htmlStr, events := render.RenderToHTMLWithEvents(newTree.Children, gid)
 		ci.PrevTree = newTree
-		ci.GIDSeq = gid.Seq
-		return render.EncodeInitMessage(htmlStr, events)
+		msg, err := render.EncodeInitTreeMessage(newTree)
+		if err != nil {
+			panic("EncodeInitTreeMessage: " + err.Error())
+		}
+		return msg
 	}
 
 	patches := vdom.Diff(ci.PrevTree, newTree)
@@ -242,9 +243,8 @@ func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
 		return nil
 	}
 
-	msg := render.EncodePatchMessage(patches, gid)
+	msg := render.EncodePatchMessage(patches)
 	ci.PrevTree = newTree
-	ci.GIDSeq = gid.Seq
 	return msg
 }
 

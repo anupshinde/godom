@@ -467,10 +467,376 @@ func TestDiff_KeyedAppend(t *testing.T) {
 
 	patches := Diff(old, new)
 	if len(patches) != 1 {
-		t.Fatalf("expected 1 patch, got %d", len(patches))
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
 	}
-	if patches[0].Type != PatchAppend {
-		t.Errorf("expected PatchAppend, got %d", patches[0].Type)
+	if patches[0].Type != PatchReorder {
+		t.Errorf("expected PatchReorder, got %d", patches[0].Type)
+	}
+	data := patches[0].Data.(PatchReorderData)
+	if len(data.Inserts) != 1 {
+		t.Fatalf("expected 1 insert, got %d", len(data.Inserts))
+	}
+	if data.Inserts[0].Key != "b" {
+		t.Errorf("expected insert key 'b', got %q", data.Inserts[0].Key)
+	}
+	if len(data.Removes) != 0 {
+		t.Errorf("expected 0 removes, got %d", len(data.Removes))
+	}
+}
+
+func TestDiff_KeyedPrepend(t *testing.T) {
+	old := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "b", Node: &TextNode{Text: "B"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	new := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
+	}
+	data := patches[0].Data.(PatchReorderData)
+	// Should insert "a" at index 0, no removes.
+	if len(data.Inserts) != 1 || data.Inserts[0].Key != "a" || data.Inserts[0].Index != 0 {
+		t.Errorf("expected insert of 'a' at 0, got %+v", data.Inserts)
+	}
+	if data.Inserts[0].Node == nil {
+		t.Errorf("new insert should have a Node for HTML rendering")
+	}
+	if len(data.Removes) != 0 {
+		t.Errorf("expected 0 removes, got %+v", data.Removes)
+	}
+}
+
+func TestDiff_KeyedRemoveMiddle(t *testing.T) {
+	old := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	new := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
+	}
+	data := patches[0].Data.(PatchReorderData)
+	if len(data.Removes) != 1 || data.Removes[0].Key != "b" {
+		t.Errorf("expected remove of 'b', got %+v", data.Removes)
+	}
+	if len(data.Inserts) != 0 {
+		t.Errorf("expected 0 inserts, got %+v", data.Inserts)
+	}
+}
+
+func TestDiff_KeyedRemoveFirst(t *testing.T) {
+	old := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	new := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "b", Node: &TextNode{Text: "B"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
+	}
+	data := patches[0].Data.(PatchReorderData)
+	if len(data.Removes) != 1 || data.Removes[0].Key != "a" {
+		t.Errorf("expected remove of 'a', got %+v", data.Removes)
+	}
+	if len(data.Inserts) != 0 {
+		t.Errorf("expected 0 inserts, got %+v", data.Inserts)
+	}
+}
+
+func TestDiff_KeyedSwap(t *testing.T) {
+	old := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+		},
+	}
+	new := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "b", Node: &TextNode{Text: "B"}},
+			{Key: "a", Node: &TextNode{Text: "A"}},
+		},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
+	}
+	data := patches[0].Data.(PatchReorderData)
+	// Should be move operations, not redraws.
+	// Moves use inserts without Node (nil) + removes with the same key.
+	for _, ins := range data.Inserts {
+		if ins.Node != nil {
+			t.Errorf("move insert should have nil Node, got non-nil for key %q", ins.Key)
+		}
+	}
+}
+
+func TestDiff_KeyedReverse(t *testing.T) {
+	old := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	new := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "c", Node: &TextNode{Text: "C"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+			{Key: "a", Node: &TextNode{Text: "A"}},
+		},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
+	}
+	if patches[0].Type != PatchReorder {
+		t.Fatalf("expected PatchReorder, got %d", patches[0].Type)
+	}
+	data := patches[0].Data.(PatchReorderData)
+	// All inserts should be moves (nil Node), no new HTML.
+	for _, ins := range data.Inserts {
+		if ins.Node != nil {
+			t.Errorf("reverse move should have nil Node for key %q", ins.Key)
+		}
+	}
+	// No PatchRedraw should appear — content hasn't changed, just order.
+	if len(data.Patches) != 0 {
+		t.Errorf("expected 0 sub-patches (content unchanged), got %d: %+v", len(data.Patches), data.Patches)
+	}
+}
+
+func TestDiff_KeyedReplaceAll(t *testing.T) {
+	old := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+		},
+	}
+	new := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "x", Node: &TextNode{Text: "X"}},
+			{Key: "y", Node: &TextNode{Text: "Y"}},
+		},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
+	}
+	data := patches[0].Data.(PatchReorderData)
+	// All old removed, all new inserted.
+	if len(data.Removes) != 2 {
+		t.Errorf("expected 2 removes, got %d", len(data.Removes))
+	}
+	if len(data.Inserts) != 2 {
+		t.Errorf("expected 2 inserts, got %d", len(data.Inserts))
+	}
+	// New inserts should have Node set (they need HTML).
+	for _, ins := range data.Inserts {
+		if ins.Node == nil {
+			t.Errorf("new insert for key %q should have Node", ins.Key)
+		}
+	}
+}
+
+func TestDiff_KeyedMoveWithContentChange(t *testing.T) {
+	old := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+		},
+	}
+	new := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "b", Node: &TextNode{Text: "B-updated"}},
+			{Key: "a", Node: &TextNode{Text: "A"}},
+		},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
+	}
+	data := patches[0].Data.(PatchReorderData)
+	// "b" moved to front AND its content changed.
+	// Should have a sub-patch for the text change.
+	if len(data.Patches) != 1 {
+		t.Fatalf("expected 1 sub-patch for content change, got %d: %+v", len(data.Patches), data.Patches)
+	}
+	if data.Patches[0].Type != PatchText {
+		t.Errorf("expected PatchText sub-patch, got %d", data.Patches[0].Type)
+	}
+	textData := data.Patches[0].Data.(PatchTextData)
+	if textData.Text != "B-updated" {
+		t.Errorf("expected text 'B-updated', got %q", textData.Text)
+	}
+}
+
+func TestDiff_KeyedInsertMiddle(t *testing.T) {
+	old := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	new := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
+	}
+	data := patches[0].Data.(PatchReorderData)
+	if len(data.Inserts) != 1 || data.Inserts[0].Key != "b" {
+		t.Errorf("expected insert of 'b', got %+v", data.Inserts)
+	}
+	if data.Inserts[0].Index != 1 {
+		t.Errorf("expected insert at index 1, got %d", data.Inserts[0].Index)
+	}
+	if data.Inserts[0].Node == nil {
+		t.Errorf("new insert should have Node for HTML")
+	}
+	if len(data.Removes) != 0 {
+		t.Errorf("expected 0 removes, got %+v", data.Removes)
+	}
+}
+
+func TestDiff_KeyedEmpty(t *testing.T) {
+	old := &KeyedElementNode{
+		Tag:      "ul",
+		Children: []KeyedChild{},
+	}
+	new := &KeyedElementNode{
+		Tag:      "ul",
+		Children: []KeyedChild{},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 0 {
+		t.Errorf("expected 0 patches for identical empty lists, got %d", len(patches))
+	}
+}
+
+func TestDiff_KeyedEmptyToFull(t *testing.T) {
+	old := &KeyedElementNode{
+		Tag:      "ul",
+		Children: []KeyedChild{},
+	}
+	new := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+		},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
+	}
+	data := patches[0].Data.(PatchReorderData)
+	if len(data.Inserts) != 2 {
+		t.Errorf("expected 2 inserts, got %d", len(data.Inserts))
+	}
+}
+
+func TestDiff_KeyedFullToEmpty(t *testing.T) {
+	old := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+		},
+	}
+	new := &KeyedElementNode{
+		Tag:      "ul",
+		Children: []KeyedChild{},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
+	}
+	data := patches[0].Data.(PatchReorderData)
+	if len(data.Removes) != 2 {
+		t.Errorf("expected 2 removes, got %d", len(data.Removes))
+	}
+	if len(data.Inserts) != 0 {
+		t.Errorf("expected 0 inserts, got %d", len(data.Inserts))
 	}
 }
 
@@ -543,30 +909,36 @@ func TestDiff_ComplexTree(t *testing.T) {
 	}
 }
 
-func TestDiff_PatchIndex(t *testing.T) {
-	// Verify that patch indices are correct for tree traversal.
-	// Tree structure:
-	//   div (0)
-	//     text "a" (1)
-	//     span (2)
-	//       text "b" (3)
-	//     text "c" (4)
-	old := makeDiv(
-		&TextNode{Text: "a"},
-		&ElementNode{
-			Tag:      "span",
-			Children: []Node{&TextNode{Text: "b"}},
+func TestDiff_PatchNodeID(t *testing.T) {
+	// Verify that patches target the correct node IDs from the old tree.
+	textB := &TextNode{NodeBase: NodeBase{ID: 30}, Text: "b"}
+	textC := &TextNode{NodeBase: NodeBase{ID: 40}, Text: "c"}
+	old := &ElementNode{
+		NodeBase: NodeBase{ID: 10},
+		Tag:      "div",
+		Children: []Node{
+			&TextNode{NodeBase: NodeBase{ID: 20}, Text: "a"},
+			&ElementNode{
+				NodeBase: NodeBase{ID: 25},
+				Tag:      "span",
+				Children: []Node{textB},
+			},
+			textC,
 		},
-		&TextNode{Text: "c"},
-	)
-	new := makeDiv(
-		&TextNode{Text: "a"},
-		&ElementNode{
-			Tag:      "span",
-			Children: []Node{&TextNode{Text: "B"}},
+	}
+	new := &ElementNode{
+		NodeBase: NodeBase{ID: 100},
+		Tag:      "div",
+		Children: []Node{
+			&TextNode{NodeBase: NodeBase{ID: 101}, Text: "a"},
+			&ElementNode{
+				NodeBase: NodeBase{ID: 102},
+				Tag:      "span",
+				Children: []Node{&TextNode{NodeBase: NodeBase{ID: 103}, Text: "B"}},
+			},
+			&TextNode{NodeBase: NodeBase{ID: 104}, Text: "C"},
 		},
-		&TextNode{Text: "C"},
-	)
+	}
 	ComputeDescendants(old)
 	ComputeDescendants(new)
 
@@ -575,13 +947,13 @@ func TestDiff_PatchIndex(t *testing.T) {
 		t.Fatalf("expected 2 patches, got %d: %+v", len(patches), patches)
 	}
 
-	// "b" → "B" at index 3 (div=0, "a"=1, span=2, "b"=3)
-	if patches[0].Index != 3 {
-		t.Errorf("expected index 3 for 'b'→'B', got %d", patches[0].Index)
+	// "b" → "B" should target old text node ID 30
+	if patches[0].NodeID != 30 {
+		t.Errorf("expected NodeID 30 for 'b'→'B', got %d", patches[0].NodeID)
 	}
-	// "c" → "C" at index 4
-	if patches[1].Index != 4 {
-		t.Errorf("expected index 4 for 'c'→'C', got %d", patches[1].Index)
+	// "c" → "C" should target old text node ID 40
+	if patches[1].NodeID != 40 {
+		t.Errorf("expected NodeID 40 for 'c'→'C', got %d", patches[1].NodeID)
 	}
 }
 
