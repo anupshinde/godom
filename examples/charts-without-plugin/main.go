@@ -113,13 +113,13 @@ func round1(v float64) float64 {
 }
 
 func main() {
-	app := godom.New()
-	app.Plugin("apexcharts", apexBridgeJS)
+	eng := godom.NewEngine()
+	eng.RegisterPlugin("apexcharts", apexBridgeJS)
 
 	root := &App{}
 	go root.startUpdates()
 
 	fmt.Println("ApexCharts demo — no plugin package, just inline bridge")
-	app.Mount(root, ui)
-	log.Fatal(app.Start())
+	eng.Mount(root, ui)
+	log.Fatal(eng.Start())
 }

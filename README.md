@@ -51,9 +51,9 @@ func (a *App) Decrement() {
 }
 
 func main() {
-    app := godom.New()
-    app.Mount(&App{Step: 1}, ui)
-    log.Fatal(app.Start())
+    eng := godom.NewEngine()
+    eng.Mount(&App{Step: 1}, ui)
+    log.Fatal(eng.Start())
 }
 ```
 
@@ -225,10 +225,10 @@ func (t *TodoItem) Toggle() {
 }
 
 func main() {
-    app := godom.New()
-    app.Component("todo-item", &TodoItem{})
-    app.Mount(&TodoApp{}, ui)
-    log.Fatal(app.Start())
+    eng := godom.NewEngine()
+    eng.RegisterComponent("todo-item", &TodoItem{})
+    eng.Mount(&TodoApp{}, ui)
+    log.Fatal(eng.Start())
 }
 ```
 
@@ -242,17 +242,17 @@ Key differences from presentational components:
 ### App
 
 ```go
-app := godom.New()                       // Create a new app
-app.Port = 8081                          // Set port (0 = random)
-app.Host = "0.0.0.0"                    // Bind to all interfaces (default "localhost")
-app.NoAuth = true                       // Disable token auth (default false = auth enabled)
-app.Token = "my-secret"                 // Fixed token (default: random per startup)
-app.NoBrowser = true                    // Don't auto-open browser
-app.Quiet = true                        // Suppress startup output
-app.Component("tag", &T{})              // Register a stateful component (tag must contain a hyphen)
-app.Plugin("chartjs", libJS, bridgeJS)   // Register a plugin with one or more JS scripts
-app.Mount(&MyApp{}, fsys)               // Mount root component with embedded filesystem
-app.Start()                             // Start server, open browser, block forever
+eng := godom.NewEngine()                 // Create a new Engine
+eng.Port = 8081                          // Set port (0 = random)
+eng.Host = "0.0.0.0"                    // Bind to all interfaces (default "localhost")
+eng.NoAuth = true                       // Disable token auth (default false = auth enabled)
+eng.Token = "my-secret"                 // Fixed token (default: random per startup)
+eng.NoBrowser = true                    // Don't auto-open browser
+eng.Quiet = true                        // Suppress startup output
+eng.RegisterComponent("tag", &T{})      // Register a stateful component (tag must contain a hyphen)
+eng.RegisterPlugin("chartjs", libJS, bridgeJS)   // Register a plugin with one or more JS scripts
+eng.Mount(&MyApp{}, fsys)               // Mount root component with embedded filesystem
+eng.Start()                             // Start server, open browser, block forever
 ```
 
 Every godom app also supports CLI flags:
@@ -315,7 +315,7 @@ Integrate JS libraries (charts, maps, editors) without authoring JS yourself. A 
 ```
 
 ```go
-app.Plugin("chartjs", libraryJS, bridgeJS)  // register with one or more JS scripts
+eng.RegisterPlugin("chartjs", libraryJS, bridgeJS)  // register with one or more JS scripts
 ```
 
 The plugin JS calls `godom.register(name, {init, update})` to handle data from Go. Scripts are injected in order — typically the library first, then the bridge. See `plugins/chartjs/` for a complete example.
@@ -327,7 +327,7 @@ godom ships a Chart.js plugin (`github.com/anupshinde/godom/plugins/chartjs`) th
 ```go
 import "github.com/anupshinde/godom/plugins/chartjs"
 
-chartjs.Register(app)  // registers plugin + embeds Chart.js library
+chartjs.Register(eng)  // registers plugin + embeds Chart.js library
 ```
 
 ## Examples

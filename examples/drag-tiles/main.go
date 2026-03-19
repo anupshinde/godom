@@ -66,8 +66,8 @@ func main() {
 		}
 	}()
 
-	app := godom.New()
-	app.Port = 8082
-	app.Mount(grid, ui)
-	log.Fatal(app.Start())
+	eng := godom.NewEngine()
+	eng.Port = 8082
+	eng.Mount(grid, ui)
+	log.Fatal(eng.Start())
 }

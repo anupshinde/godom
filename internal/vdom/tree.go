@@ -52,7 +52,7 @@ type TemplateNode struct {
 
 // Directive represents a single g-* directive on an element.
 type Directive struct {
-	Type string // "text", "bind", "checked", "if", "show", "class", "attr", "style",
+	Type string // "text", "bind", "value", "checked", "if", "show", "hide", "class", "attr", "style",
 	           // "click", "keydown", "mousedown", "mousemove", "mouseup", "wheel", "drop",
 	           // "draggable", "dropzone"
 	Name string // modifier name: class name, attr name, style property, key filter, etc.
@@ -229,12 +229,16 @@ func extractAttrsAndDirectives(n *html.Node) ([]html.Attribute, []Directive) {
 			dirs = append(dirs, Directive{Type: "text", Expr: a.Val})
 		case a.Key == "g-bind":
 			dirs = append(dirs, Directive{Type: "bind", Expr: a.Val})
+		case a.Key == "g-value":
+			dirs = append(dirs, Directive{Type: "value", Expr: a.Val})
 		case a.Key == "g-checked":
 			dirs = append(dirs, Directive{Type: "checked", Expr: a.Val})
 		case a.Key == "g-if":
 			dirs = append(dirs, Directive{Type: "if", Expr: a.Val})
 		case a.Key == "g-show":
 			dirs = append(dirs, Directive{Type: "show", Expr: a.Val})
+		case a.Key == "g-hide":
+			dirs = append(dirs, Directive{Type: "hide", Expr: a.Val})
 
 		case strings.HasPrefix(a.Key, "g-class:"):
 			dirs = append(dirs, Directive{Type: "class", Name: a.Key[len("g-class:"):], Expr: a.Val})
@@ -604,6 +608,13 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
 				Args:    []any{d.Expr},
 			}
 
+		case "value":
+			val := ResolveExpr(d.Expr, ctx)
+			if f.Props == nil {
+				f.Props = make(map[string]any)
+			}
+			f.Props["value"] = fmt.Sprint(val)
+
 		case "checked":
 			val := ResolveExpr(d.Expr, ctx)
 			if f.Props == nil {
@@ -614,6 +625,15 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
 		case "show":
 			val := ResolveExpr(d.Expr, ctx)
 			if !IsTruthy(val) {
+				if f.Styles == nil {
+					f.Styles = make(map[string]string)
+				}
+				f.Styles["display"] = "none"
+			}
+
+		case "hide":
+			val := ResolveExpr(d.Expr, ctx)
+			if IsTruthy(val) {
 				if f.Styles == nil {
 					f.Styles = make(map[string]string)
 				}
@@ -710,8 +730,17 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext) Facts {
 // ---------------------------------------------------------------------------
 
 // ResolveExpr resolves an expression string against the context.
+// It tries fields first, then zero-arg single-return methods.
+// Supports leading ! for boolean negation.
 func ResolveExpr(expr string, ctx *ResolveContext) any {
 	expr = strings.TrimSpace(expr)
+
+	// Boolean negation: !Expr
+	if strings.HasPrefix(expr, "!") {
+		inner := strings.TrimSpace(expr[1:])
+		val := ResolveExpr(inner, ctx)
+		return !IsTruthy(val)
+	}
 
 	if expr == "true" {
 		return true
@@ -732,7 +761,25 @@ func ResolveExpr(expr string, ctx *ResolveContext) any {
 		}
 	}
 
-	return resolveStructField(ctx.State, expr)
+	// Try field first, then method.
+	if val := resolveStructField(ctx.State, expr); val != nil {
+		return val
+	}
+	return callMethod(ctx.State, expr)
+}
+
+// callMethod calls a zero-arg, single-return method on v by name.
+// Returns nil if the method doesn't exist or has the wrong signature.
+func callMethod(v reflect.Value, name string) any {
+	m := v.MethodByName(name)
+	if !m.IsValid() {
+		return nil
+	}
+	mt := m.Type()
+	if mt.NumIn() != 0 || mt.NumOut() != 1 {
+		return nil
+	}
+	return m.Call(nil)[0].Interface()
 }
 
 func resolveStructField(v reflect.Value, path string) any {

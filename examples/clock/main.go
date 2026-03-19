@@ -46,9 +46,9 @@ func (a *App) startClock() {
 }
 
 func main() {
-	app := godom.New()
+	eng := godom.NewEngine()
 	root := &App{}
 	go root.startClock()
-	app.Mount(root, ui)
-	log.Fatal(app.Start())
+	eng.Mount(root, ui)
+	log.Fatal(eng.Start())
 }

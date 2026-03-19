@@ -11,7 +11,7 @@ import (
 )
 
 // directiveRe matches g-* attributes in HTML.
-var directiveRe = regexp.MustCompile(`g-(text|bind|click|keydown|mousedown|mousemove|mouseup|wheel|for|if|show|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|style:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+|draggable(?:\.[a-zA-Z0-9_-]+)?|dropzone|drop(?:\.[a-zA-Z0-9_-]+)?)\s*=\s*"([^"]*)"`)
+var directiveRe = regexp.MustCompile(`g-(text|bind|value|click|keydown|mousedown|mousemove|mouseup|wheel|for|if|show|hide|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|style:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+|draggable(?:\.[a-zA-Z0-9_-]+)?|dropzone|drop(?:\.[a-zA-Z0-9_-]+)?)\s*=\s*"([^"]*)"`)
 
 // gForRe matches g-for attributes to extract loop variable names.
 var gForRe = regexp.MustCompile(`g-for\s*=\s*"([^"]*)"`)
@@ -51,6 +51,12 @@ func ValidateDirectives(htmlStr string, ci *component.Info) error {
 		case "for":
 			if err := validateForExpr(expr, ci, loopVars); err != nil {
 				return err
+			}
+		case "bind":
+			if err := validateBindExpr(expr, ci, loopVars); err != nil {
+				if !validateAgainstChildren(dirType, expr, childCIs) {
+					return err
+				}
 			}
 		case "click":
 			if err := validateMethodRef("g-click", expr, ci, loopVars); err != nil {
@@ -241,10 +247,33 @@ func validateKeydownExpr(expr string, ci *component.Info, loopVars map[string]*l
 	return nil
 }
 
+// validateBindExpr ensures g-bind references a field, not a method.
+// g-bind is two-way — it must be able to write back, which only works with fields.
+func validateBindExpr(expr string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return fmt.Errorf("empty g-bind expression")
+	}
+
+	root := strings.Split(expr, ".")[0]
+
+	// If it's a method, fail loudly
+	if ci.HasMethod(root) && !ci.HasField(root) {
+		return fmt.Errorf("g-bind=%q references a method, not a field — g-bind requires a field for two-way binding (use g-value for one-way)", expr)
+	}
+
+	// Otherwise validate as a normal field expression
+	return validateFieldExpr(expr, ci, loopVars)
+}
+
 func validateFieldExpr(expr string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
 	expr = strings.TrimSpace(expr)
 	if expr == "" {
 		return fmt.Errorf("empty directive expression")
+	}
+	// Strip leading ! for negation
+	if strings.HasPrefix(expr, "!") {
+		expr = strings.TrimSpace(expr[1:])
 	}
 	if IsLiteral(expr) {
 		return nil
@@ -272,7 +301,16 @@ func validateFieldExpr(expr string, ci *component.Info, loopVars map[string]*loo
 		return nil
 	}
 
-	return fmt.Errorf("directive references unknown field %q (expression: %q) on %s", root, expr, ci.Typ.Name())
+	// Check if it's a zero-arg, single-return method (computed value)
+	if len(parts) == 1 && ci.HasMethod(root) {
+		m, _ := ci.Value.Type().MethodByName(root)
+		// Method on pointer receiver: first param is the receiver itself
+		if m.Type.NumIn() == 1 && m.Type.NumOut() == 1 {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("directive references unknown field or method %q (expression: %q) on %s", root, expr, ci.Typ.Name())
 }
 
 // validateTypePath walks a dotted path through struct types.

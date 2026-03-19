@@ -48,8 +48,8 @@ func (t *TodoApp) Reorder(from, to float64) {
 }
 
 func main() {
-	app := godom.New()
-	app.Port = 8081
-	app.Mount(&TodoApp{}, ui)
-	log.Fatal(app.Start())
+	eng := godom.NewEngine()
+	eng.Port = 8081
+	eng.Mount(&TodoApp{}, ui)
+	log.Fatal(eng.Start())
 }

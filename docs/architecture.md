@@ -25,10 +25,10 @@ The bridge never evaluates expressions, resolves data, or makes decisions. It re
 ## Startup sequence
 
 ```
-app := godom.New()
-app.Component("todo-item", &TodoItem{})   // optional: register stateful components
-app.Mount(&TodoApp{}, ui)                 // parse, validate, prepare
-log.Fatal(app.Start())                    // serve, open browser, block
+eng := godom.NewEngine()
+eng.RegisterComponent("todo-item", &TodoItem{})   // optional: register stateful components
+eng.Mount(&TodoApp{}, ui)                 // parse, validate, prepare
+log.Fatal(eng.Start())                    // serve, open browser, block
 ```
 
 `Mount()` does the heavy lifting before any HTTP traffic:
@@ -54,7 +54,7 @@ log.Fatal(app.Start())                    // serve, open browser, block
 
 | File | Responsibility |
 |------|----------------|
-| `godom.go` | App, Mount, Start, WebSocket handling, connection pool, message dispatch |
+| `godom.go` | Engine, Mount, Start, WebSocket handling, connection pool, message dispatch |
 | `component.go` | Component struct, componentInfo, Emit, state serialization, method/field reflection |
 | `render.go` | Expression resolution, DOM command generation, init/update messages, list diffing |
 | `parser.go` | HTML parsing, gid assignment, binding extraction, template expansion, component expansion |
@@ -118,7 +118,7 @@ Parent struct         ───props───►    Child HTML template
 
 ### Stateful components
 
-A Go struct registered with `app.Component("tag", &T{})`. Has its own state, methods, and lifecycle. Props are struct fields tagged `godom:"prop"` — the parent sets them, the child owns them after that.
+A Go struct registered with `eng.RegisterComponent("tag", &T{})`. Has its own state, methods, and lifecycle. Props are struct fields tagged `godom:"prop"` — the parent sets them, the child owns them after that.
 
 ```
 Parent struct         ───props───►    Child struct
@@ -168,7 +168,7 @@ It does not: evaluate expressions, access component state, make timing decisions
 
 ## Plugin system
 
-Plugins extend the bridge to delegate rendering to JS libraries. A plugin is registered with `app.Plugin(name, scripts...)` — one or more JS scripts injected in order before `bridge.js`.
+Plugins extend the bridge to delegate rendering to JS libraries. A plugin is registered with `eng.RegisterPlugin(name, scripts...)` — one or more JS scripts injected in order before `bridge.js`.
 
 The last script should call `godom.register(name, {init, update})`. When the bridge encounters a `plugin` command (from `g-plugin:name="Field"` in HTML), it calls `init(element, data)` on first render and `update(element, data)` on subsequent updates. The data is the JSON-serialized value of the Go struct field.
 

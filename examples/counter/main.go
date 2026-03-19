@@ -25,7 +25,7 @@ func (a *App) Decrement() {
 }
 
 func main() {
-	app := godom.New()
-	app.Mount(&App{Step: 1}, ui)
-	log.Fatal(app.Start())
+	eng := godom.NewEngine()
+	eng.Mount(&App{Step: 1}, ui)
+	log.Fatal(eng.Start())
 }

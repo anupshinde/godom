@@ -1,0 +1,29 @@
+<div class="cp-container">
+    <div class="cp-slider">
+        <label>Hue: <span g-text="Hue"></span>°</label>
+        <input type="range" min="0" max="360" g-bind="Hue" />
+        <div class="cp-hue-bar"></div>
+    </div>
+    <div class="cp-slider">
+        <label>Saturation: <span g-text="Sat"></span>%</label>
+        <input type="range" min="0" max="100" g-bind="Sat" />
+    </div>
+    <div class="cp-slider">
+        <label>Lightness: <span g-text="Lit"></span>%</label>
+        <input type="range" min="0" max="100" g-bind="Lit" />
+    </div>
+
+    <style>
+        .cp-container { margin-bottom: 16px; }
+        .cp-slider { margin-bottom: 12px; }
+        .cp-slider label { display: block; font-size: 13px; color: #555; margin-bottom: 4px; }
+        .cp-slider input[type="range"] { width: 100%; }
+        .cp-hue-bar {
+            height: 8px; border-radius: 4px; margin-top: 4px;
+            background: linear-gradient(to right,
+                hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%),
+                hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%)
+            );
+        }
+    </style>
+</div>

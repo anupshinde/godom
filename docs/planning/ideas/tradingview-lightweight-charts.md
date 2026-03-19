@@ -54,10 +54,10 @@ Same pattern as Chart.js:
 import "github.com/anupshinde/godom/plugins/lwcharts"
 
 func main() {
-    app := godom.New()
-    lwcharts.Register(app)
-    app.Mount(&TradingGame{}, ui)
-    log.Fatal(app.Start())
+    eng := godom.NewEngine()
+    lwcharts.Register(eng)
+    eng.Mount(&TradingGame{}, ui)
+    log.Fatal(eng.Start())
 }
 ```
 

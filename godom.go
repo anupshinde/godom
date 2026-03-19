@@ -26,8 +26,9 @@ var protobufMinJS string
 //go:embed internal/proto/protocol.js
 var protocolJS string
 
-// App is the main godom application.
-type App struct {
+// Engine is the godom runtime. It registers components and plugins,
+// mounts the root component, and starts the server.
+type Engine struct {
 	Port       int    // 0 = random available port
 	Host       string // default "localhost"; set to "0.0.0.0" for network access
 	NoAuth     bool   // disable token auth (default false = auth enabled)
@@ -79,23 +80,23 @@ func (c Component) Emit(method string, args ...interface{}) {
 	}
 }
 
-// New creates a new godom App.
-func New() *App {
-	return &App{
+// NewEngine creates a new godom Engine.
+func NewEngine() *Engine {
+	return &Engine{
 		components: make(map[string]*component.Reg),
 		plugins:    make(map[string][]string),
 	}
 }
 
-// Plugin registers a named plugin with one or more JS scripts.
-func (a *App) Plugin(name string, scripts ...string) {
+// RegisterPlugin registers a named plugin with one or more JS scripts.
+func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts
 }
 
-// Component registers a stateful component struct for a custom element tag.
+// RegisterComponent registers a stateful component struct for a custom element tag.
 // The tag must contain a hyphen (e.g., "todo-item").
 // The comp argument must be a pointer to a struct that embeds godom.Component.
-func (a *App) Component(tag string, comp interface{}) {
+func (a *Engine) RegisterComponent(tag string, comp interface{}) {
 	v := reflect.ValueOf(comp)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
 		log.Fatalf("godom: Component(%q) requires a pointer to a struct", tag)
@@ -118,7 +119,7 @@ func (a *App) Component(tag string, comp interface{}) {
 }
 
 // Mount registers a component struct with an embedded filesystem containing HTML templates.
-func (a *App) Mount(comp interface{}, fsys fs.FS) {
+func (a *Engine) Mount(comp interface{}, fsys fs.FS) {
 	v := reflect.ValueOf(comp)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
 		log.Fatal("godom: Mount requires a pointer to a struct")
@@ -175,7 +176,7 @@ func (a *App) Mount(comp interface{}, fsys fs.FS) {
 }
 
 // Start starts the HTTP server, opens the default browser, and blocks forever.
-func (a *App) Start() error {
+func (a *Engine) Start() error {
 	if a.comp == nil {
 		return fmt.Errorf("godom: no component mounted, call Mount() before Start()")
 	}

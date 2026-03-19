@@ -53,9 +53,9 @@ func (t *TodoApp) RemoveTodo(i int) {
 }
 
 func main() {
-	app := godom.New()
-	app.Port = 8082
-	app.Component("todo-item", &TodoItem{})
-	app.Mount(&TodoApp{}, ui)
-	log.Fatal(app.Start())
+	eng := godom.NewEngine()
+	eng.Port = 8082
+	eng.RegisterComponent("todo-item", &TodoItem{})
+	eng.Mount(&TodoApp{}, ui)
+	log.Fatal(eng.Start())
 }

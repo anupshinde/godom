@@ -14,10 +14,10 @@ The `plugins/` directory contains reusable Go packages that integrate JavaScript
 import "github.com/anupshinde/godom/plugins/chartjs"
 
 func main() {
-    app := godom.New()
-    chartjs.Register(app)  // registers the plugin + injects Chart.js
-    app.Mount(&App{}, ui)
-    log.Fatal(app.Start())
+    eng := godom.NewEngine()
+    chartjs.Register(eng)  // registers the plugin + injects Chart.js
+    eng.Mount(&App{}, ui)
+    log.Fatal(eng.Start())
 }
 ```
 

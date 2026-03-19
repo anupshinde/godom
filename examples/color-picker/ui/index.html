@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Color Picker</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            max-width: 700px; margin: 40px auto; padding: 0 20px; color: #333;
+        }
+        h1 { margin-bottom: 24px; }
+        .layout { display: flex; gap: 32px; }
+
+        /* Left: color list */
+        .color-list { flex: 1; }
+        .color-list h2 { font-size: 16px; margin-bottom: 12px; color: #666; }
+        .color-list ul { list-style: none; }
+        .color-list li {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 0; border-bottom: 1px solid #eee;
+        }
+        .swatch {
+            width: 28px; height: 28px; border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .color-list li span { flex: 1; font-family: monospace; font-size: 14px; }
+        .color-list li button {
+            background: none; border: none; color: #cc4444;
+            cursor: pointer; font-size: 16px;
+        }
+        .empty { color: #999; font-style: italic; font-size: 14px; }
+
+        /* Right: picker + add button */
+        .picker-panel { flex: 1; }
+        .preview {
+            width: 100%; height: 60px; border-radius: 6px;
+            border: 1px solid #ccc; margin-bottom: 12px;
+        }
+        .hex-value {
+            font-family: monospace; font-size: 18px; text-align: center;
+            margin-bottom: 16px;
+        }
+        .add-btn {
+            width: 100%; padding: 10px; background: #4a90d9; color: white;
+            border: none; border-radius: 4px; cursor: pointer; font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Color Picker</h1>
+
+    <div class="layout">
+        <!-- Left: saved colors -->
+        <div class="color-list">
+            <h2>Saved Colors</h2>
+            <p class="empty" g-show="!HasColors">No colors saved yet.</p>
+            <ul g-show="HasColors">
+                <li g-for="color, i in Colors">
+                    <div class="swatch" g-style:background="color"></div>
+                    <span g-text="color"></span>
+                    <button g-click="RemoveColor(i)">&times;</button>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Right: color picker + add button -->
+        <div class="picker-panel">
+            <color-picker g-bind="NewColor"></color-picker>
+
+            <div class="preview" g-style:background="NewColor"></div>
+            <div class="hex-value" g-text="NewColor"></div>
+            <button class="add-btn" g-click="AddColor">Add to List</button>
+        </div>
+    </div>
+</body>
+</html>

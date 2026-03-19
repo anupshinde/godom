@@ -34,10 +34,10 @@ Same pattern as the existing Chart.js plugin:
 import "github.com/anupshinde/godom/plugins/plotly"
 
 func main() {
-    app := godom.New()
-    plotly.Register(app)
-    app.Mount(&Dashboard{}, ui)
-    log.Fatal(app.Start())
+    eng := godom.NewEngine()
+    plotly.Register(eng)
+    eng.Mount(&Dashboard{}, ui)
+    log.Fatal(eng.Start())
 }
 ```
 
@@ -79,10 +79,10 @@ The plugin JS adapter:
 import "github.com/anupshinde/godom/plugins/echarts"
 
 func main() {
-    app := godom.New()
-    echarts.Register(app)
-    app.Mount(&Dashboard{}, ui)
-    log.Fatal(app.Start())
+    eng := godom.NewEngine()
+    echarts.Register(eng)
+    eng.Mount(&Dashboard{}, ui)
+    log.Fatal(eng.Start())
 }
 ```
 

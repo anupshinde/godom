@@ -112,7 +112,7 @@ type TerminalConfig struct {
 
 `TerminalConfig` is the struct that gets serialized to JSON and passed to the xterm plugin's `init(el, data)` function. The plugin uses `data.wsPort` and `data.token` to connect to the terminal WebSocket.
 
-The `//go:embed xterm-adapter.js` directive embeds the plugin adapter JS at compile time. It's passed to `app.Plugin("xterm", xtermAdapterJS)` which injects it as a `<script>` tag before godom's bridge.js.
+The `//go:embed xterm-adapter.js` directive embeds the plugin adapter JS at compile time. It's passed to `app.RegisterPlugin("xterm", xtermAdapterJS)` which injects it as a `<script>` tag before godom's bridge.js.
 
 ### terminal.go
 

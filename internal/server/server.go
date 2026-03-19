@@ -249,12 +249,16 @@ func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
 }
 
 func buildTree(ci *component.Info) *vdom.ElementNode {
+	if ci.IDCounter == nil {
+		ci.IDCounter = &vdom.IDCounter{}
+	}
 	ctx := &vdom.ResolveContext{
 		State: ci.Value,
 		Vars:  make(map[string]any),
+		IDs:   ci.IDCounter,
 	}
 	children := vdom.ResolveTree(ci.VDOMTemplates, ctx)
-	root := &vdom.ElementNode{Tag: "body", Children: children}
+	root := &vdom.ElementNode{NodeBase: vdom.NodeBase{ID: ci.IDCounter.Next()}, Tag: "body", Children: children}
 	vdom.ComputeDescendants(root)
 	return root
 }

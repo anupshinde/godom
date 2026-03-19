@@ -129,16 +129,26 @@ func encodeFacts(f *vdom.Facts, wn *WireNode) {
 	if len(f.Events) > 0 {
 		for eventName, handler := range f.Events {
 			// Build WSMessage bytes for the event
-			wsMsg := &gproto.WSMessage{
-				Type:   "call",
-				Method: handler.Handler,
-			}
-			if handler.Scope != "" {
-				wsMsg.Scope = handler.Scope
-			}
-			for _, arg := range handler.Args {
-				argJSON, _ := json.Marshal(arg)
-				wsMsg.Args = append(wsMsg.Args, argJSON)
+			var wsMsg *gproto.WSMessage
+			if handler.Handler == "__bind__" && len(handler.Args) > 0 {
+				// g-bind: send as "bind" message with field name
+				fieldName, _ := handler.Args[0].(string)
+				wsMsg = &gproto.WSMessage{
+					Type:  "bind",
+					Field: fieldName,
+				}
+			} else {
+				wsMsg = &gproto.WSMessage{
+					Type:   "call",
+					Method: handler.Handler,
+				}
+				if handler.Scope != "" {
+					wsMsg.Scope = handler.Scope
+				}
+				for _, arg := range handler.Args {
+					argJSON, _ := json.Marshal(arg)
+					wsMsg.Args = append(wsMsg.Args, argJSON)
+				}
 			}
 			msgBytes, _ := proto.Marshal(wsMsg)
 

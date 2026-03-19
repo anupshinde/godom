@@ -32,8 +32,8 @@ func main() {
 	token := randomToken()
 	termPort := startTerminalServer(token)
 
-	app := godom.New()
-	app.Plugin("xterm", xtermAdapterJS)
+	eng := godom.NewEngine()
+	eng.RegisterPlugin("xterm", xtermAdapterJS)
 
 	root := &App{
 		Terminal: TerminalConfig{
@@ -41,8 +41,8 @@ func main() {
 			Token:  token,
 		},
 	}
-	app.Mount(root, ui)
-	log.Fatal(app.Start())
+	eng.Mount(root, ui)
+	log.Fatal(eng.Start())
 }
 
 func randomToken() string {

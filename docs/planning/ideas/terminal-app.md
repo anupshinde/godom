@@ -54,10 +54,10 @@ This would be a godom plugin, same pattern as Chart.js:
 import "github.com/anthropics/godom/plugins/xterm"
 
 func main() {
-    app := godom.New()
-    xterm.Register(app) // registers plugin, embeds xterm.js
-    app.Mount(&Terminal{Cols: 80, Rows: 24})
-    app.Run()
+    eng := godom.NewEngine()
+    xterm.Register(eng) // registers plugin, embeds xterm.js
+    eng.Mount(&Terminal{Cols: 80, Rows: 24})
+    eng.Run()
 }
 ```
 

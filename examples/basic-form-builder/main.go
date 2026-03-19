@@ -310,9 +310,9 @@ func (f *FormBuilder) updateSelectionFlags() {
 }
 
 func main() {
-	app := godom.New()
-	app.Port = 8084
-	app.Mount(&FormBuilder{
+	eng := godom.NewEngine()
+	eng.Port = 8084
+	eng.Mount(&FormBuilder{
 		Title:          "My Form",
 		Selected:       -1,
 		Editing:        true,
@@ -320,5 +320,5 @@ func main() {
 		NoSelection:    true,
 		PreviewBtnText: "Preview",
 	}, ui)
-	log.Fatal(app.Start())
+	log.Fatal(eng.Start())
 }
