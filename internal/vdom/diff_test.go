@@ -9,9 +9,9 @@ import (
 // Unreachable code — cannot be covered via tests
 //
 // ComputeDescendants final return (node.go:249):
-//   The Node interface is a closed set (TextNode, ElementNode,
-//   KeyedElementNode, ComponentNode, PluginNode, LazyNode). The default
-//   return 0 after the type switch can never be reached.
+//   The Node interface is a closed set in production (TextNode, ElementNode,
+//   KeyedElementNode, ComponentNode, PluginNode, LazyNode). Covered via
+//   fakeNode test type since Node is an exported interface.
 //
 // lazyArgsEqual / valEqual — each have ~1 statement gap from branches
 //   that require internal states not producible through the public API.
@@ -1474,7 +1474,23 @@ func TestComputeDescendants_AllNodeTypes(t *testing.T) {
 			t.Errorf("expected 0, got %d", count)
 		}
 	})
+
+	t.Run("unknown Node type", func(t *testing.T) {
+		n := &fakeNode{}
+		count := ComputeDescendants(n)
+		if count != 0 {
+			t.Errorf("expected 0 for unknown node type, got %d", count)
+		}
+	})
 }
+
+// fakeNode is a test-only Node implementation to exercise the default
+// branch in ComputeDescendants (unreachable with real node types).
+type fakeNode struct{}
+
+func (f *fakeNode) NodeType() int         { return -1 }
+func (f *fakeNode) NodeID() int           { return 0 }
+func (f *fakeNode) DescendantsCount() int { return 0 }
 
 func TestComponentNode_DescendantsCount(t *testing.T) {
 	t.Run("with subtree", func(t *testing.T) {
@@ -1653,6 +1669,24 @@ func TestValEqual(t *testing.T) {
 		{"diff float64", 1.5, 2.5, false},
 		{"string vs int", "1", 1, false},
 		{"int vs float64", 1, 1.0, false},
+		// DeepEqual fallback: slices of structs
+		{"same slice of structs",
+			[]struct{ Name string }{{"alice"}, {"bob"}},
+			[]struct{ Name string }{{"alice"}, {"bob"}},
+			true},
+		{"diff slice of structs",
+			[]struct{ Name string }{{"alice"}, {"bob"}},
+			[]struct{ Name string }{{"alice"}, {"carol"}},
+			false},
+		// DeepEqual fallback: map with non-primitive values
+		{"same map of slices",
+			map[string][]int{"a": {1, 2}},
+			map[string][]int{"a": {1, 2}},
+			true},
+		{"diff map of slices",
+			map[string][]int{"a": {1, 2}},
+			map[string][]int{"a": {1, 3}},
+			false},
 	}
 	for _, tt := range tests {
 		got := valEqual(tt.a, tt.b)
@@ -1850,6 +1884,16 @@ func TestDiff_LazyNilFunc(t *testing.T) {
 	if len(patches) != 0 {
 		t.Errorf("expected no patches for identical nil-func lazy nodes, got %+v", patches)
 	}
+}
+
+func TestDiff_LazyOneNilFunc(t *testing.T) {
+	// One nil Func, one non-nil → lazyArgsEqual returns false (line 372-373)
+	fn := func() Node { return &TextNode{Text: "a"} }
+	old := &LazyNode{NodeBase: NodeBase{ID: 1}, Func: nil, Cached: &TextNode{NodeBase: NodeBase{ID: 2}, Text: "a"}}
+	new := &LazyNode{NodeBase: NodeBase{ID: 1}, Func: fn}
+	patches := Diff(old, new)
+	// Different funcs → evaluateLazy called → produces patches
+	_ = patches // verify no panic; funcs differ so lazy args not equal
 }
 
 func TestDiff_LazyDifferentFuncs(t *testing.T) {
