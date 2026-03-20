@@ -8,7 +8,7 @@
         h1 { margin: 20px; }
         .hint { color: #888; font-size: 14px; margin: 0 20px 12px; }
         .arena { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; }
-        .box { position: fixed; width: 80px; height: 80px; background: #4a90d9; border-radius: 8px; cursor: grab; user-select: none; z-index: 10; }
+        .box { position: fixed; width: 80px; height: 80px; background: #4a90d9; border-radius: 8px; cursor: grab; user-select: none; z-index: 10; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 600; }
         .box:active { cursor: grabbing; }
         .content { position: relative; z-index: 20; padding: 0 20px; }
         input { width: calc(100% - 20px); padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 12px; }
@@ -22,7 +22,7 @@
         <input type="text" placeholder="Another input..." />
     </div>
     <div class="box" g-style:top="BoxTop" g-style:left="BoxLeft"
-         g-mousedown="DragStart" g-mousemove="DragMove" g-mouseup="DragEnd"></div>
+         g-mousedown="DragStart" g-mousemove="DragMove" g-mouseup="DragEnd">Drag me</div>
     <div class="arena" g-mousemove="DragMove" g-mouseup="DragEnd"></div>
 </body>
 </html>
