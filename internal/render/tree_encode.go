@@ -136,6 +136,9 @@ func encodeFacts(f *vdom.Facts, wn *WireNode) {
 				eventType = key[:idx]
 				keyFilter = key[idx+1:]
 			}
+			if keyFilter == "" {
+				keyFilter = eh.Options.Key
+			}
 			var argBytes [][]byte
 			for _, arg := range eh.Args {
 				b, _ := json.Marshal(arg)
