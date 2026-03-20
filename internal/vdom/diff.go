@@ -368,7 +368,11 @@ func lazyArgsEqual(old, new *LazyNode) bool {
 	if len(old.Args) != len(new.Args) {
 		return false
 	}
-	if reflect.ValueOf(old.Func).Pointer() != reflect.ValueOf(new.Func).Pointer() {
+	if old.Func == nil || new.Func == nil {
+		if old.Func != new.Func {
+			return false
+		}
+	} else if reflect.ValueOf(old.Func).Pointer() != reflect.ValueOf(new.Func).Pointer() {
 		return false
 	}
 	for i := range old.Args {
