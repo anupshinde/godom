@@ -4,17 +4,25 @@
     <meta charset="utf-8">
     <title>Sync Demo</title>
     <style>
-        body { font-family: system-ui, sans-serif; max-width: 500px; margin: 40px auto; padding: 0 20px; }
-        h1 { margin-bottom: 20px; }
-        input { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 12px; }
-        .hint { color: #888; font-size: 14px; }
+        body { font-family: system-ui, sans-serif; margin: 0; padding: 0; }
+        h1 { margin: 20px; }
+        .hint { color: #888; font-size: 14px; margin: 0 20px 12px; }
+        .arena { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; }
+        .box { position: fixed; width: 80px; height: 80px; background: #4a90d9; border-radius: 8px; cursor: grab; user-select: none; z-index: 10; }
+        .box:active { cursor: grabbing; }
+        .content { position: relative; z-index: 20; padding: 0 20px; }
+        input { width: calc(100% - 20px); padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 12px; }
     </style>
 </head>
 <body>
     <h1>Sync Demo</h1>
-    <p class="hint">Open this page in two windows. Type in one — see it in the other.</p>
-    <div style="position:absolute;width:80px;height:80px;background:#4a90d9;border-radius:8px;transition:all 0.3s ease;" g-style:top="BoxTop" g-style:left="BoxLeft"></div>
-    <input type="text" placeholder="Type something..." />
-    <input type="text" placeholder="Another input..." />
+    <p class="hint">Drag the box. Open in two windows to see sync.</p>
+    <div class="content">
+        <input type="text" placeholder="Type something..." />
+        <input type="text" placeholder="Another input..." />
+    </div>
+    <div class="box" g-style:top="BoxTop" g-style:left="BoxLeft"
+         g-mousedown="DragStart" g-mousemove="DragMove" g-mouseup="DragEnd"></div>
+    <div class="arena" g-mousemove="DragMove" g-mouseup="DragEnd"></div>
 </body>
 </html>

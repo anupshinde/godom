@@ -4,8 +4,6 @@ import (
 	"embed"
 	"fmt"
 	"log"
-	"math/rand"
-	"time"
 
 	"github.com/anupshinde/godom"
 )
@@ -17,19 +15,42 @@ type App struct {
 	godom.Component
 	BoxTop  string
 	BoxLeft string
+
+	dragging bool
+	posX     float64
+	posY     float64
+	offsetX  float64
+	offsetY  float64
+}
+
+func (a *App) updateCSS() {
+	a.BoxTop = fmt.Sprintf("%.0fpx", a.posY)
+	a.BoxLeft = fmt.Sprintf("%.0fpx", a.posX)
+}
+
+func (a *App) DragStart(x, y float64) {
+	a.dragging = true
+	a.offsetX = x - a.posX
+	a.offsetY = y - a.posY
+}
+
+func (a *App) DragMove(x, y float64) {
+	if !a.dragging {
+		return
+	}
+	a.posX = x - a.offsetX
+	a.posY = y - a.offsetY
+	a.updateCSS()
+	a.Refresh("BoxTop", "BoxLeft")
+}
+
+func (a *App) DragEnd(x, y float64) {
+	a.dragging = false
 }
 
 func main() {
-	app := &App{BoxTop: "20px", BoxLeft: "20px"}
-
-	go func() {
-		for range time.Tick(2 * time.Second) {
-			app.BoxTop = fmt.Sprintf("%dpx", rand.Intn(400))
-			app.BoxLeft = fmt.Sprintf("%dpx", rand.Intn(400))
-			fmt.Printf("box → top:%s left:%s\n", app.BoxTop, app.BoxLeft)
-			app.Refresh("BoxTop", "BoxLeft")
-		}
-	}()
+	app := &App{posX: 100, posY: 250}
+	app.updateCSS()
 
 	eng := godom.NewEngine()
 	eng.Mount(app, ui, "ui/index.html")
