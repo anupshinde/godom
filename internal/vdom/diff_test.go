@@ -321,15 +321,129 @@ func TestDiffFacts_EventChanged(t *testing.T) {
 	}
 }
 
-func TestDiffFacts_NoChange(t *testing.T) {
+func TestDiffFacts_Identity(t *testing.T) {
 	f := Facts{
 		Props:  map[string]any{"id": "main"},
 		Styles: map[string]string{"width": "100px"},
 	}
 	d := DiffFacts(&f, &f)
 	if !d.IsEmpty() {
-		t.Error("expected empty diff for identical facts")
+		t.Error("expected empty diff for same Facts pointer")
 	}
+}
+
+func TestDiffFacts_NoChange(t *testing.T) {
+	old := Facts{
+		Props:   map[string]any{"id": "main", "className": "container", "hidden": false},
+		Attrs:   map[string]string{"data-id": "42", "role": "banner"},
+		Styles:  map[string]string{"width": "100px", "color": "red"},
+		Events:  map[string]EventHandler{"click": {Handler: "Save", Args: []any{1, "two"}, Options: EventOptions{PreventDefault: true}}},
+		AttrsNS: map[string]NSAttr{"xlink:href": {Namespace: "http://www.w3.org/1999/xlink", Value: "#icon"}},
+	}
+	new := Facts{
+		Props:   map[string]any{"id": "main", "className": "container", "hidden": false},
+		Attrs:   map[string]string{"data-id": "42", "role": "banner"},
+		Styles:  map[string]string{"width": "100px", "color": "red"},
+		Events:  map[string]EventHandler{"click": {Handler: "Save", Args: []any{1, "two"}, Options: EventOptions{PreventDefault: true}}},
+		AttrsNS: map[string]NSAttr{"xlink:href": {Namespace: "http://www.w3.org/1999/xlink", Value: "#icon"}},
+	}
+	d := DiffFacts(&old, &new)
+	if !d.IsEmpty() {
+		t.Errorf("expected empty diff for equal Facts, got props=%v attrs=%v styles=%v events=%v attrsNS=%v",
+			d.Props, d.Attrs, d.Styles, d.Events, d.AttrsNS)
+	}
+}
+
+func TestDiffFacts_NoChange_Negative(t *testing.T) {
+	// Verify that even a single field difference is detected.
+	base := func() Facts {
+		return Facts{
+			Props:  map[string]any{"id": "main", "className": "box"},
+			Attrs:  map[string]string{"data-id": "1"},
+			Styles: map[string]string{"width": "10px"},
+			Events: map[string]EventHandler{"click": {Handler: "Save"}},
+		}
+	}
+
+	t.Run("prop value differs", func(t *testing.T) {
+		old := base()
+		new := base()
+		new.Props["id"] = "other"
+		d := DiffFacts(&old, &new)
+		if d.IsEmpty() {
+			t.Error("expected non-empty diff when prop value differs")
+		}
+		if d.Props["id"] != "other" {
+			t.Errorf("expected id='other' in diff, got %v", d.Props["id"])
+		}
+	})
+
+	t.Run("prop added", func(t *testing.T) {
+		old := base()
+		new := base()
+		new.Props["tabIndex"] = 0
+		d := DiffFacts(&old, &new)
+		if d.Props["tabIndex"] != 0 {
+			t.Errorf("expected tabIndex=0 in diff, got %v", d.Props)
+		}
+	})
+
+	t.Run("prop removed", func(t *testing.T) {
+		old := base()
+		new := base()
+		delete(new.Props, "className")
+		d := DiffFacts(&old, &new)
+		if _, ok := d.Props["className"]; !ok {
+			t.Error("expected className removal in diff")
+		}
+		if d.Props["className"] != nil {
+			t.Errorf("expected nil for removed prop, got %v", d.Props["className"])
+		}
+	})
+
+	t.Run("attr value differs", func(t *testing.T) {
+		old := base()
+		new := base()
+		new.Attrs["data-id"] = "2"
+		d := DiffFacts(&old, &new)
+		if d.Attrs["data-id"] != "2" {
+			t.Errorf("expected data-id='2', got %q", d.Attrs["data-id"])
+		}
+	})
+
+	t.Run("style value differs", func(t *testing.T) {
+		old := base()
+		new := base()
+		new.Styles["width"] = "20px"
+		d := DiffFacts(&old, &new)
+		if d.Styles["width"] != "20px" {
+			t.Errorf("expected width='20px', got %q", d.Styles["width"])
+		}
+	})
+
+	t.Run("event handler differs", func(t *testing.T) {
+		old := base()
+		new := base()
+		new.Events["click"] = EventHandler{Handler: "Delete"}
+		d := DiffFacts(&old, &new)
+		if d.Events["click"] == nil || d.Events["click"].Handler != "Delete" {
+			t.Errorf("expected click handler 'Delete' in diff, got %v", d.Events["click"])
+		}
+	})
+
+	t.Run("prop type differs", func(t *testing.T) {
+		old := base()
+		new := base()
+		old.Props["id"] = "main"
+		new.Props["id"] = 42 // string → int
+		d := DiffFacts(&old, &new)
+		if d.IsEmpty() {
+			t.Error("expected non-empty diff when prop type changes")
+		}
+		if d.Props["id"] != 42 {
+			t.Errorf("expected id=42 in diff, got %v", d.Props["id"])
+		}
+	})
 }
 
 func TestDiffFacts_AttrChange(t *testing.T) {
@@ -370,12 +484,36 @@ func TestDiff_PluginNameChange(t *testing.T) {
 }
 
 func TestDiff_PluginSameData(t *testing.T) {
+	// Two independently constructed maps with equal content.
+	old := &PluginNode{Tag: "canvas", Name: "chart", Data: map[string]int{"a": 1, "b": 2}}
+	new := &PluginNode{Tag: "canvas", Name: "chart", Data: map[string]int{"a": 1, "b": 2}}
+	patches := Diff(old, new)
+	if len(patches) != 0 {
+		t.Errorf("expected 0 patches for equal plugin data, got %d", len(patches))
+	}
+}
+
+func TestDiff_PluginSameDataPointer(t *testing.T) {
+	// Same pointer — should also produce no patches.
 	data := map[string]int{"a": 1}
 	old := &PluginNode{Tag: "canvas", Name: "chart", Data: data}
 	new := &PluginNode{Tag: "canvas", Name: "chart", Data: data}
 	patches := Diff(old, new)
 	if len(patches) != 0 {
-		t.Errorf("expected 0 patches for same plugin data, got %d", len(patches))
+		t.Errorf("expected 0 patches for same pointer data, got %d", len(patches))
+	}
+}
+
+func TestDiff_PluginDataChange_Negative(t *testing.T) {
+	// One value differs — must produce a PatchPlugin.
+	old := &PluginNode{Tag: "canvas", Name: "chart", Data: map[string]int{"a": 1, "b": 2}}
+	new := &PluginNode{Tag: "canvas", Name: "chart", Data: map[string]int{"a": 1, "b": 99}}
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	if patches[0].Type != PatchPlugin {
+		t.Errorf("expected PatchPlugin, got %d", patches[0].Type)
 	}
 }
 
@@ -547,6 +685,9 @@ func TestDiff_KeyedRemoveMiddle(t *testing.T) {
 	if len(data.Removes) != 1 || data.Removes[0].Key != "b" {
 		t.Errorf("expected remove of 'b', got %+v", data.Removes)
 	}
+	if data.Removes[0].Index != 1 {
+		t.Errorf("expected remove index 1, got %d", data.Removes[0].Index)
+	}
 	if len(data.Inserts) != 0 {
 		t.Errorf("expected 0 inserts, got %+v", data.Inserts)
 	}
@@ -579,8 +720,94 @@ func TestDiff_KeyedRemoveFirst(t *testing.T) {
 	if len(data.Removes) != 1 || data.Removes[0].Key != "a" {
 		t.Errorf("expected remove of 'a', got %+v", data.Removes)
 	}
+	if data.Removes[0].Index != 0 {
+		t.Errorf("expected remove index 0, got %d", data.Removes[0].Index)
+	}
 	if len(data.Inserts) != 0 {
 		t.Errorf("expected 0 inserts, got %+v", data.Inserts)
+	}
+}
+
+func TestDiff_KeyedRemoveFirst_Negative(t *testing.T) {
+	// Removing "a" from [a, b, c] should NOT touch "b" or "c".
+	old := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	new := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "b", Node: &TextNode{Text: "B"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
+	}
+	data := patches[0].Data.(PatchReorderData)
+
+	// Surviving keys must NOT appear in removes.
+	for _, r := range data.Removes {
+		if r.Key == "b" || r.Key == "c" {
+			t.Errorf("surviving key %q should not be in removes", r.Key)
+		}
+	}
+	// No content patches — "b" and "c" are unchanged.
+	if len(data.Patches) != 0 {
+		t.Errorf("expected 0 sub-patches for unchanged content, got %d", len(data.Patches))
+	}
+}
+
+func TestDiff_KeyedRemoveMiddle_Negative(t *testing.T) {
+	// Removing "b" from [a, b, c] should NOT touch "a" or "c".
+	old := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "b", Node: &TextNode{Text: "B"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	new := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{Text: "A"}},
+			{Key: "c", Node: &TextNode{Text: "C"}},
+		},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
+	}
+	data := patches[0].Data.(PatchReorderData)
+
+	// Only "b" should be removed.
+	if len(data.Removes) != 1 {
+		t.Fatalf("expected 1 remove, got %d: %+v", len(data.Removes), data.Removes)
+	}
+	for _, r := range data.Removes {
+		if r.Key == "a" || r.Key == "c" {
+			t.Errorf("surviving key %q should not be in removes", r.Key)
+		}
+	}
+	// No inserts for a pure remove.
+	if len(data.Inserts) != 0 {
+		t.Errorf("expected 0 inserts, got %d", len(data.Inserts))
+	}
+	// No content patches.
+	if len(data.Patches) != 0 {
+		t.Errorf("expected 0 sub-patches, got %d", len(data.Patches))
 	}
 }
 
