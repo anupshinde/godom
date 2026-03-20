@@ -66,6 +66,7 @@ func Run(cfg Config) error {
 	// Without fields: full refresh — re-send the entire tree.
 	ci.RefreshFn = func(fields ...string) {
 		ci.Mu.Lock()
+		ci.Refreshed = true
 		if len(fields) > 0 {
 			patches := buildSurgicalPatches(ci, fields)
 			ci.Mu.Unlock()
@@ -587,9 +588,21 @@ func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPoo
 		log.Printf("godom: method call %q args=%v", call.Method, args)
 	}
 
+	// Release the lock before calling the user method so that Refresh()
+	// (which also acquires ci.Mu) can run without deadlocking.
+	ci.Mu.Unlock()
+
 	// Call the method
 	if err := ci.CallMethod(call.Method, args); err != nil {
 		log.Printf("godom: method call %q error: %v", call.Method, err)
+		return
+	}
+
+	// If the method already called Refresh(), it pushed its own update —
+	// skip the automatic full rebuild.
+	ci.Mu.Lock()
+	if ci.Refreshed {
+		ci.Refreshed = false
 		ci.Mu.Unlock()
 		return
 	}

@@ -549,11 +549,27 @@
             return;
         }
 
+        // Throttle mousemove: fire at most once every 50ms.
+        var isMouseMove = (eventType === "mousemove");
+        var lastMoveTime = 0;
+
         el.addEventListener(eventType, function(domEvent) {
             if (ev.key && domEvent.key !== ev.key) return;
+            if (isMouseMove) {
+                var now = Date.now();
+                if (now - lastMoveTime < 50) return;
+                lastMoveTime = now;
+            }
             if (ev.sp) domEvent.stopPropagation();
             if (ev.pd) domEvent.preventDefault();
-            sendMethodCall(nodeId, ev.method, ev.args || []);
+            var allArgs = ev.args ? ev.args.slice() : [];
+            if (eventType === "mousedown" || eventType === "mousemove" || eventType === "mouseup") {
+                allArgs.unshift(
+                    textEncoder.encode(String(domEvent.clientX)),
+                    textEncoder.encode(String(domEvent.clientY))
+                );
+            }
+            sendMethodCall(nodeId, ev.method, allArgs);
         });
     }
 
