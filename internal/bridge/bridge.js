@@ -158,6 +158,9 @@
             autoRegisterInputSync(tree.id, el, tree.tag);
         }
 
+        // Wire up HTML5 drag if element has draggable prop
+        autoRegisterDraggable(el);
+
         // Build children
         if (tree.c) {
             for (var i = 0; i < tree.c.length; i++) {
@@ -441,6 +444,9 @@
             var tag = el.tagName.toLowerCase();
             autoRegisterInputSync(nodeId, el, tag);
         }
+
+        // Re-register draggable if props changed
+        autoRegisterDraggable(el);
     }
 
     // =========================================================================
@@ -472,6 +478,24 @@
         }
     }
 
+    // Any element with draggable="true" gets dataTransfer wiring.
+    // Reads data-drag-value attr and puts it into dataTransfer on dragstart.
+    function autoRegisterDraggable(el) {
+        if (el._godomDrag) return;
+        if (!el.draggable) return;
+        el._godomDrag = true;
+
+        el.addEventListener("dragstart", function(domEvent) {
+            var value = el.getAttribute("data-drag-value") || "";
+            domEvent.dataTransfer.setData("text/plain", value);
+            domEvent.dataTransfer.effectAllowed = "move";
+            el.classList.add("g-dragging");
+        });
+        el.addEventListener("dragend", function() {
+            el.classList.remove("g-dragging");
+        });
+    }
+
     // --- Layer 2: method dispatch via MethodCall (tag byte 0x02) ---
 
     function sendMethodCall(nodeId, method, args) {
@@ -499,30 +523,6 @@
         if (el[listenerKey]) return;
         el[listenerKey] = true;
 
-        // TODO: drag/drop requires synchronous browser APIs (dataTransfer)
-        // that can't round-trip to Go. Revisit whether this can be made
-        // more generic so the bridge has no g-* directive knowledge.
-        //
-        // __draggable__: set up drag with group + value
-        if (ev.method === "__draggable__") {
-            // ev.args are base64 strings (Go []byte → JSON base64)
-            // atob decodes base64 to the raw JSON string
-            var dragGroup = ev.args[0] ? atob(ev.args[0]) : '""';
-            var dragValue = ev.args[1] ? atob(ev.args[1]) : "null";
-            el.addEventListener("dragstart", function(domEvent) {
-                domEvent.dataTransfer.setData("godom/group", dragGroup);
-                domEvent.dataTransfer.setData("godom/value", dragValue);
-                domEvent.dataTransfer.effectAllowed = "move";
-                el.classList.add("g-dragging");
-            });
-            el.addEventListener("dragend", function() {
-                el.classList.remove("g-dragging");
-            });
-            // Store raw JSON value on element for drop target to read
-            el._godomDragValue = dragValue;
-            return;
-        }
-
         // drop: read drag source value from dataTransfer, prepend to method args
         if (eventType === "drop") {
             el.addEventListener("dragover", function(domEvent) {
@@ -535,12 +535,11 @@
             el.addEventListener("drop", function(domEvent) {
                 domEvent.preventDefault();
                 el.classList.remove("g-drag-over");
-                var sourceValue = domEvent.dataTransfer.getData("godom/value") || "null";
-                var targetValue = el._godomDragValue || "null";
-                // Call method with (sourceValue, targetValue) prepended to any existing args
+                var sourceValue = domEvent.dataTransfer.getData("text/plain") || "";
+                var targetValue = el.getAttribute("data-drag-value") || "";
                 var args = [
-                    textEncoder.encode(sourceValue),
-                    textEncoder.encode(targetValue)
+                    textEncoder.encode(JSON.stringify(sourceValue)),
+                    textEncoder.encode(JSON.stringify(targetValue))
                 ];
                 for (var a = 0; a < (ev.args || []).length; a++) {
                     args.push(ev.args[a]);

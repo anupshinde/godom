@@ -730,14 +730,11 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext, nodeID int) Facts {
 				f.Props = make(map[string]any)
 			}
 			f.Props["draggable"] = true
-			if f.Events == nil {
-				f.Events = make(map[string]EventHandler)
+			if f.Attrs == nil {
+				f.Attrs = make(map[string]string)
 			}
 			val := ResolveExpr(d.Expr, ctx)
-			f.Events["dragstart"] = EventHandler{
-				Handler: "__draggable__",
-				Args:    []any{d.Name, val},
-			}
+			f.Attrs["data-drag-value"] = fmt.Sprint(val)
 
 		case "dropzone":
 			if f.Events == nil {
