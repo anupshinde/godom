@@ -792,21 +792,21 @@ func TestValidateDirectives_NoDirectives(t *testing.T) {
 	}
 }
 
-// --- Mouse event child fallback (falls into default case of validateAgainstChildren) ---
+// --- Mouse event child fallback ---
 
 func TestValidateDirectives_ChildFallback_MouseEvent(t *testing.T) {
-	// NOTE: validateAgainstChildren routes mousedown/mousemove/mouseup/wheel through the
-	// default case (validateFieldExpr) instead of validateMethodRef. This means child
-	// fallback for mouse events only works if the expression resolves as a field or
-	// zero-arg single-return computed method — not a general method reference.
-	// ChildAction() has no return value, so it fails the computed-method check.
+	// ChildAction exists as a method on the child component.
+	// g-mousedown="ChildAction" should pass via child fallback, just like g-click does.
+	// BUG: validateAgainstChildren routes mousedown/mousemove/mouseup/wheel through
+	// the default case (validateFieldExpr) instead of validateMethodRef, so child
+	// methods that aren't zero-arg/single-return computed values are rejected.
 	ci := newValTestCI()
 	ci.Registry["my-child"] = &component.Reg{
 		Typ: reflect.TypeOf(childMethodComp{}),
 	}
 	html := `<canvas g-mousedown="ChildAction"></canvas>`
-	if err := ValidateDirectives(html, ci); err == nil {
-		t.Error("expected error: mousedown child fallback goes through validateFieldExpr, not validateMethodRef")
+	if err := ValidateDirectives(html, ci); err != nil {
+		t.Errorf("child has ChildAction method — mousedown child fallback should pass: %v", err)
 	}
 }
 
@@ -829,20 +829,18 @@ func TestValidateDirectives_BindChildFallback(t *testing.T) {
 // --- g-drop.group child fallback routes through validateFieldExpr, not validateMethodRef ---
 
 func TestValidateDirectives_DropGroupChildFallback(t *testing.T) {
-	// NOTE: ValidateDirectives passes the raw dirType (e.g., "drop.canvas") to
-	// validateAgainstChildren, not the normalized baseDirType ("drop"). In
-	// validateAgainstChildren, "drop.canvas" doesn't match case "click", "drop" —
-	// it falls into default (validateFieldExpr). So grouped drop child fallback
-	// validates as a field expression, not a method reference.
-	// ChildDrop(from, to float64) won't pass validateFieldExpr's computed-method check
-	// (NumIn==3 not 1), so this should error.
+	// ChildDrop exists as a method on the child component.
+	// g-drop.canvas="ChildDrop" should pass via child fallback, just like g-drop="ChildDrop" does.
+	// BUG: ValidateDirectives passes raw dirType "drop.canvas" to validateAgainstChildren,
+	// not normalized baseDirType "drop". So "drop.canvas" misses the "click","drop" case
+	// and falls into default (validateFieldExpr), which can't validate methods properly.
 	ci := newValTestCI()
 	ci.Registry["my-child"] = &component.Reg{
 		Typ: reflect.TypeOf(childMethodComp{}),
 	}
 	html := `<div g-drop.canvas="ChildDrop"></div>`
-	if err := ValidateDirectives(html, ci); err == nil {
-		t.Error("expected error: g-drop.group child fallback uses validateFieldExpr, not validateMethodRef")
+	if err := ValidateDirectives(html, ci); err != nil {
+		t.Errorf("child has ChildDrop method — g-drop.group child fallback should pass: %v", err)
 	}
 }
 

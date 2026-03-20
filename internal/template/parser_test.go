@@ -429,13 +429,11 @@ func TestIsLiteral_EmptyString(t *testing.T) {
 }
 
 func TestTransferAttrsToRoot_ExactOneBracket(t *testing.T) {
-	// Edge case: ">" is at index 0 → htmlStr[idx-1] accesses index -1
-	// This would panic if not handled. Let's see what happens.
-	// Actually, looking at the code: idx=0, then htmlStr[idx-1] = htmlStr[-1] → panic
-	// This documents the behavior for this edge case.
+	// ">" at index 0 — should not panic.
+	// BUG: code does htmlStr[idx-1] without bounds check, panics with index -1.
 	defer func() {
 		if r := recover(); r != nil {
-			t.Logf("TransferAttrsToRoot panics on bare '>': %v (edge case)", r)
+			t.Errorf("TransferAttrsToRoot panics on bare '>': %v", r)
 		}
 	}()
 	_ = TransferAttrsToRoot(">", `g-text="X"`)
