@@ -7,6 +7,23 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// Unreachable code — cannot be covered via tests
+//
+// ParseTemplate (tree.go:76-78, 81-83):
+//   html.Parse never returns an error — it handles any byte sequence and always
+//   produces a valid tree. It also always synthesizes <html><head><body>, so
+//   findBody never returns nil. Both error-return branches are dead code.
+//
+// htmlToTemplate default branch (tree.go:109-110):
+//   Go's html.Parse only produces TextNode, ElementNode, and CommentNode inside
+//   <body>. The default case can never be reached through ParseTemplate.
+//
+// DeepCopyJSON unmarshal error (tree.go:968-969):
+//   json.Marshal succeeding guarantees the output is valid JSON, so
+//   json.Unmarshal into any will never fail on those same bytes.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // parseTemplate tests
 // ---------------------------------------------------------------------------
 
@@ -2153,6 +2170,10 @@ func (s *testCallState) NoReturn() {
 	// method with no return value
 }
 
+func (s *testCallState) NoReturnWithArgs(a, b int) {
+	// method with args but no return value
+}
+
 func (s *testCallState) TwoArgs(a, b int) int {
 	return a + b
 }
@@ -2434,6 +2455,174 @@ func TestParse_StyleAndIdAttrs(t *testing.T) {
 		if _, ok := el.Facts.Attrs["id"]; ok {
 			t.Error("id should not be in Attrs")
 		}
+	}
+}
+
+func TestResolve_RegularAttrToFactsAttrs(t *testing.T) {
+	// Exercises resolveFacts else branch: non-class/style/id attr → f.Attrs
+	tmplHTML := `<div data-testid="foo" aria-label="bar"></div>`
+	nodes, err := ParseTemplate(tmplHTML, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := struct{}{}
+	ctx := &ResolveContext{State: reflect.ValueOf(&state), IDs: &IDCounter{}}
+	tree := ResolveTree(nodes, ctx)
+	el := tree[0].(*ElementNode)
+	if el.Facts.Attrs == nil {
+		t.Fatal("expected Attrs map for data-/aria- attributes")
+	}
+	if el.Facts.Attrs["data-testid"] != "foo" {
+		t.Errorf("expected data-testid='foo', got %q", el.Facts.Attrs["data-testid"])
+	}
+	if el.Facts.Attrs["aria-label"] != "bar" {
+		t.Errorf("expected aria-label='bar', got %q", el.Facts.Attrs["aria-label"])
+	}
+}
+
+func TestResolve_GClassAppendExisting(t *testing.T) {
+	// Exercises g-class "existing != ''" branch: class attr + two truthy g-class directives
+	tmplHTML := `<div class="base" g-class:active="A" g-class:highlight="B"></div>`
+	nodes, err := ParseTemplate(tmplHTML, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := struct {
+		A bool
+		B bool
+	}{A: true, B: true}
+	ctx := &ResolveContext{State: reflect.ValueOf(&state), IDs: &IDCounter{}}
+	tree := ResolveTree(nodes, ctx)
+	el := tree[0].(*ElementNode)
+	className, _ := el.Facts.Props["className"].(string)
+	// Should be "base active highlight" — base from class attr, then both appended
+	if !strings.Contains(className, "base") {
+		t.Errorf("expected 'base' in className, got %q", className)
+	}
+	if !strings.Contains(className, "active") {
+		t.Errorf("expected 'active' in className, got %q", className)
+	}
+	if !strings.Contains(className, "highlight") {
+		t.Errorf("expected 'highlight' in className, got %q", className)
+	}
+}
+
+func TestResolve_GClassNoExistingClassName(t *testing.T) {
+	// Exercises g-class else branch: no prior className, truthy g-class → set directly
+	// Also exercises f.Props == nil init inside g-class when no class/style/id attrs exist
+	tmplHTML := `<div g-class:active="A"></div>`
+	nodes, err := ParseTemplate(tmplHTML, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := struct{ A bool }{A: true}
+	ctx := &ResolveContext{State: reflect.ValueOf(&state), IDs: &IDCounter{}}
+	tree := ResolveTree(nodes, ctx)
+	el := tree[0].(*ElementNode)
+	className, _ := el.Facts.Props["className"].(string)
+	if className != "active" {
+		t.Errorf("expected className='active', got %q", className)
+	}
+}
+
+func TestResolveStructField_PointerFieldDeref(t *testing.T) {
+	// Exercises resolveStructField mid-path pointer auto-deref (lines 858-862)
+	type Inner struct {
+		Value string
+	}
+	type Outer struct {
+		Inner *Inner
+	}
+	s := &Outer{Inner: &Inner{Value: "hello"}}
+	ctx := &ResolveContext{State: reflect.ValueOf(s), IDs: &IDCounter{}}
+	result := ResolveExpr("Inner.Value", ctx)
+	if result != "hello" {
+		t.Errorf("expected 'hello' for pointer-field deref, got %v", result)
+	}
+}
+
+func TestResolveStructField_NilRootPointer(t *testing.T) {
+	// Exercises resolveStructField top-level nil pointer → return nil (line 843-844)
+	type S struct{ Name string }
+	var p *S
+	ctx := &ResolveContext{State: reflect.ValueOf(p), IDs: &IDCounter{}}
+	result := ResolveExpr("Name", ctx)
+	if result != nil {
+		t.Errorf("expected nil for nil root pointer, got %v", result)
+	}
+}
+
+func TestResolveExpr_MethodWithArgsNoReturn(t *testing.T) {
+	// Exercises callMethodWithArgs NumOut != 1 branch (line 827-828)
+	// NoReturnWithArgs takes args but returns nothing
+	state := &testCallState{}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  map[string]any{"a": 1, "b": 2},
+		IDs:   &IDCounter{},
+	}
+	result := ResolveExpr("NoReturnWithArgs(a, b)", ctx)
+	if result != nil {
+		t.Errorf("expected nil for method with args but no return, got %v", result)
+	}
+}
+
+func TestParse_KeydownTrailingSemicolon(t *testing.T) {
+	// Exercises g-keydown empty part continue (line 255-256 in extractAttrsAndDirectives)
+	tmplHTML := `<div g-keydown="Enter:Save;"></div>`
+	nodes, err := ParseTemplate(tmplHTML, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	div := findTemplateByTag(nodes, "div")
+	if div == nil {
+		t.Fatal("no div found")
+	}
+	// Should have exactly 1 keydown directive (Enter:Save), not 2
+	count := 0
+	for _, d := range div.Directives {
+		if d.Type == "keydown" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected 1 keydown directive (trailing ; ignored), got %d", count)
+	}
+}
+
+func TestParse_ForOnSVGWithChildren(t *testing.T) {
+	// Exercises parseForTemplate child iteration with SVG namespace propagation (lines 183-189)
+	tmplHTML := `<svg g-for="g in Groups"><rect width="10"></rect><circle r="5"></circle></svg>`
+	nodes, err := ParseTemplate(tmplHTML, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var forNode *TemplateNode
+	for _, n := range nodes {
+		if n.IsFor {
+			forNode = n
+			break
+		}
+	}
+	if forNode == nil {
+		t.Fatal("no for node found")
+	}
+	body := forNode.ForBody[0]
+	if body.Namespace != "http://www.w3.org/2000/svg" {
+		t.Errorf("expected SVG namespace on for body, got %q", body.Namespace)
+	}
+	// Children (rect, circle) should inherit SVG namespace
+	elementChildren := 0
+	for _, c := range body.Children {
+		if !c.IsText {
+			elementChildren++
+			if c.Namespace != "http://www.w3.org/2000/svg" {
+				t.Errorf("child %s should inherit SVG namespace, got %q", c.Tag, c.Namespace)
+			}
+		}
+	}
+	if elementChildren < 2 {
+		t.Errorf("expected at least 2 element children, got %d", elementChildren)
 	}
 }
 

@@ -6,6 +6,18 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// Unreachable code — cannot be covered via tests
+//
+// ComputeDescendants final return (node.go:249):
+//   The Node interface is a closed set (TextNode, ElementNode,
+//   KeyedElementNode, ComponentNode, PluginNode, LazyNode). The default
+//   return 0 after the type switch can never be reached.
+//
+// lazyArgsEqual / valEqual — each have ~1 statement gap from branches
+//   that require internal states not producible through the public API.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Text diffing
 // ---------------------------------------------------------------------------
 
