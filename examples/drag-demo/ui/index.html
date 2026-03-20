@@ -75,8 +75,6 @@
         }
         .canvas-card:hover { transform: scale(1.01); }
         .canvas-card.g-dragging { opacity: 0.3; }
-        .canvas-card.g-drag-over-above { box-shadow: 0 -2px 0 0 #333; }
-        .canvas-card.g-drag-over-below { box-shadow: 0 2px 0 0 #333; }
         .canvas-card span { flex: 1; }
         .canvas-card .remove { cursor: pointer; opacity: 0.6; }
         .canvas-card .remove:hover { opacity: 1; }
@@ -101,37 +99,36 @@
 </head>
 <body>
     <h1>Drag &amp; Drop Demo</h1>
-    <p class="subtitle">Groups &middot; Dropzones &middot; String data &middot; Position</p>
+    <p class="subtitle">Drag colors to the canvas, reorder, or trash them</p>
 
     <div class="layout">
         <div class="palette">
             <h2>Palette</h2>
-            <div class="palette-item" style="background:#e74c3c" g-draggable.palette="'red'">Red</div>
-            <div class="palette-item" style="background:#27ae60" g-draggable.palette="'green'">Green</div>
-            <div class="palette-item" style="background:#2980b9" g-draggable.palette="'blue'">Blue</div>
-            <div class="palette-item" style="background:#e67e22" g-draggable.palette="'orange'">Orange</div>
-            <div class="palette-item" style="background:#8e44ad" g-draggable.palette="'purple'">Purple</div>
-            <div class="palette-item" style="background:#e91e8b" g-draggable.palette="'pink'">Pink</div>
+            <div g-for="color, i in Palette" class="palette-item"
+                 g-style:background-color="color.Hex"
+                 g-draggable="i">
+                <span g-text="color.Name"></span>
+            </div>
         </div>
 
         <div class="canvas-area">
             <h2>Canvas</h2>
-            <div class="canvas" g-dropzone="'canvas'" g-drop.palette="Add">
-                <div g-show="Canvas" style="display:none">
+            <div class="canvas" g-drop="Add">
+                <div g-if="Canvas">
                     <div g-for="card, i in Canvas" class="canvas-card"
                          g-style:background-color="card.Color"
-                         g-draggable.canvas="i"
-                         g-drop.canvas="Reorder">
+                         g-draggable="i"
+                         g-drop="Reorder">
                         <span g-text="card.Label"></span>
-                        <span class="remove" g-click="Remove(i)">&times;</span>
+                        <span class="remove" g-click="Remove(i, 0)">&times;</span>
                     </div>
                 </div>
-                <div class="canvas-empty" g-show="Canvas">
+                <div class="canvas-empty" g-hide="Canvas">
                     Drag colors from the palette
                 </div>
             </div>
 
-            <div class="trash" g-dropzone="'trash'" g-drop.canvas="Remove">
+            <div class="trash" g-drop="Remove">
                 Drop here to remove
             </div>
         </div>

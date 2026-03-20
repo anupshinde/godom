@@ -31,11 +31,19 @@ type FormField struct {
 	IsSection  bool
 }
 
+type PaletteItem struct {
+	Type  string
+	Label string
+	Icon  string
+	Color string
+}
+
 type FormBuilder struct {
 	godom.Component
 
-	Title  string
-	Fields []FormField
+	Title   string
+	Palette []PaletteItem
+	Fields  []FormField
 
 	// Selection
 	Selected     int
@@ -131,9 +139,14 @@ func splitOptions(s string) []string {
 }
 
 // AddField is called when a palette item is dropped on the canvas.
-func (f *FormBuilder) AddField(fieldType string) {
+// Receives: (paletteIndex, targetValue) from the drop handler.
+func (f *FormBuilder) AddField(from, to float64) {
+	i := int(from)
+	if i < 0 || i >= len(f.Palette) {
+		return
+	}
 	f.applyConfig()
-	f.Fields = append(f.Fields, newField(fieldType))
+	f.Fields = append(f.Fields, newField(f.Palette[i].Type))
 	f.HasFields = true
 	f.ShowEmpty = false
 }
@@ -231,7 +244,7 @@ func (f *FormBuilder) DeleteField(i int) {
 }
 
 // RemoveField is called when a canvas field is dropped on the trash zone.
-func (f *FormBuilder) RemoveField(from float64) {
+func (f *FormBuilder) RemoveField(from, to float64) {
 	f.DeleteField(int(from))
 }
 
@@ -307,7 +320,16 @@ func main() {
 	eng := godom.NewEngine()
 	eng.Port = 8084
 	eng.Mount(&FormBuilder{
-		Title:          "My Form",
+		Title: "My Form",
+		Palette: []PaletteItem{
+			{Type: "text", Label: "Text Input", Icon: "T", Color: "#4a90d9"},
+			{Type: "textarea", Label: "Text Area", Icon: "\u00b6", Color: "#27ae60"},
+			{Type: "select", Label: "Dropdown", Icon: "\u25be", Color: "#8e44ad"},
+			{Type: "checkbox", Label: "Checkbox", Icon: "\u2713", Color: "#e67e22"},
+			{Type: "number", Label: "Number", Icon: "#", Color: "#e74c3c"},
+			{Type: "date", Label: "Date", Icon: "\U0001f4c5", Color: "#16a085"},
+			{Type: "section", Label: "Section", Icon: "\u2014", Color: "#7f8c8d"},
+		},
 		Selected:       -1,
 		Editing:        true,
 		ShowEmpty:      true,

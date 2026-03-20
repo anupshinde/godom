@@ -10,6 +10,11 @@ import (
 //go:embed ui
 var ui embed.FS
 
+type PaletteColor struct {
+	Name string
+	Hex  string
+}
+
 type Card struct {
 	Color string
 	Label string
@@ -17,44 +22,37 @@ type Card struct {
 
 type Demo struct {
 	godom.Component
-	Canvas []Card
+	Palette []PaletteColor
+	Canvas  []Card
 }
 
 // Add is called when a palette item is dropped on the canvas.
-// Receives: from (string color name), to (dropzone value), position.
-func (d *Demo) Add(color string) {
-	labels := map[string]string{
-		"red": "Red", "green": "Green", "blue": "Blue",
-		"orange": "Orange", "purple": "Purple", "pink": "Pink",
+// Receives: (paletteIndex, targetValue) from the drop handler.
+func (d *Demo) Add(from, to float64) {
+	i := int(from)
+	if i < 0 || i >= len(d.Palette) {
+		return
 	}
-	d.Canvas = append(d.Canvas, Card{
-		Color: color,
-		Label: labels[color],
-	})
+	c := d.Palette[i]
+	d.Canvas = append(d.Canvas, Card{Color: c.Hex, Label: c.Name})
 }
 
 // Reorder is called when a canvas card is dropped on another canvas card.
-func (d *Demo) Reorder(from, to float64, position string) {
+func (d *Demo) Reorder(from, to float64) {
 	f, t := int(from), int(to)
 	if f == t || f < 0 || t < 0 || f >= len(d.Canvas) || t >= len(d.Canvas) {
 		return
 	}
 	item := d.Canvas[f]
 	d.Canvas = append(d.Canvas[:f], d.Canvas[f+1:]...)
-	// If dropping below the target, insert after it
-	if position == "below" && t > f {
-		// t already adjusted by removal
-	} else if position == "below" && t <= f {
-		t++
-		if t > len(d.Canvas) {
-			t = len(d.Canvas)
-		}
+	if t > f {
+		t--
 	}
 	d.Canvas = append(d.Canvas[:t], append([]Card{item}, d.Canvas[t:]...)...)
 }
 
 // Remove is called when a canvas card is dropped on the trash zone.
-func (d *Demo) Remove(from float64) {
+func (d *Demo) Remove(from, to float64) {
 	f := int(from)
 	if f < 0 || f >= len(d.Canvas) {
 		return
@@ -65,6 +63,15 @@ func (d *Demo) Remove(from float64) {
 func main() {
 	eng := godom.NewEngine()
 	eng.Port = 8083
-	eng.Mount(&Demo{}, ui, "ui/index.html")
+	eng.Mount(&Demo{
+		Palette: []PaletteColor{
+			{Name: "Red", Hex: "#e74c3c"},
+			{Name: "Green", Hex: "#27ae60"},
+			{Name: "Blue", Hex: "#2980b9"},
+			{Name: "Orange", Hex: "#e67e22"},
+			{Name: "Purple", Hex: "#8e44ad"},
+			{Name: "Pink", Hex: "#e91e8b"},
+		},
+	}, ui, "ui/index.html")
 	log.Fatal(eng.Start())
 }
