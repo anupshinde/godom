@@ -499,17 +499,10 @@
         if (el[listenerKey]) return;
         el[listenerKey] = true;
 
-        // __bind__: sync input value back to Go struct field
-        if (ev.method === "__bind__") {
-            el.addEventListener("input", function() {
-                var fieldArg = ev.args[0]; // already JSON-encoded field name
-                var valArg = textEncoder.encode(JSON.stringify(el.value));
-                sendMethodCall(nodeId, "__bind__", [fieldArg, valArg]);
-            });
-            el._godomSync = true; // prevent autoRegisterInputSync double-registration
-            return;
-        }
-
+        // TODO: drag/drop requires synchronous browser APIs (dataTransfer)
+        // that can't round-trip to Go. Revisit whether this can be made
+        // more generic so the bridge has no g-* directive knowledge.
+        //
         // __draggable__: set up drag with group + value
         if (ev.method === "__draggable__") {
             // ev.args are base64 strings (Go []byte → JSON base64)

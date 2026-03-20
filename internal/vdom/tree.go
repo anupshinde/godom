@@ -629,14 +629,7 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext, nodeID int) Facts {
 				f.Props = make(map[string]any)
 			}
 			f.Props["value"] = fmt.Sprint(val)
-			ctx.addBinding(d.Expr, nodeID, "prop", "value")
-			if f.Events == nil {
-				f.Events = make(map[string]EventHandler)
-			}
-			f.Events["input"] = EventHandler{
-				Handler: "__bind__",
-				Args:    []any{d.Expr},
-			}
+			ctx.addBinding(d.Expr, nodeID, "bind", "value")
 
 		case "value":
 			val := ResolveExpr(d.Expr, ctx)

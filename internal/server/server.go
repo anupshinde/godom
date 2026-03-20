@@ -550,16 +550,37 @@ func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPoo
 		args[i] = json.RawMessage(a)
 	}
 
-	// Special handler: __bind__ writes a value to a struct field
-	if call.Method == "__bind__" {
-		if len(args) >= 2 {
-			var field string
-			if err := json.Unmarshal(args[0], &field); err == nil {
-				ci.SetField(field, args[1])
+	// Sync g-bind values from the live tree back to the struct.
+	// Layer 1 keeps PrevTree props in sync with browser input values,
+	// so we read from PrevTree and write to the struct before the method runs.
+	if ci.PrevTree != nil && ci.Bindings != nil {
+		for field, bindings := range ci.Bindings {
+			for _, b := range bindings {
+				if b.Kind != "bind" {
+					continue
+				}
+				node := vdom.FindNodeByID(ci.PrevTree, b.NodeID)
+				if node == nil {
+					continue
+				}
+				el, ok := node.(*vdom.ElementNode)
+				if !ok {
+					continue
+				}
+				if el.Facts.Props == nil {
+					continue
+				}
+				val, exists := el.Facts.Props["value"]
+				if !exists {
+					continue
+				}
+				raw, err := json.Marshal(val)
+				if err != nil {
+					continue
+				}
+				ci.SetField(field, json.RawMessage(raw))
 			}
 		}
-		ci.Mu.Unlock()
-		return
 	}
 
 	if env.Debug {
