@@ -549,21 +549,34 @@
             return;
         }
 
-        // Throttle mousemove: fire at most once every 50ms.
+        // Throttle mousemove: dispatch at most once per animation frame.
         var isMouseMove = (eventType === "mousemove");
-        var lastMoveTime = 0;
+        var pendingFrame = 0;
+        var latestDomEvent = null;
 
         el.addEventListener(eventType, function(domEvent) {
             if (ev.key && domEvent.key !== ev.key) return;
             if (isMouseMove) {
-                var now = Date.now();
-                if (now - lastMoveTime < 50) return;
-                lastMoveTime = now;
+                latestDomEvent = domEvent;
+                if (pendingFrame) return;
+                pendingFrame = requestAnimationFrame(function() {
+                    pendingFrame = 0;
+                    var de = latestDomEvent;
+                    if (ev.sp) de.stopPropagation();
+                    if (ev.pd) de.preventDefault();
+                    var allArgs = ev.args ? ev.args.slice() : [];
+                    allArgs.unshift(
+                        textEncoder.encode(String(de.clientX)),
+                        textEncoder.encode(String(de.clientY))
+                    );
+                    sendMethodCall(nodeId, ev.method, allArgs);
+                });
+                return;
             }
             if (ev.sp) domEvent.stopPropagation();
             if (ev.pd) domEvent.preventDefault();
             var allArgs = ev.args ? ev.args.slice() : [];
-            if (eventType === "mousedown" || eventType === "mousemove" || eventType === "mouseup") {
+            if (eventType === "mousedown" || eventType === "mouseup") {
                 allArgs.unshift(
                     textEncoder.encode(String(domEvent.clientX)),
                     textEncoder.encode(String(domEvent.clientY))
