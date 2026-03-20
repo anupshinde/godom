@@ -153,7 +153,7 @@
             registerEvents(tree.id, el, tree.ev);
         }
 
-        // Layer 1: auto-sync input values (fallback for inputs without g-bind)
+        // Layer 1: auto-sync input values back to Go DOM view (PrevTree)
         if (!tree.ns && tree.tag) {
             autoRegisterInputSync(tree.id, el, tree.tag);
         }
