@@ -559,6 +559,30 @@ func TestDiff_LazyDifferentArgs(t *testing.T) {
 // Keyed children (simple/placeholder)
 // ---------------------------------------------------------------------------
 
+func TestDiff_KeyedIdenticalChildren(t *testing.T) {
+	// Same keys, same order, same content → no removes, no inserts, no subPatches → early return
+	old := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{NodeBase: NodeBase{ID: 10}, Text: "A"}},
+			{Key: "b", Node: &TextNode{NodeBase: NodeBase{ID: 11}, Text: "B"}},
+		},
+	}
+	new := &KeyedElementNode{
+		Tag: "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{NodeBase: NodeBase{ID: 10}, Text: "A"}},
+			{Key: "b", Node: &TextNode{NodeBase: NodeBase{ID: 11}, Text: "B"}},
+		},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+	patches := Diff(old, new)
+	if len(patches) != 0 {
+		t.Errorf("expected 0 patches for identical keyed children, got %d: %+v", len(patches), patches)
+	}
+}
+
 func TestDiff_KeyedSameKeys(t *testing.T) {
 	old := &KeyedElementNode{
 		Tag: "ul",

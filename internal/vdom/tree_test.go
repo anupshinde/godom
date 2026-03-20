@@ -2285,6 +2285,71 @@ func findElement(nodes []Node, tag string) *ElementNode {
 // Additional coverage tests
 // ---------------------------------------------------------------------------
 
+func TestParse_AllDirectiveTypes(t *testing.T) {
+	// Exercises every case branch in extractAttrsAndDirectives
+	// Main element: all directives except g-for/g-key (those are handled separately)
+	tmplHTML := `<div g-text="Name" g-bind="Email" g-value="Name" g-checked="Done" g-if="Visible" g-show="Visible" g-hide="Hidden" g-class:active="Done" g-attr:role="Name" g-style:width="Width" g-click="Save" g-keydown="Enter:Submit" g-mousedown="Down" g-mousemove="Move" g-mouseup="Up" g-wheel="Scroll" g-drop="HandleDrop" g-draggable="Name" g-dropzone="HandleDrop" data-custom="val"></div>`
+	nodes, err := ParseTemplate(tmplHTML, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	div := findTemplateByTag(nodes, "div")
+	if div == nil {
+		t.Fatal("no div found")
+	}
+
+	// Collect all directive types found
+	dirTypes := map[string]bool{}
+	for _, d := range div.Directives {
+		dirTypes[d.Type] = true
+	}
+
+	expected := []string{"text", "bind", "value", "checked", "if", "show", "hide", "class", "attr", "style", "click", "keydown", "mousedown", "mousemove", "mouseup", "wheel", "drop", "draggable", "dropzone"}
+	for _, typ := range expected {
+		if !dirTypes[typ] {
+			t.Errorf("missing directive type %q in parsed output", typ)
+		}
+	}
+
+	// data-custom should be in attrs, not directives
+	hasCustomAttr := false
+	for _, a := range div.Attrs {
+		if a.Key == "data-custom" {
+			hasCustomAttr = true
+		}
+	}
+	if !hasCustomAttr {
+		t.Error("data-custom should be in attrs (default case)")
+	}
+
+	// Separate element: g-for with g-key exercises the g-for/g-key continue + g-plugin + :prop skip
+	tmplHTML2 := `<div g-for="x in Items" g-key="x.ID" g-plugin:chart="Data" :text="Name" g-click="Save"></div>`
+	nodes2, err := ParseTemplate(tmplHTML2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// g-for element becomes a ForNode; its ForBody[0] has the remaining directives
+	if len(nodes2) == 0 {
+		t.Fatal("no nodes from for template")
+	}
+	forNode := nodes2[0]
+	if !forNode.IsFor {
+		t.Fatal("expected for node")
+	}
+	body := forNode.ForBody[0]
+	// g-for, g-key, g-plugin:, and :text should all be skipped/continued
+	// Only g-click should remain as a directive
+	foundClick := false
+	for _, d := range body.Directives {
+		if d.Type == "click" {
+			foundClick = true
+		}
+	}
+	if !foundClick {
+		t.Error("expected click directive on for body after g-for/g-key/g-plugin/: are skipped")
+	}
+}
+
 func TestParse_ShowClickDropDirectives(t *testing.T) {
 	// Exercises extractAttrsAndDirectives for g-show, g-click, g-drop
 	tmplHTML := `<div g-show="Visible" g-click="Save" g-drop="HandleDrop"></div>`
