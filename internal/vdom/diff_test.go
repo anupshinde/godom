@@ -1805,11 +1805,15 @@ func TestDiff_KeyedElementFactsChange(t *testing.T) {
 }
 
 func TestDiff_LazyNilFunc(t *testing.T) {
-	// COVERAGE GAP: lazyArgsEqual panics on nil Func because
-	// reflect.ValueOf(nil).Pointer() panics. This is a bug in production
-	// code — lazyArgsEqual should check for nil Func before comparing pointers.
-	// Skipping to avoid panic. Needs production code fix.
-	t.Skip("lazyArgsEqual panics on nil Func — needs production code fix")
+	// BUG: lazyArgsEqual panics on nil Func because
+	// reflect.ValueOf(nil).Pointer() panics. lazyArgsEqual should check
+	// for nil Func before comparing pointers.
+	old := &LazyNode{NodeBase: NodeBase{ID: 1}, Func: nil}
+	new := &LazyNode{NodeBase: NodeBase{ID: 1}, Func: nil}
+	patches := Diff(old, new)
+	if len(patches) != 0 {
+		t.Errorf("expected no patches for identical nil-func lazy nodes, got %+v", patches)
+	}
 }
 
 func TestDiff_LazyDifferentFuncs(t *testing.T) {
