@@ -7,13 +7,12 @@
 // Structure:
 //   1. State & globals
 //   2. Connection — WebSocket with auto-reconnect and disconnect overlay
-//   3. DOM construction — build DOM from tree descriptions
-//   4. Patch execution — apply patches by type
+//   3. DOM construction — build DOM nodes from tree descriptions
+//   4. Patch execution — dispatch by op type
 //   5. Facts application — properties, attributes, styles, events
-//   6. Event handling — wire DOM events to send messages back to Go
-//   7. Drag & drop — draggable/dropzone setup with group filtering
-//   8. Plugin lifecycle — init/update for JS plugins
-//   9. Helpers
+//   6. Event handling — drag/drop, input sync, method calls
+//   7. Helpers
+//   8. Plugin registration (global API)
 
 (function() {
 
