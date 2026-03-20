@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"path"
 	"reflect"
 	"strings"
 
@@ -96,7 +97,8 @@ func (a *Engine) RegisterComponent(tag string, comp interface{}) {
 }
 
 // Mount registers a component struct with an embedded filesystem containing HTML templates.
-func (a *Engine) Mount(comp interface{}, fsys fs.FS) {
+// The entryPath is the path to the index.html file within fsys (e.g. "ui/index.html").
+func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 	v := reflect.ValueOf(comp)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
 		log.Fatal("godom: Mount requires a pointer to a struct")
@@ -108,19 +110,24 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS) {
 		log.Fatal("godom: mounted struct must embed godom.Component")
 	}
 
-	root, err := template.FindIndexHTML(fsys)
-	if err != nil {
-		log.Fatalf("godom: %v", err)
+	// Derive the static FS root from the entry path's directory
+	dir := path.Dir(entryPath)
+	if dir == "." {
+		a.staticFS = fsys
+	} else {
+		sub, err := fs.Sub(fsys, dir)
+		if err != nil {
+			log.Fatalf("godom: invalid entry path %q: %v", entryPath, err)
+		}
+		a.staticFS = sub
 	}
 
-	a.staticFS = root
-
-	indexHTML, err := fs.ReadFile(root, "index.html")
+	indexHTML, err := fs.ReadFile(fsys, entryPath)
 	if err != nil {
-		log.Fatalf("godom: failed to read index.html: %v", err)
+		log.Fatalf("godom: failed to read %s: %v", entryPath, err)
 	}
 
-	composed, err := template.ExpandComponents(string(indexHTML), root, a.components)
+	composed, err := template.ExpandComponents(string(indexHTML), a.staticFS, a.components)
 	if err != nil {
 		log.Fatalf("godom: failed to expand components: %v", err)
 	}

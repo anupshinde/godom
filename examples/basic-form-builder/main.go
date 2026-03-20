@@ -313,6 +313,6 @@ func main() {
 		ShowEmpty:      true,
 		NoSelection:    true,
 		PreviewBtnText: "Preview",
-	}, ui)
+	}, ui, "ui/index.html")
 	log.Fatal(eng.Start())
 }

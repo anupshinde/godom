@@ -65,6 +65,6 @@ func (d *Demo) Remove(from float64) {
 func main() {
 	eng := godom.NewEngine()
 	eng.Port = 8083
-	eng.Mount(&Demo{}, ui)
+	eng.Mount(&Demo{}, ui, "ui/index.html")
 	log.Fatal(eng.Start())
 }

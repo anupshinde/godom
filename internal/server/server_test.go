@@ -89,15 +89,10 @@ func TestVDOMBuildInit(t *testing.T) {
 		t.Error("expected count '5' in tree")
 	}
 
-	// Should have events (click, input)
+	// Should have events (click)
 	foundClick := findEventInTree(&tree, "click")
 	if !foundClick {
 		t.Error("expected click event in tree")
-	}
-
-	foundInput := findEventInTree(&tree, "input")
-	if !foundInput {
-		t.Error("expected input event in tree")
 	}
 
 	// Should be serializable

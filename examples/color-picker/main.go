@@ -72,7 +72,7 @@ func (a *App) RemoveColor(i int) {
 func main() {
 	eng := godom.NewEngine()
 	eng.RegisterComponent("color-picker", &ColorPicker{Hue: 200, Sat: 70, Lit: 50})
-	eng.Mount(&App{}, ui)
+	eng.Mount(&App{}, ui, "ui/index.html")
 	log.Fatal(eng.Start())
 }
 

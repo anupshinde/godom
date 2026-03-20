@@ -32,6 +32,6 @@ func main() {
 	}()
 
 	eng := godom.NewEngine()
-	eng.Mount(app, ui)
+	eng.Mount(app, ui, "ui/index.html")
 	log.Fatal(eng.Start())
 }

@@ -58,6 +58,6 @@ func main() {
 	eng := godom.NewEngine()
 	eng.Port = 8082
 	eng.RegisterComponent("todo-item", &TodoItem{})
-	eng.Mount(&TodoApp{}, ui)
+	eng.Mount(&TodoApp{}, ui, "ui/index.html")
 	log.Fatal(eng.Start())
 }

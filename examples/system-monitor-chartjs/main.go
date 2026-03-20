@@ -298,6 +298,6 @@ func main() {
 	go root.startMonitor()
 
 	fmt.Println("System monitor — CPU, memory, disk, swap, load with Chart.js")
-	eng.Mount(root, ui)
+	eng.Mount(root, ui, "ui/index.html")
 	log.Fatal(eng.Start())
 }

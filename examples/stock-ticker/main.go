@@ -231,6 +231,6 @@ func main() {
 	eng := godom.NewEngine()
 	root := &App{}
 	go root.startTicker()
-	eng.Mount(root, ui)
+	eng.Mount(root, ui, "ui/index.html")
 	log.Fatal(eng.Start())
 }

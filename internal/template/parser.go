@@ -118,33 +118,6 @@ func TransferAttrsToRoot(htmlStr string, attrs string) string {
 	return htmlStr[:idx] + " " + attrs + htmlStr[idx:]
 }
 
-// FindIndexHTML locates index.html in the filesystem,
-// checking root and one level of subdirectories.
-func FindIndexHTML(fsys fs.FS) (fs.FS, error) {
-	if _, err := fs.ReadFile(fsys, "index.html"); err == nil {
-		return fsys, nil
-	}
-
-	entries, err := fs.ReadDir(fsys, ".")
-	if err != nil {
-		return nil, fmt.Errorf("cannot read filesystem: %w", err)
-	}
-
-	for _, e := range entries {
-		if e.IsDir() {
-			if _, err := fs.ReadFile(fsys, e.Name()+"/index.html"); err == nil {
-				sub, err := fs.Sub(fsys, e.Name())
-				if err != nil {
-					return nil, err
-				}
-				return sub, nil
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("index.html not found in filesystem")
-}
-
 // --- Helpers used by validate.go ---
 
 // ForParts holds parsed parts of a g-for expression.
