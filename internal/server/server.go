@@ -278,8 +278,8 @@ func buildTree(ci *component.Info) *vdom.ElementNode {
 	root := &vdom.ElementNode{NodeBase: vdom.NodeBase{ID: ci.IDCounter.Next()}, Tag: "body", Children: children}
 	vdom.ComputeDescendants(root)
 
-	// Capture bindings from the first resolve
-	if ci.Bindings == nil && ctx.Bindings != nil {
+	// Update bindings on every resolve (node IDs change on rebuild)
+	if ctx.Bindings != nil {
 		ci.Bindings = ctx.Bindings
 	}
 

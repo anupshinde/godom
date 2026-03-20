@@ -535,11 +535,11 @@
             el.addEventListener("drop", function(domEvent) {
                 domEvent.preventDefault();
                 el.classList.remove("g-drag-over");
-                var sourceValue = domEvent.dataTransfer.getData("text/plain") || "";
-                var targetValue = el.getAttribute("data-drag-value") || "";
+                var sourceValue = domEvent.dataTransfer.getData("text/plain") || "null";
+                var targetValue = el.getAttribute("data-drag-value") || "null";
                 var args = [
-                    textEncoder.encode(JSON.stringify(sourceValue)),
-                    textEncoder.encode(JSON.stringify(targetValue))
+                    textEncoder.encode(sourceValue),
+                    textEncoder.encode(targetValue)
                 ];
                 for (var a = 0; a < (ev.args || []).length; a++) {
                     args.push(ev.args[a]);
