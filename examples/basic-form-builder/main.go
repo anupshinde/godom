@@ -139,7 +139,7 @@ func (f *FormBuilder) AddField(fieldType string) {
 }
 
 // Reorder is called when a canvas field is dropped on another canvas field.
-func (f *FormBuilder) Reorder(from, to float64, position string) {
+func (f *FormBuilder) Reorder(from, to float64) {
 	f.applyConfig()
 	fr, t := int(from), int(to)
 	if fr == t || fr < 0 || t < 0 || fr >= len(f.Fields) || t >= len(f.Fields) {
@@ -150,12 +150,6 @@ func (f *FormBuilder) Reorder(from, to float64, position string) {
 	item := f.Fields[fr]
 	f.Fields = append(f.Fields[:fr], f.Fields[fr+1:]...)
 
-	if position == "below" && t <= fr {
-		t++
-		if t > len(f.Fields) {
-			t = len(f.Fields)
-		}
-	}
 	f.Fields = append(f.Fields[:t], append([]FormField{item}, f.Fields[t:]...)...)
 
 	// Update selected index to follow the moved item

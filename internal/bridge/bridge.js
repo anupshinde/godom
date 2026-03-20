@@ -28,6 +28,7 @@
 
     var Proto = godomProto;
     var textDecoder = new TextDecoder();
+    var textEncoder = new TextEncoder();
 
     // =========================================================================
     // 2. Connection — WebSocket with auto-reconnect and disconnect overlay
@@ -122,7 +123,10 @@
 
         if (tree.t === "text") {
             var textNode = document.createTextNode(tree.x || "");
-            if (tree.id) nodeMap[tree.id] = textNode;
+            if (tree.id) {
+                nodeMap[tree.id] = textNode;
+                textNode._godomId = tree.id;
+            }
             return textNode;
         }
 
@@ -134,7 +138,10 @@
             el = document.createElement(tree.tag);
         }
 
-        if (tree.id) nodeMap[tree.id] = el;
+        if (tree.id) {
+            nodeMap[tree.id] = el;
+            el._godomId = tree.id;
+        }
 
         // Apply facts: props, attrs, styles, namespaced attrs
         applyProps(el, tree.p);
@@ -480,8 +487,6 @@
         ws.send(tagged);
     }
 
-    var textEncoder = new TextEncoder();
-
     function registerEvents(nodeId, el, events) {
         for (var i = 0; i < events.length; i++) {
             registerSingleEvent(nodeId, el, events[i]);
@@ -506,6 +511,53 @@
             return;
         }
 
+        // __draggable__: set up drag with group + value
+        if (ev.method === "__draggable__") {
+            // ev.args are base64 strings (Go []byte → JSON base64)
+            // atob decodes base64 to the raw JSON string
+            var dragGroup = ev.args[0] ? atob(ev.args[0]) : '""';
+            var dragValue = ev.args[1] ? atob(ev.args[1]) : "null";
+            el.addEventListener("dragstart", function(domEvent) {
+                domEvent.dataTransfer.setData("godom/group", dragGroup);
+                domEvent.dataTransfer.setData("godom/value", dragValue);
+                domEvent.dataTransfer.effectAllowed = "move";
+                el.classList.add("g-dragging");
+            });
+            el.addEventListener("dragend", function() {
+                el.classList.remove("g-dragging");
+            });
+            // Store raw JSON value on element for drop target to read
+            el._godomDragValue = dragValue;
+            return;
+        }
+
+        // drop: read drag source value from dataTransfer, prepend to method args
+        if (eventType === "drop") {
+            el.addEventListener("dragover", function(domEvent) {
+                domEvent.preventDefault();
+                el.classList.add("g-drag-over");
+            });
+            el.addEventListener("dragleave", function() {
+                el.classList.remove("g-drag-over");
+            });
+            el.addEventListener("drop", function(domEvent) {
+                domEvent.preventDefault();
+                el.classList.remove("g-drag-over");
+                var sourceValue = domEvent.dataTransfer.getData("godom/value") || "null";
+                var targetValue = el._godomDragValue || "null";
+                // Call method with (sourceValue, targetValue) prepended to any existing args
+                var args = [
+                    textEncoder.encode(sourceValue),
+                    textEncoder.encode(targetValue)
+                ];
+                for (var a = 0; a < (ev.args || []).length; a++) {
+                    args.push(ev.args[a]);
+                }
+                sendMethodCall(nodeId, ev.method, args);
+            });
+            return;
+        }
+
         el.addEventListener(eventType, function(domEvent) {
             if (ev.key && domEvent.key !== ev.key) return;
             if (ev.sp) domEvent.stopPropagation();
@@ -521,13 +573,11 @@
     // Remove a DOM node and clean up all nodeMap references.
     function cleanNodeMap(node) {
         if (!node) return;
-        // Remove this node's ID from nodeMap
-        for (var id in nodeMap) {
-            if (nodeMap[id] === node) {
-                delete nodeMap[id];
-                delete pluginState[id];
-                break;
-            }
+        // Remove this node's ID from nodeMap via stored _godomId
+        var id = node._godomId;
+        if (id !== undefined) {
+            delete nodeMap[id];
+            delete pluginState[id];
         }
         // Recurse into children
         if (node.childNodes) {

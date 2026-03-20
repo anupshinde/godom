@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/component"
 	gproto "github.com/anupshinde/godom/internal/proto"
 	"github.com/anupshinde/godom/internal/render"
@@ -23,6 +24,7 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 	"google.golang.org/protobuf/proto"
 )
+
 
 // Config holds everything the server needs to run.
 type Config struct {
@@ -558,6 +560,10 @@ func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPoo
 		}
 		ci.Mu.Unlock()
 		return
+	}
+
+	if env.Debug {
+		log.Printf("godom: method call %q args=%v", call.Method, args)
 	}
 
 	// Call the method
