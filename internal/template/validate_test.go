@@ -797,9 +797,6 @@ func TestValidateDirectives_NoDirectives(t *testing.T) {
 func TestValidateDirectives_ChildFallback_MouseEvent(t *testing.T) {
 	// ChildAction exists as a method on the child component.
 	// g-mousedown="ChildAction" should pass via child fallback, just like g-click does.
-	// BUG: validateAgainstChildren routes mousedown/mousemove/mouseup/wheel through
-	// the default case (validateFieldExpr) instead of validateMethodRef, so child
-	// methods that aren't zero-arg/single-return computed values are rejected.
 	ci := newValTestCI()
 	ci.Registry["my-child"] = &component.Reg{
 		Typ: reflect.TypeOf(childMethodComp{}),
@@ -826,14 +823,11 @@ func TestValidateDirectives_BindChildFallback(t *testing.T) {
 
 // === Negative tests and edge cases ===
 
-// --- g-drop.group child fallback routes through validateFieldExpr, not validateMethodRef ---
+// --- g-drop.group child fallback ---
 
 func TestValidateDirectives_DropGroupChildFallback(t *testing.T) {
 	// ChildDrop exists as a method on the child component.
 	// g-drop.canvas="ChildDrop" should pass via child fallback, just like g-drop="ChildDrop" does.
-	// BUG: ValidateDirectives passes raw dirType "drop.canvas" to validateAgainstChildren,
-	// not normalized baseDirType "drop". So "drop.canvas" misses the "click","drop" case
-	// and falls into default (validateFieldExpr), which can't validate methods properly.
 	ci := newValTestCI()
 	ci.Registry["my-child"] = &component.Reg{
 		Typ: reflect.TypeOf(childMethodComp{}),
