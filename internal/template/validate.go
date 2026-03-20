@@ -54,37 +54,37 @@ func ValidateDirectives(htmlStr string, ci *component.Info) error {
 			}
 		case "bind":
 			if err := validateBindExpr(expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(dirType, expr, childCIs) {
+				if !validateAgainstChildren(baseDirType, expr, childCIs) {
 					return err
 				}
 			}
 		case "click":
 			if err := validateMethodRef("g-click", expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(dirType, expr, childCIs) {
+				if !validateAgainstChildren(baseDirType, expr, childCIs) {
 					return err
 				}
 			}
 		case "keydown":
 			if err := validateKeydownExpr(expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(dirType, expr, childCIs) {
+				if !validateAgainstChildren(baseDirType, expr, childCIs) {
 					return err
 				}
 			}
 		case "mousedown", "mousemove", "mouseup", "wheel":
 			if err := validateMethodRef("g-"+dirType, expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(dirType, expr, childCIs) {
+				if !validateAgainstChildren(baseDirType, expr, childCIs) {
 					return err
 				}
 			}
 		case "drop":
 			if err := validateMethodRef("g-drop", expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(dirType, expr, childCIs) {
+				if !validateAgainstChildren(baseDirType, expr, childCIs) {
 					return err
 				}
 			}
 		default:
 			if err := validateFieldExpr(expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(dirType, expr, childCIs) {
+				if !validateAgainstChildren(baseDirType, expr, childCIs) {
 					return err
 				}
 			}
@@ -117,7 +117,7 @@ func validateAgainstChildren(dirType, expr string, childCIs []*component.Info) b
 	for _, childCI := range childCIs {
 		childLoopVars := map[string]*loopVarInfo{}
 		switch dirType {
-		case "click", "drop":
+		case "click", "drop", "mousedown", "mousemove", "mouseup", "wheel":
 			if validateMethodRef("g-"+dirType, expr, childCI, childLoopVars) == nil {
 				return true
 			}

@@ -111,7 +111,7 @@ func TransferAttrsToRoot(htmlStr string, attrs string) string {
 		return htmlStr
 	}
 
-	if htmlStr[idx-1] == '/' {
+	if idx > 0 && htmlStr[idx-1] == '/' {
 		return htmlStr[:idx-1] + " " + attrs + " />" + htmlStr[idx+1:]
 	}
 
