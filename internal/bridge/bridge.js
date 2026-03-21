@@ -216,15 +216,10 @@
     function applyPatches(patches) {
         if (!patches) return;
 
-        // Save focus state before patching
         var focusedEl = document.activeElement;
-        var focusedId = null;
         var selStart = null, selEnd = null;
-        if (focusedEl && focusedEl !== document.body && focusedEl._godomId) {
-            focusedId = focusedEl._godomId;
-            if (focusedEl.setSelectionRange) {
-                try { selStart = focusedEl.selectionStart; selEnd = focusedEl.selectionEnd; } catch(e) {}
-            }
+        if (focusedEl && focusedEl.setSelectionRange) {
+            try { selStart = focusedEl.selectionStart; selEnd = focusedEl.selectionEnd; } catch(e) {}
         }
 
         for (var i = 0; i < patches.length; i++) {
@@ -234,14 +229,11 @@
             applyPatch(node, patch);
         }
 
-        // Restore focus after patching
-        if (focusedId) {
-            var el = nodeMap[focusedId];
-            if (el && el !== document.activeElement) {
-                el.focus();
-                if (selStart !== null && el.setSelectionRange) {
-                    try { el.setSelectionRange(selStart, selEnd); } catch(e) {}
-                }
+        // Restore focus only if it was lost during patching
+        if (focusedEl && focusedEl !== document.activeElement) {
+            focusedEl.focus();
+            if (selStart !== null && focusedEl.setSelectionRange) {
+                try { focusedEl.setSelectionRange(selStart, selEnd); } catch(e) {}
             }
         }
     }
