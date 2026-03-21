@@ -422,14 +422,15 @@ func TestConnPool_AddAndRemove(t *testing.T) {
 
 	// Use a real websocket pair for the pool
 	var serverConn *websocket.Conn
+	ready := make(chan struct{})
 	client, cleanup := wsServer(t, func(c *websocket.Conn) {
 		serverConn = c
+		close(ready)
 		// Block until test is done
 		time.Sleep(2 * time.Second)
 	})
 	defer cleanup()
-	// Give server handler a moment to set serverConn
-	time.Sleep(50 * time.Millisecond)
+	<-ready
 
 	_ = client // keep alive
 
