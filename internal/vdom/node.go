@@ -57,6 +57,40 @@ type ElementNode struct {
 
 func (n *ElementNode) NodeType() int { return NodeElement }
 
+// AppendChild adds a child node.
+func (n *ElementNode) AppendChild(child Node) {
+	n.Children = append(n.Children, child)
+}
+
+// RemoveChild removes the child at the given index. Returns false if out of bounds.
+func (n *ElementNode) RemoveChild(index int) bool {
+	if index < 0 || index >= len(n.Children) {
+		return false
+	}
+	n.Children = append(n.Children[:index], n.Children[index+1:]...)
+	return true
+}
+
+// ReplaceChild replaces the child at the given index. Returns false if out of bounds.
+func (n *ElementNode) ReplaceChild(index int, child Node) bool {
+	if index < 0 || index >= len(n.Children) {
+		return false
+	}
+	n.Children[index] = child
+	return true
+}
+
+// RemoveChildByID removes the first child with the given node ID. Returns false if not found.
+func (n *ElementNode) RemoveChildByID(id int) bool {
+	for i, c := range n.Children {
+		if c.NodeID() == id {
+			n.Children = append(n.Children[:i], n.Children[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
 // ---------------------------------------------------------------------------
 // KeyedElement
 // ---------------------------------------------------------------------------
