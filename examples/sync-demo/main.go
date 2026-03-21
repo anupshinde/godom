@@ -13,8 +13,9 @@ var ui embed.FS
 
 type App struct {
 	godom.Component
-	BoxTop  string
-	BoxLeft string
+	BoxTop    string
+	BoxLeft   string
+	PingCount int
 
 	dragging bool
 	posX     float64
@@ -35,20 +36,24 @@ func (a *App) DragStart(x, y float64) {
 }
 
 func (a *App) DragMove(x, y float64) {
+	return
 	if !a.dragging {
 		return
 	}
 	a.posX = x - a.offsetX
 	a.posY = y - a.offsetY
 	a.updateCSS()
-	a.Refresh("BoxTop", "BoxLeft")
+	a.MarkRefresh("BoxTop", "BoxLeft")
 }
 
 func (a *App) DragEnd(x, y float64) {
 	a.dragging = false
 }
 
-func (a *App) Ping() { fmt.Println("Ping") }
+func (a *App) Ping() {
+	a.PingCount++
+	fmt.Printf("Ping %d\n", a.PingCount)
+}
 
 func main() {
 	app := &App{posX: 100, posY: 250}
