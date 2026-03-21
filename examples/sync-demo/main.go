@@ -48,6 +48,8 @@ func (a *App) DragEnd(x, y float64) {
 	a.dragging = false
 }
 
+func (a *App) Ping() { fmt.Println("Ping") }
+
 func main() {
 	app := &App{posX: 100, posY: 250}
 	app.updateCSS()
