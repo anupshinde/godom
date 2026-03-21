@@ -15,8 +15,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/env"
 	gproto "github.com/anupshinde/godom/internal/proto"
 	"github.com/anupshinde/godom/internal/render"
 	"github.com/anupshinde/godom/internal/vdom"
@@ -24,7 +24,6 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 	"google.golang.org/protobuf/proto"
 )
-
 
 // Config holds everything the server needs to run.
 type Config struct {
@@ -66,7 +65,6 @@ func Run(cfg Config) error {
 	// Without fields: full refresh — re-send the entire tree.
 	ci.RefreshFn = func(fields ...string) {
 		ci.Mu.Lock()
-		ci.Refreshed = true
 		if len(fields) > 0 {
 			patches := buildSurgicalPatches(ci, fields)
 			ci.Mu.Unlock()
@@ -592,28 +590,13 @@ func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPoo
 	// (which also acquires ci.Mu) can run without deadlocking.
 	ci.Mu.Unlock()
 
-	// Call the method
+	// Call the method, then refresh all clients.
 	if err := ci.CallMethod(call.Method, args); err != nil {
 		log.Printf("godom: method call %q error: %v", call.Method, err)
 		return
 	}
 
-	// If the method already called Refresh(), it pushed its own update —
-	// skip the automatic full rebuild.
-	ci.Mu.Lock()
-	if ci.Refreshed {
-		ci.Refreshed = false
-		ci.Mu.Unlock()
-		return
-	}
-
-	// Rebuild tree and broadcast to all clients
-	ci.Tree = nil
-	msg := BuildInit(ci)
-	ci.Mu.Unlock()
-
-	data, _ := proto.Marshal(msg)
-	pool.broadcast(data)
+	ci.RefreshFn()
 }
 
 // --- Helpers ---

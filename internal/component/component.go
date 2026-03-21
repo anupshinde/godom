@@ -35,12 +35,6 @@ type Info struct {
 	// If no fields, full init is broadcast.
 	RefreshFn func(fields ...string)
 
-	// TODO: Review this
-	// Refreshed is set to true when Refresh() is called during a method
-	// invocation. handleMethodCall checks this flag and skips the automatic
-	// full rebuild when the method already pushed its own update.
-	Refreshed bool
-
 	// VDOM fields
 	VDOMTemplates []*vdom.TemplateNode    // parsed once at Mount()
 	Tree      vdom.Node               // last rendered tree (for diffing)
