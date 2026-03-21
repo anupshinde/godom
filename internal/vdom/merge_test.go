@@ -702,3 +702,428 @@ func TestMergeTree_ComponentSubTree(t *testing.T) {
 		t.Errorf("subtree: expected 'new', got %q", dst.SubTree.(*TextNode).Text)
 	}
 }
+
+// ComponentNode tag mismatch → no merge (dst untouched).
+func TestMergeTree_ComponentTagMismatch(t *testing.T) {
+	dst := &ComponentNode{
+		NodeBase: NodeBase{ID: 10},
+		Tag:      "comp-a",
+		Props:    map[string]any{"x": 1},
+	}
+	src := &ComponentNode{
+		NodeBase: NodeBase{ID: 100},
+		Tag:      "comp-b",
+		Props:    map[string]any{"x": 2},
+	}
+
+	MergeTree(dst, src)
+
+	if dst.ID != 10 {
+		t.Errorf("expected ID unchanged at 10, got %d", dst.ID)
+	}
+	if dst.Props["x"] != 1 {
+		t.Errorf("expected props unchanged, got %v", dst.Props)
+	}
+}
+
+// ComponentNode: dst has subtree, src has nil subtree → dst subtree preserved.
+func TestMergeTree_ComponentSubTreeToNil(t *testing.T) {
+	dst := &ComponentNode{
+		NodeBase: NodeBase{ID: 10},
+		Tag:      "my-comp",
+		SubTree:  &TextNode{NodeBase: NodeBase{ID: 11}, Text: "existing"},
+	}
+	src := &ComponentNode{
+		NodeBase: NodeBase{ID: 100},
+		Tag:      "my-comp",
+		SubTree:  nil,
+	}
+
+	MergeTree(dst, src)
+
+	if dst.SubTree == nil {
+		t.Fatal("expected subtree preserved, got nil")
+	}
+	if dst.SubTree.(*TextNode).Text != "existing" {
+		t.Errorf("expected text 'existing', got %q", dst.SubTree.(*TextNode).Text)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// LazyNode tests
+// ---------------------------------------------------------------------------
+
+// LazyNode merge: Func, Args updated, Cached merged when both non-nil.
+func TestMergeTree_LazyNode(t *testing.T) {
+	oldFunc := func() {}
+	newFunc := func() {}
+	dst := &LazyNode{
+		NodeBase: NodeBase{ID: 10},
+		Func:     oldFunc,
+		Args:     []any{"old"},
+		Cached:   &TextNode{NodeBase: NodeBase{ID: 11}, Text: "cached-old"},
+	}
+	src := &LazyNode{
+		NodeBase: NodeBase{ID: 100},
+		Func:     newFunc,
+		Args:     []any{"new"},
+		Cached:   &TextNode{NodeBase: NodeBase{ID: 101}, Text: "cached-new"},
+	}
+
+	MergeTree(dst, src)
+
+	if dst.ID != 10 {
+		t.Errorf("expected ID 10, got %d", dst.ID)
+	}
+	if len(dst.Args) != 1 || dst.Args[0] != "new" {
+		t.Errorf("expected Args ['new'], got %v", dst.Args)
+	}
+	// Cached should be merged: old ID preserved, text updated.
+	if dst.Cached.NodeID() != 11 {
+		t.Errorf("cached: expected ID 11, got %d", dst.Cached.NodeID())
+	}
+	if dst.Cached.(*TextNode).Text != "cached-new" {
+		t.Errorf("cached: expected 'cached-new', got %q", dst.Cached.(*TextNode).Text)
+	}
+}
+
+// LazyNode: dst.Cached nil, src.Cached non-nil → src.Cached adopted.
+func TestMergeTree_LazyNodeNilToCache(t *testing.T) {
+	dst := &LazyNode{
+		NodeBase: NodeBase{ID: 10},
+		Cached:   nil,
+	}
+	src := &LazyNode{
+		NodeBase: NodeBase{ID: 100},
+		Cached:   &TextNode{NodeBase: NodeBase{ID: 101}, Text: "new-cache"},
+	}
+
+	MergeTree(dst, src)
+
+	if dst.Cached == nil {
+		t.Fatal("expected Cached to be set")
+	}
+	if dst.Cached.NodeID() != 101 {
+		t.Errorf("cached: expected ID 101, got %d", dst.Cached.NodeID())
+	}
+}
+
+// LazyNode: both Cached nil → no panic.
+func TestMergeTree_LazyNodeBothCachedNil(t *testing.T) {
+	dst := &LazyNode{NodeBase: NodeBase{ID: 10}, Cached: nil}
+	src := &LazyNode{NodeBase: NodeBase{ID: 100}, Cached: nil}
+
+	MergeTree(dst, src) // should not panic
+
+	if dst.Cached != nil {
+		t.Errorf("expected Cached to remain nil")
+	}
+}
+
+// LazyNode: dst.Cached non-nil, src.Cached nil → dst.Cached replaced with nil.
+func TestMergeTree_LazyNodeCacheToNil(t *testing.T) {
+	dst := &LazyNode{
+		NodeBase: NodeBase{ID: 10},
+		Cached:   &TextNode{NodeBase: NodeBase{ID: 11}, Text: "old"},
+	}
+	src := &LazyNode{
+		NodeBase: NodeBase{ID: 100},
+		Cached:   nil,
+	}
+
+	MergeTree(dst, src)
+
+	// The else branch sets d.Cached = s.Cached (nil).
+	if dst.Cached != nil {
+		t.Errorf("expected Cached to be nil, got %v", dst.Cached)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// canMerge coverage via child replacement
+// ---------------------------------------------------------------------------
+
+// canMerge for ComponentNode children (same tag → merge, different tag → replace).
+func TestMergeTree_CanMerge_ComponentChild(t *testing.T) {
+	dst := &ElementNode{
+		NodeBase: NodeBase{ID: 1}, Tag: "div",
+		Children: []Node{
+			&ComponentNode{NodeBase: NodeBase{ID: 10}, Tag: "comp-a", Props: map[string]any{"v": "old"}},
+		},
+	}
+	src := &ElementNode{
+		NodeBase: NodeBase{ID: 100}, Tag: "div",
+		Children: []Node{
+			&ComponentNode{NodeBase: NodeBase{ID: 101}, Tag: "comp-a", Props: map[string]any{"v": "new"}},
+		},
+	}
+
+	MergeTree(dst, src)
+
+	// Same tag → merged, old ID preserved.
+	if dst.Children[0].NodeID() != 10 {
+		t.Errorf("expected ID 10, got %d", dst.Children[0].NodeID())
+	}
+	if dst.Children[0].(*ComponentNode).Props["v"] != "new" {
+		t.Errorf("expected props updated to 'new'")
+	}
+}
+
+// canMerge for ComponentNode children with different tags → replace.
+func TestMergeTree_CanMerge_ComponentChildMismatch(t *testing.T) {
+	dst := &ElementNode{
+		NodeBase: NodeBase{ID: 1}, Tag: "div",
+		Children: []Node{
+			&ComponentNode{NodeBase: NodeBase{ID: 10}, Tag: "comp-a"},
+		},
+	}
+	src := &ElementNode{
+		NodeBase: NodeBase{ID: 100}, Tag: "div",
+		Children: []Node{
+			&ComponentNode{NodeBase: NodeBase{ID: 101}, Tag: "comp-b"},
+		},
+	}
+
+	MergeTree(dst, src)
+
+	// Different tag → replaced with src node.
+	if dst.Children[0].NodeID() != 101 {
+		t.Errorf("expected new ID 101, got %d", dst.Children[0].NodeID())
+	}
+}
+
+// canMerge for PluginNode children (same tag+name → merge, mismatch → replace).
+func TestMergeTree_CanMerge_PluginChild(t *testing.T) {
+	dst := &ElementNode{
+		NodeBase: NodeBase{ID: 1}, Tag: "div",
+		Children: []Node{
+			&PluginNode{NodeBase: NodeBase{ID: 10}, Tag: "canvas", Name: "chart", Data: "old"},
+		},
+	}
+	src := &ElementNode{
+		NodeBase: NodeBase{ID: 100}, Tag: "div",
+		Children: []Node{
+			&PluginNode{NodeBase: NodeBase{ID: 101}, Tag: "canvas", Name: "chart", Data: "new"},
+		},
+	}
+
+	MergeTree(dst, src)
+
+	// Same tag+name → merged, old ID preserved.
+	if dst.Children[0].NodeID() != 10 {
+		t.Errorf("expected ID 10, got %d", dst.Children[0].NodeID())
+	}
+	if dst.Children[0].(*PluginNode).Data != "new" {
+		t.Errorf("expected data updated to 'new'")
+	}
+}
+
+// canMerge for PluginNode children with name mismatch → replace.
+func TestMergeTree_CanMerge_PluginChildMismatch(t *testing.T) {
+	dst := &ElementNode{
+		NodeBase: NodeBase{ID: 1}, Tag: "div",
+		Children: []Node{
+			&PluginNode{NodeBase: NodeBase{ID: 10}, Tag: "canvas", Name: "chart"},
+		},
+	}
+	src := &ElementNode{
+		NodeBase: NodeBase{ID: 100}, Tag: "div",
+		Children: []Node{
+			&PluginNode{NodeBase: NodeBase{ID: 101}, Tag: "canvas", Name: "graph"},
+		},
+	}
+
+	MergeTree(dst, src)
+
+	// Different name → replaced.
+	if dst.Children[0].NodeID() != 101 {
+		t.Errorf("expected new ID 101, got %d", dst.Children[0].NodeID())
+	}
+}
+
+// ElementNode namespace mismatch at root → no merge.
+func TestMergeTree_ElementNamespaceMismatch(t *testing.T) {
+	dst := &ElementNode{
+		NodeBase:  NodeBase{ID: 10},
+		Tag:       "g",
+		Namespace: "http://www.w3.org/2000/svg",
+		Facts:     Facts{Attrs: map[string]string{"fill": "red"}},
+	}
+	src := &ElementNode{
+		NodeBase:  NodeBase{ID: 100},
+		Tag:       "g",
+		Namespace: "",
+		Facts:     Facts{Attrs: map[string]string{"fill": "blue"}},
+	}
+
+	MergeTree(dst, src)
+
+	if dst.Facts.Attrs["fill"] != "red" {
+		t.Errorf("expected facts unchanged, got fill=%q", dst.Facts.Attrs["fill"])
+	}
+}
+
+// KeyedElementNode tag mismatch → no merge (dst untouched).
+func TestMergeTree_KeyedElementTagMismatch(t *testing.T) {
+	dst := &KeyedElementNode{
+		NodeBase: NodeBase{ID: 10},
+		Tag:      "ul",
+		Facts:    Facts{Attrs: map[string]string{"class": "old"}},
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{NodeBase: NodeBase{ID: 11}, Text: "A"}},
+		},
+	}
+	src := &KeyedElementNode{
+		NodeBase: NodeBase{ID: 100},
+		Tag:      "ol",
+		Facts:    Facts{Attrs: map[string]string{"class": "new"}},
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{NodeBase: NodeBase{ID: 101}, Text: "A-new"}},
+		},
+	}
+
+	MergeTree(dst, src)
+
+	if dst.Facts.Attrs["class"] != "old" {
+		t.Errorf("expected facts unchanged, got class=%q", dst.Facts.Attrs["class"])
+	}
+	if dst.Children[0].Node.(*TextNode).Text != "A" {
+		t.Errorf("expected children unchanged, got text=%q", dst.Children[0].Node.(*TextNode).Text)
+	}
+}
+
+// PluginNode tag mismatch (same name, different tag) → no merge.
+func TestMergeTree_PluginTagMismatch(t *testing.T) {
+	dst := &PluginNode{
+		NodeBase: NodeBase{ID: 10},
+		Tag:      "canvas",
+		Name:     "chart",
+		Data:     "old-data",
+	}
+	src := &PluginNode{
+		NodeBase: NodeBase{ID: 100},
+		Tag:      "div",
+		Name:     "chart",
+		Data:     "new-data",
+	}
+
+	MergeTree(dst, src)
+
+	if dst.Data != "old-data" {
+		t.Errorf("expected data unchanged as 'old-data', got %v", dst.Data)
+	}
+}
+
+// Keyed children: type mismatch on a matched key → replace.
+func TestMergeTree_KeyedChildTypeMismatch(t *testing.T) {
+	dst := &KeyedElementNode{
+		NodeBase: NodeBase{ID: 10},
+		Tag:      "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{NodeBase: NodeBase{ID: 11}, Text: "text"}},
+		},
+	}
+	src := &KeyedElementNode{
+		NodeBase: NodeBase{ID: 100},
+		Tag:      "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &ElementNode{NodeBase: NodeBase{ID: 101}, Tag: "li"}},
+		},
+	}
+
+	MergeTree(dst, src)
+
+	// Same key but text→element type mismatch → replaced.
+	if dst.Children[0].Node.NodeType() != NodeElement {
+		t.Errorf("expected element node, got type %d", dst.Children[0].Node.NodeType())
+	}
+	if dst.Children[0].Node.NodeID() != 101 {
+		t.Errorf("expected new ID 101, got %d", dst.Children[0].Node.NodeID())
+	}
+}
+
+// ComponentNode: both subtrees nil → no panic, SubTree stays nil.
+func TestMergeTree_ComponentBothSubTreesNil(t *testing.T) {
+	dst := &ComponentNode{
+		NodeBase: NodeBase{ID: 10},
+		Tag:      "my-comp",
+		Props:    map[string]any{"x": 1},
+		SubTree:  nil,
+	}
+	src := &ComponentNode{
+		NodeBase: NodeBase{ID: 100},
+		Tag:      "my-comp",
+		Props:    map[string]any{"x": 2},
+		SubTree:  nil,
+	}
+
+	MergeTree(dst, src)
+
+	if dst.SubTree != nil {
+		t.Errorf("expected SubTree to remain nil")
+	}
+	// Props should still be updated.
+	if dst.Props["x"] != 2 {
+		t.Errorf("expected props updated to 2, got %v", dst.Props["x"])
+	}
+}
+
+// Keyed children: all keys removed (empty src children).
+func TestMergeTree_KeyedChildrenAllRemoved(t *testing.T) {
+	dst := &KeyedElementNode{
+		NodeBase: NodeBase{ID: 10},
+		Tag:      "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: &TextNode{NodeBase: NodeBase{ID: 11}, Text: "A"}},
+			{Key: "b", Node: &TextNode{NodeBase: NodeBase{ID: 12}, Text: "B"}},
+		},
+	}
+	src := &KeyedElementNode{
+		NodeBase: NodeBase{ID: 100},
+		Tag:      "ul",
+		Children: []KeyedChild{},
+	}
+
+	MergeTree(dst, src)
+
+	if len(dst.Children) != 0 {
+		t.Errorf("expected 0 children, got %d", len(dst.Children))
+	}
+}
+
+// canMerge for KeyedElementNode children (via keyed child with matching key).
+func TestMergeTree_CanMerge_KeyedElementChild(t *testing.T) {
+	dst := &ElementNode{
+		NodeBase: NodeBase{ID: 1}, Tag: "div",
+		Children: []Node{
+			&KeyedElementNode{
+				NodeBase: NodeBase{ID: 10}, Tag: "ul",
+				Children: []KeyedChild{
+					{Key: "x", Node: &TextNode{NodeBase: NodeBase{ID: 11}, Text: "old"}},
+				},
+			},
+		},
+	}
+	src := &ElementNode{
+		NodeBase: NodeBase{ID: 100}, Tag: "div",
+		Children: []Node{
+			&KeyedElementNode{
+				NodeBase: NodeBase{ID: 101}, Tag: "ul",
+				Children: []KeyedChild{
+					{Key: "x", Node: &TextNode{NodeBase: NodeBase{ID: 111}, Text: "new"}},
+				},
+			},
+		},
+	}
+
+	MergeTree(dst, src)
+
+	// KeyedElementNode merged, old ID preserved.
+	if dst.Children[0].NodeID() != 10 {
+		t.Errorf("expected ID 10, got %d", dst.Children[0].NodeID())
+	}
+	ke := dst.Children[0].(*KeyedElementNode)
+	if ke.Children[0].Node.(*TextNode).Text != "new" {
+		t.Errorf("expected text 'new'")
+	}
+}
