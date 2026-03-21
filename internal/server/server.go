@@ -78,11 +78,12 @@ func Run(cfg Config) error {
 			}
 			// No patches produced (fields had no bindings) — fall through to full rebuild.
 		}
-		ci.Tree = nil
-		msg := BuildInit(ci)
+		msg := BuildUpdate(ci)
 		ci.Mu.Unlock()
-		data, _ := proto.Marshal(msg)
-		pool.broadcast(data)
+		if msg != nil {
+			data, _ := proto.Marshal(msg)
+			pool.broadcast(data)
+		}
 	}
 
 	mux := http.NewServeMux()
@@ -259,13 +260,13 @@ func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
 	}
 
 	patches := vdom.Diff(ci.Tree, newTree)
+	vdom.MergeTree(ci.Tree, newTree)
+
 	if len(patches) == 0 {
 		return nil
 	}
 
-	msg := render.EncodePatchMessage(patches)
-	ci.Tree = newTree
-	return msg
+	return render.EncodePatchMessage(patches)
 }
 
 func buildTree(ci *component.Info) *vdom.ElementNode {
