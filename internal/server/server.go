@@ -61,10 +61,12 @@ func Run(cfg Config) error {
 	}
 
 	// Wire up Refresh:
-	// With fields: surgical update — patch only the bound nodes.
-	// Without fields: full refresh — re-send the entire tree.
-	ci.RefreshFn = func(fields ...string) {
+	// If fields were marked via MarkRefresh(), do a surgical update.
+	// Otherwise, full refresh — re-send the entire tree.
+	ci.RefreshFn = func() {
 		ci.Mu.Lock()
+		fields := ci.MarkedFields
+		ci.MarkedFields = nil
 		if len(fields) > 0 {
 			patches := buildSurgicalPatches(ci, fields)
 			ci.Mu.Unlock()

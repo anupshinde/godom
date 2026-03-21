@@ -33,7 +33,11 @@ type Info struct {
 	// RefreshFn is set by Start() to broadcast current state to all clients.
 	// If fields are given, only those fields' bound nodes are patched (surgical).
 	// If no fields, full init is broadcast.
-	RefreshFn func(fields ...string)
+	RefreshFn func()
+
+	// MarkedFields accumulates field names marked for surgical refresh
+	// via MarkRefresh(). Refresh() reads and clears this list.
+	MarkedFields []string
 
 	// VDOM fields
 	VDOMTemplates []*vdom.TemplateNode    // parsed once at Mount()

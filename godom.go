@@ -46,15 +46,27 @@ type Component struct {
 	ci *component.Info
 }
 
+// MarkRefresh marks fields for surgical refresh. The actual refresh happens
+// when Refresh() is called (either by the user or automatically by the
+// framework after a method call). Multiple calls accumulate.
+func (c Component) MarkRefresh(fields ...string) {
+	if c.ci == nil {
+		return
+	}
+	c.ci.Mu.Lock()
+	c.ci.MarkedFields = append(c.ci.MarkedFields, fields...)
+	c.ci.Mu.Unlock()
+}
+
 // Refresh pushes updates to all connected browsers.
-// With field names: surgical update — only the bound nodes for those fields are patched.
-// Without arguments: full refresh — re-sends the entire tree.
-func (c Component) Refresh(fields ...string) {
+// If fields were marked via MarkRefresh(), only those bound nodes are patched.
+// Otherwise, a full refresh is sent.
+func (c Component) Refresh() {
 	if c.ci == nil {
 		return
 	}
 	if c.ci.RefreshFn != nil {
-		c.ci.RefreshFn(fields...)
+		c.ci.RefreshFn()
 	}
 }
 
