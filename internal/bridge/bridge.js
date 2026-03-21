@@ -153,7 +153,7 @@
             registerEvents(tree.id, el, tree.ev);
         }
 
-        // Layer 1: auto-sync input values back to Go DOM view (PrevTree)
+        // Layer 1: auto-sync input values back to Go DOM view (Tree)
         if (!tree.ns && tree.tag) {
             autoRegisterInputSync(tree.id, el, tree.tag);
         }

@@ -601,14 +601,14 @@ func TestHandleNodeEvent_UpdatesTreeAndBroadcasts(t *testing.T) {
 	app := &counterApp{Step: 1, Count: 0}
 	ci := makeCounterCI(app)
 
-	// Build initial tree so PrevTree is populated
+	// Build initial tree so Tree is populated
 	ci.Mu.Lock()
 	_ = BuildInit(ci)
 	ci.Mu.Unlock()
 
 	// Find the input node ID (the g-bind="Step" input)
 	var inputNodeID int
-	findInputNode(ci.PrevTree, &inputNodeID)
+	findInputNode(ci.Tree, &inputNodeID)
 	if inputNodeID == 0 {
 		t.Fatal("could not find input node in tree")
 	}
@@ -640,7 +640,7 @@ func TestHandleNodeEvent_UpdatesTreeAndBroadcasts(t *testing.T) {
 	handleNodeEvent(ci, int32(inputNodeID), "42", pool)
 
 	// Verify the live tree was updated
-	node := vdom.FindNodeByID(ci.PrevTree, inputNodeID)
+	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
 	if node == nil {
 		t.Fatal("node not found after event")
 	}
@@ -939,11 +939,11 @@ func TestHandleMethodCall_SyncsBindValues(t *testing.T) {
 
 	// Find the input node and set its value (simulating browser input)
 	var inputNodeID int
-	findInputNode(ci.PrevTree, &inputNodeID)
+	findInputNode(ci.Tree, &inputNodeID)
 	if inputNodeID == 0 {
 		t.Fatal("could not find input node")
 	}
-	node := vdom.FindNodeByID(ci.PrevTree, inputNodeID)
+	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
 	el := node.(*vdom.ElementNode)
 	if el.Facts.Props == nil {
 		el.Facts.Props = make(map[string]any)
@@ -1004,7 +1004,7 @@ func makeSurgicalCI(app *surgicalApp) *component.Info {
 func TestBuildSurgicalPatches_TextBinding(t *testing.T) {
 	app := &surgicalApp{Name: "Alice"}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Name = "Bob"
 	patches := buildSurgicalPatches(ci, []string{"Name"})
@@ -1026,7 +1026,7 @@ func TestBuildSurgicalPatches_TextBinding(t *testing.T) {
 func TestBuildSurgicalPatches_AttrBinding(t *testing.T) {
 	app := &surgicalApp{Color: "red"}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Color = "blue"
 	patches := buildSurgicalPatches(ci, []string{"Color"})
@@ -1048,7 +1048,7 @@ func TestBuildSurgicalPatches_AttrBinding(t *testing.T) {
 func TestBuildSurgicalPatches_ShowBinding(t *testing.T) {
 	app := &surgicalApp{Visible: true}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	// Visible → false means display should be "none"
 	app.Visible = false
@@ -1071,7 +1071,7 @@ func TestBuildSurgicalPatches_ShowBinding(t *testing.T) {
 func TestBuildSurgicalPatches_HideBinding(t *testing.T) {
 	app := &surgicalApp{Hidden: false}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	// Hidden → true means display should be "none"
 	app.Hidden = true
@@ -1094,7 +1094,7 @@ func TestBuildSurgicalPatches_HideBinding(t *testing.T) {
 func TestBuildSurgicalPatches_ClassBinding(t *testing.T) {
 	app := &surgicalApp{Active: false}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Active = true
 	patches := buildSurgicalPatches(ci, []string{"Active"})
@@ -1120,7 +1120,7 @@ func TestBuildSurgicalPatches_ClassBinding(t *testing.T) {
 func TestBuildSurgicalPatches_StyleBinding(t *testing.T) {
 	app := &surgicalApp{Width: "100px"}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Width = "200px"
 	patches := buildSurgicalPatches(ci, []string{"Width"})
@@ -1142,7 +1142,7 @@ func TestBuildSurgicalPatches_StyleBinding(t *testing.T) {
 func TestBuildSurgicalPatches_NoBindings(t *testing.T) {
 	app := &surgicalApp{}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	patches := buildSurgicalPatches(ci, []string{"NonExistentField"})
 	if len(patches) != 0 {
@@ -1153,7 +1153,7 @@ func TestBuildSurgicalPatches_NoBindings(t *testing.T) {
 func TestBuildSurgicalPatches_EmptyFields(t *testing.T) {
 	app := &surgicalApp{}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	patches := buildSurgicalPatches(ci, []string{})
 	if len(patches) != 0 {
@@ -1164,7 +1164,7 @@ func TestBuildSurgicalPatches_EmptyFields(t *testing.T) {
 func TestBuildSurgicalPatches_UpdatesLiveTree(t *testing.T) {
 	app := &surgicalApp{Name: "Alice"}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Name = "Bob"
 	_ = buildSurgicalPatches(ci, []string{"Name"})
@@ -1172,7 +1172,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTree(t *testing.T) {
 	// Verify the live tree was updated in place
 	// Find text node with "Bob" in the live tree
 	found := false
-	walkTree(ci.PrevTree, func(n vdom.Node) {
+	walkTree(ci.Tree, func(n vdom.Node) {
 		if tn, ok := n.(*vdom.TextNode); ok && tn.Text == "Bob" {
 			found = true
 		}
@@ -1185,7 +1185,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTree(t *testing.T) {
 func TestBuildSurgicalPatches_UpdatesLiveTreeStyle(t *testing.T) {
 	app := &surgicalApp{Width: "100px"}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Width = "200px"
 	_ = buildSurgicalPatches(ci, []string{"Width"})
@@ -1194,7 +1194,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTreeStyle(t *testing.T) {
 	bindings := ci.Bindings["Width"]
 	for _, b := range bindings {
 		if b.Kind == "style" {
-			node := vdom.FindNodeByID(ci.PrevTree, b.NodeID)
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
 			if el, ok := node.(*vdom.ElementNode); ok {
 				if el.Facts.Styles["width"] != "200px" {
 					t.Errorf("expected live tree style width=200px, got %q", el.Facts.Styles["width"])
@@ -1207,7 +1207,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTreeStyle(t *testing.T) {
 func TestBuildSurgicalPatches_UpdatesLiveTreeAttr(t *testing.T) {
 	app := &surgicalApp{Color: "red"}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Color = "blue"
 	_ = buildSurgicalPatches(ci, []string{"Color"})
@@ -1215,7 +1215,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTreeAttr(t *testing.T) {
 	bindings := ci.Bindings["Color"]
 	for _, b := range bindings {
 		if b.Kind == "attr" {
-			node := vdom.FindNodeByID(ci.PrevTree, b.NodeID)
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
 			if el, ok := node.(*vdom.ElementNode); ok {
 				if el.Facts.Attrs["data-color"] != "blue" {
 					t.Errorf("expected live tree attr data-color=blue, got %q", el.Facts.Attrs["data-color"])
@@ -1229,7 +1229,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTreeShowHide(t *testing.T) {
 	// show: Visible=true → false should set display=none in live tree
 	app := &surgicalApp{Visible: true}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Visible = false
 	_ = buildSurgicalPatches(ci, []string{"Visible"})
@@ -1237,7 +1237,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTreeShowHide(t *testing.T) {
 	bindings := ci.Bindings["Visible"]
 	for _, b := range bindings {
 		if b.Kind == "show" {
-			node := vdom.FindNodeByID(ci.PrevTree, b.NodeID)
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
 			if el, ok := node.(*vdom.ElementNode); ok {
 				if el.Facts.Styles["display"] != "none" {
 					t.Errorf("expected live tree display=none when show=false, got %q", el.Facts.Styles["display"])
@@ -1252,7 +1252,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTreeShowHide(t *testing.T) {
 
 	for _, b := range bindings {
 		if b.Kind == "show" {
-			node := vdom.FindNodeByID(ci.PrevTree, b.NodeID)
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
 			if el, ok := node.(*vdom.ElementNode); ok {
 				if _, exists := el.Facts.Styles["display"]; exists {
 					t.Errorf("expected display to be removed from live tree when show=true, got %q", el.Facts.Styles["display"])
@@ -1265,7 +1265,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTreeShowHide(t *testing.T) {
 func TestBuildSurgicalPatches_MultipleFields(t *testing.T) {
 	app := &surgicalApp{Name: "Alice", Width: "100px"}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Name = "Bob"
 	app.Width = "200px"
@@ -1553,7 +1553,7 @@ func TestRun_WebSocketNodeEvent(t *testing.T) {
 	// Find input node ID
 	ci.Mu.Lock()
 	var inputNodeID int
-	findInputNode(ci.PrevTree, &inputNodeID)
+	findInputNode(ci.Tree, &inputNodeID)
 	ci.Mu.Unlock()
 	if inputNodeID == 0 {
 		t.Fatal("could not find input node")
@@ -1754,7 +1754,7 @@ func TestHandleNodeEvent_TextNodeNotElement(t *testing.T) {
 
 	// Find a text node ID
 	var textNodeID int
-	walkTree(ci.PrevTree, func(n vdom.Node) {
+	walkTree(ci.Tree, func(n vdom.Node) {
 		if _, ok := n.(*vdom.TextNode); ok && textNodeID == 0 {
 			textNodeID = n.NodeID()
 		}
@@ -1790,7 +1790,7 @@ func TestBuildSurgicalPatches_PropBinding(t *testing.T) {
 	// Verify that surgical patch for Name includes a prop patch for the input value.
 	app := &surgicalApp{Name: "Alice"}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Name = "Bob"
 	patches := buildSurgicalPatches(ci, []string{"Name"})
@@ -1838,7 +1838,7 @@ func TestBuildSurgicalPatches_PropBinding(t *testing.T) {
 func TestBuildSurgicalPatches_ShowTrue(t *testing.T) {
 	app := &surgicalApp{Visible: false}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Visible = true
 	patches := buildSurgicalPatches(ci, []string{"Visible"})
@@ -1864,7 +1864,7 @@ func TestBuildSurgicalPatches_ShowTrue(t *testing.T) {
 func TestBuildSurgicalPatches_HideFalse(t *testing.T) {
 	app := &surgicalApp{Hidden: true}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Hidden = false
 	patches := buildSurgicalPatches(ci, []string{"Hidden"})
@@ -1890,7 +1890,7 @@ func TestBuildSurgicalPatches_HideFalse(t *testing.T) {
 func TestBuildSurgicalPatches_ClassRemove(t *testing.T) {
 	app := &surgicalApp{Active: true}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	app.Active = false
 	patches := buildSurgicalPatches(ci, []string{"Active"})
@@ -1916,11 +1916,11 @@ func TestBuildSurgicalPatches_ClassRemove(t *testing.T) {
 
 // --- Negative: handleMethodCall bind sync edge cases ---
 
-func TestHandleMethodCall_NilPrevTree(t *testing.T) {
-	// If PrevTree is nil, bind sync should be skipped gracefully
+func TestHandleMethodCall_NilTree(t *testing.T) {
+	// If Tree is nil, bind sync should be skipped gracefully
 	app := &counterApp{Step: 1, Count: 0}
 	ci := makeCounterCI(app)
-	// Don't call BuildInit — PrevTree stays nil
+	// Don't call BuildInit — Tree stays nil
 
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: "Increment"}
@@ -1967,11 +1967,11 @@ func TestHandleMethodCall_BindNodeNilProps(t *testing.T) {
 
 	// Find the input node and null out its Props
 	var inputNodeID int
-	findInputNode(ci.PrevTree, &inputNodeID)
+	findInputNode(ci.Tree, &inputNodeID)
 	if inputNodeID == 0 {
 		t.Fatal("no input node")
 	}
-	node := vdom.FindNodeByID(ci.PrevTree, inputNodeID)
+	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
 	el := node.(*vdom.ElementNode)
 	el.Facts.Props = nil
 
@@ -1995,11 +1995,11 @@ func TestHandleMethodCall_BindValueMissing(t *testing.T) {
 	ci.Mu.Unlock()
 
 	var inputNodeID int
-	findInputNode(ci.PrevTree, &inputNodeID)
+	findInputNode(ci.Tree, &inputNodeID)
 	if inputNodeID == 0 {
 		t.Fatal("no input node")
 	}
-	node := vdom.FindNodeByID(ci.PrevTree, inputNodeID)
+	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
 	el := node.(*vdom.ElementNode)
 	el.Facts.Props = map[string]any{"className": "input"} // no "value" key
 
@@ -2125,7 +2125,7 @@ func TestRun_WebSocketBadProtobuf(t *testing.T) {
 func TestBuildSurgicalPatches_ClassBindingNodeGone(t *testing.T) {
 	app := &surgicalApp{Active: true}
 	ci := makeSurgicalCI(app)
-	ci.PrevTree = buildTree(ci)
+	ci.Tree = buildTree(ci)
 
 	// Corrupt the binding to point to a nonexistent node
 	if bindings, ok := ci.Bindings["Active"]; ok {
@@ -2154,14 +2154,14 @@ func TestBuildSurgicalPatches_ClassBindingNodeGone(t *testing.T) {
 
 // --- BuildInit / BuildUpdate edge cases ---
 
-func TestBuildUpdate_NilPrevTree(t *testing.T) {
+func TestBuildUpdate_NilTree(t *testing.T) {
 	app := &counterApp{Step: 1, Count: 5}
 	ci := makeCounterCI(app)
 
-	// Call BuildUpdate without BuildInit — PrevTree is nil
+	// Call BuildUpdate without BuildInit — Tree is nil
 	msg := BuildUpdate(ci)
 	if msg == nil {
-		t.Fatal("expected init message when PrevTree is nil")
+		t.Fatal("expected init message when Tree is nil")
 	}
 	if msg.Type != "init" {
 		t.Errorf("expected type 'init' for first build, got %q", msg.Type)

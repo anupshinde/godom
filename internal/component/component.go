@@ -43,7 +43,7 @@ type Info struct {
 
 	// VDOM fields
 	VDOMTemplates []*vdom.TemplateNode    // parsed once at Mount()
-	PrevTree      vdom.Node               // last rendered tree (for diffing)
+	Tree      vdom.Node               // last rendered tree (for diffing)
 	IDCounter     *vdom.IDCounter         // monotonic node ID allocator (persists across renders)
 	Bindings      map[string][]vdom.Binding // field name → node bindings (built during first resolve)
 }

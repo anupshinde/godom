@@ -231,24 +231,24 @@ func Run(cfg Config) error {
 // If a live tree exists (from prior connections or node events), it encodes
 // that tree as-is so new clients see the current state.
 func BuildInit(ci *component.Info) *gproto.VDomMessage {
-	if ci.PrevTree == nil {
-		ci.PrevTree = buildTree(ci)
+	if ci.Tree == nil {
+		ci.Tree = buildTree(ci)
 	}
 
-	msg, err := render.EncodeInitTreeMessage(ci.PrevTree)
+	msg, err := render.EncodeInitTreeMessage(ci.Tree)
 	if err != nil {
 		panic("EncodeInitTreeMessage: " + err.Error())
 	}
 	return msg
 }
 
-// BuildUpdate rebuilds the tree from templates, diffs against PrevTree, and
+// BuildUpdate rebuilds the tree from templates, diffs against Tree, and
 // returns a patch message. Returns nil if no changes.
 func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
 	newTree := buildTree(ci)
 
-	if ci.PrevTree == nil {
-		ci.PrevTree = newTree
+	if ci.Tree == nil {
+		ci.Tree = newTree
 		msg, err := render.EncodeInitTreeMessage(newTree)
 		if err != nil {
 			panic("EncodeInitTreeMessage: " + err.Error())
@@ -256,13 +256,13 @@ func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
 		return msg
 	}
 
-	patches := vdom.Diff(ci.PrevTree, newTree)
+	patches := vdom.Diff(ci.Tree, newTree)
 	if len(patches) == 0 {
 		return nil
 	}
 
 	msg := render.EncodePatchMessage(patches)
-	ci.PrevTree = newTree
+	ci.Tree = newTree
 	return msg
 }
 
@@ -352,7 +352,7 @@ func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
 			case "class":
 				// For class toggling, we need to add/remove the class name
 				// This is simplified — a full implementation would track existing classes
-				node := vdom.FindNodeByID(ci.PrevTree, b.NodeID)
+				node := vdom.FindNodeByID(ci.Tree, b.NodeID)
 				if el, ok := node.(*vdom.ElementNode); ok {
 					existing, _ := el.Facts.Props["className"].(string)
 					if truthy && !strings.Contains(existing, b.Prop) {
@@ -373,7 +373,7 @@ func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
 			}
 
 			// Also update the live tree so it stays in sync
-			node := vdom.FindNodeByID(ci.PrevTree, b.NodeID)
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
 			switch b.Kind {
 			case "style":
 				if el, ok := node.(*vdom.ElementNode); ok {
@@ -507,7 +507,7 @@ func handleInit(wc *wsConn, ci *component.Info) error {
 func handleNodeEvent(ci *component.Info, nodeID int32, value string, pool *connPool) {
 	ci.Mu.Lock()
 
-	node := vdom.FindNodeByID(ci.PrevTree, int(nodeID))
+	node := vdom.FindNodeByID(ci.Tree, int(nodeID))
 	if node == nil {
 		log.Printf("godom: node %d not found in tree", nodeID)
 		ci.Mu.Unlock()
@@ -552,15 +552,15 @@ func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPoo
 	}
 
 	// Sync g-bind values from the live tree back to the struct.
-	// Layer 1 keeps PrevTree props in sync with browser input values,
-	// so we read from PrevTree and write to the struct before the method runs.
-	if ci.PrevTree != nil && ci.Bindings != nil {
+	// Layer 1 keeps Tree props in sync with browser input values,
+	// so we read from Tree and write to the struct before the method runs.
+	if ci.Tree != nil && ci.Bindings != nil {
 		for field, bindings := range ci.Bindings {
 			for _, b := range bindings {
 				if b.Kind != "bind" {
 					continue
 				}
-				node := vdom.FindNodeByID(ci.PrevTree, b.NodeID)
+				node := vdom.FindNodeByID(ci.Tree, b.NodeID)
 				if node == nil {
 					continue
 				}
@@ -608,7 +608,7 @@ func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPoo
 	}
 
 	// Rebuild tree and broadcast to all clients
-	ci.PrevTree = nil
+	ci.Tree = nil
 	msg := BuildInit(ci)
 	ci.Mu.Unlock()
 
