@@ -212,9 +212,9 @@ func (ci *Info) SetField(path string, rawValue json.RawMessage) error {
 		return nil
 	}
 
-	field := v.FieldByName(path)
-	if !field.IsValid() || !field.CanSet() {
-		return fmt.Errorf("field %q not found or not settable", path)
+	field, err := walkFieldPath(v, path)
+	if err != nil {
+		return err
 	}
 
 	ptr := reflect.New(field.Type())
@@ -250,6 +250,27 @@ func (ci *Info) SetField(path string, rawValue json.RawMessage) error {
 	}
 	field.Set(ptr.Elem())
 	return nil
+}
+
+// walkFieldPath walks a dotted path like "Box.Top" and returns the final settable field.
+func walkFieldPath(v reflect.Value, path string) (reflect.Value, error) {
+	parts := strings.Split(path, ".")
+	for _, part := range parts {
+		for v.Kind() == reflect.Ptr {
+			if v.IsNil() {
+				return reflect.Value{}, fmt.Errorf("field %q: nil pointer in path", path)
+			}
+			v = v.Elem()
+		}
+		if v.Kind() != reflect.Struct {
+			return reflect.Value{}, fmt.Errorf("field %q: not a struct at %q", path, part)
+		}
+		v = v.FieldByName(part)
+		if !v.IsValid() || !v.CanSet() {
+			return reflect.Value{}, fmt.Errorf("field %q not found or not settable", path)
+		}
+	}
+	return v, nil
 }
 
 // HasField checks if the component struct has an exported field with the given name.

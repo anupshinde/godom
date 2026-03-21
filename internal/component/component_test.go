@@ -1013,3 +1013,61 @@ func TestSetField_MapBracket_MissingField(t *testing.T) {
 		t.Error("expected error for missing field")
 	}
 }
+
+// --- Dotted path tests for SetField ---
+
+type testInnerComp struct {
+	Value string
+	Count int
+}
+
+type testNestedComp struct {
+	Component struct{}
+	Inner     testInnerComp
+}
+
+func TestSetField_DottedPath(t *testing.T) {
+	comp := &testNestedComp{}
+	ci := newTestCI(comp)
+
+	err := ci.SetField("Inner.Value", json.RawMessage(`"hello"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comp.Inner.Value != "hello" {
+		t.Errorf("Inner.Value = %q, want 'hello'", comp.Inner.Value)
+	}
+}
+
+func TestSetField_DottedPath_Int(t *testing.T) {
+	comp := &testNestedComp{}
+	ci := newTestCI(comp)
+
+	err := ci.SetField("Inner.Count", json.RawMessage(`7`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comp.Inner.Count != 7 {
+		t.Errorf("Inner.Count = %d, want 7", comp.Inner.Count)
+	}
+}
+
+func TestSetField_DottedPath_MissingField(t *testing.T) {
+	comp := &testNestedComp{}
+	ci := newTestCI(comp)
+
+	err := ci.SetField("Inner.Missing", json.RawMessage(`"x"`))
+	if err == nil {
+		t.Error("expected error for missing nested field")
+	}
+}
+
+func TestSetField_DottedPath_NotAStruct(t *testing.T) {
+	comp := &testComp{Name: "Alice"}
+	ci := newTestCI(comp)
+
+	err := ci.SetField("Name.Sub", json.RawMessage(`"x"`))
+	if err == nil {
+		t.Error("expected error for dotted path on non-struct field")
+	}
+}

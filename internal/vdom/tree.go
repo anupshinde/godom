@@ -424,16 +424,20 @@ type ResolveContext struct {
 
 // addBinding records a dependency from a field expression to a node.
 func (ctx *ResolveContext) addBinding(expr string, nodeID int, kind, prop string) {
-	// Only record bindings for simple field names (not loop vars, not negated, not dotted)
 	expr = strings.TrimSpace(expr)
-	if strings.HasPrefix(expr, "!") || strings.Contains(expr, ".") {
+	if strings.HasPrefix(expr, "!") {
 		return
 	}
-	if _, isVar := ctx.Vars[expr]; isVar {
+	// Skip loop variables
+	root := expr
+	if dotIdx := strings.Index(root, "."); dotIdx != -1 {
+		root = root[:dotIdx]
+	}
+	if _, isVar := ctx.Vars[root]; isVar {
 		return
 	}
-	// For bracket expressions like "Inputs[first]", bind to the field name "Inputs"
-	bindKey := expr
+	// Use the root field name as the binding key
+	bindKey := root
 	if field, _, ok := ParseMapAccess(expr); ok {
 		bindKey = field
 	}

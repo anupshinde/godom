@@ -2884,6 +2884,45 @@ func TestAddBinding_BracketExpr(t *testing.T) {
 	}
 }
 
+func TestAddBinding_DottedPath(t *testing.T) {
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&testDirectiveState{}),
+		Vars:  make(map[string]any),
+		IDs:   &IDCounter{},
+	}
+	ctx.addBinding("Box.Top", 10, "style", "top")
+	ctx.addBinding("Box.Left", 11, "style", "left")
+	ctx.addBinding("Name", 12, "text", "")
+
+	// Dotted bindings should be grouped under root field "Box"
+	if len(ctx.Bindings["Box"]) != 2 {
+		t.Errorf("expected 2 bindings for 'Box', got %d", len(ctx.Bindings["Box"]))
+	}
+	if ctx.Bindings["Box"][0].Expr != "Box.Top" {
+		t.Errorf("expected Expr 'Box.Top', got %q", ctx.Bindings["Box"][0].Expr)
+	}
+	if ctx.Bindings["Box"][1].Expr != "Box.Left" {
+		t.Errorf("expected Expr 'Box.Left', got %q", ctx.Bindings["Box"][1].Expr)
+	}
+	if len(ctx.Bindings["Name"]) != 1 {
+		t.Errorf("expected 1 binding for 'Name', got %d", len(ctx.Bindings["Name"]))
+	}
+}
+
+func TestAddBinding_DottedLoopVar(t *testing.T) {
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&testDirectiveState{}),
+		Vars:  map[string]any{"item": "test"},
+		IDs:   &IDCounter{},
+	}
+	ctx.addBinding("item.Name", 10, "text", "")
+
+	// Loop variable dotted paths should be skipped
+	if len(ctx.Bindings) != 0 {
+		t.Errorf("expected no bindings for loop var dotted path, got %v", ctx.Bindings)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Unbound input tests
 // ---------------------------------------------------------------------------

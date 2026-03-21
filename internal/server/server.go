@@ -309,9 +309,12 @@ func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
 			continue
 		}
 
-		val := vdom.ResolveExpr(field, &vdom.ResolveContext{State: ci.Value})
-
 		for _, b := range bindings {
+			expr := b.Expr
+			if expr == "" {
+				expr = field
+			}
+			val := vdom.ResolveExpr(expr, &vdom.ResolveContext{State: ci.Value})
 			truthy := vdom.IsTruthy(val)
 			strVal := fmt.Sprint(val)
 

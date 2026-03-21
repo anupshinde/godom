@@ -11,10 +11,14 @@ import (
 //go:embed ui
 var ui embed.FS
 
+type Box struct {
+	Top  string
+	Left string
+}
+
 type App struct {
 	godom.Component
-	BoxTop    string
-	BoxLeft   string
+	Box       Box
 	PingCount int
 	Items     []string
 	Inputs    map[string]any
@@ -27,8 +31,8 @@ type App struct {
 }
 
 func (a *App) updateCSS() {
-	a.BoxTop = fmt.Sprintf("%.0fpx", a.posY)
-	a.BoxLeft = fmt.Sprintf("%.0fpx", a.posX)
+	a.Box.Top = fmt.Sprintf("%.0fpx", a.posY)
+	a.Box.Left = fmt.Sprintf("%.0fpx", a.posX)
 }
 
 func (a *App) DragStart(x, y float64) {
@@ -38,14 +42,13 @@ func (a *App) DragStart(x, y float64) {
 }
 
 func (a *App) DragMove(x, y float64) {
-	return
 	if !a.dragging {
 		return
 	}
 	a.posX = x - a.offsetX
 	a.posY = y - a.offsetY
 	a.updateCSS()
-	a.MarkRefresh("BoxTop", "BoxLeft")
+	a.MarkRefresh("Box")
 }
 
 func (a *App) DragEnd(x, y float64) {
@@ -66,7 +69,7 @@ func (a *App) DoNothing() {
 }
 
 func main() {
-	app := &App{posX: 100, posY: 250, Inputs: map[string]any{}}
+	app := &App{posX: 200, posY: 350, Inputs: map[string]any{}}
 	app.updateCSS()
 
 	eng := godom.NewEngine()
