@@ -2883,3 +2883,210 @@ func TestAddBinding_BracketExpr(t *testing.T) {
 		t.Errorf("expected Expr 'Name', got %q", ctx.Bindings["Name"][0].Expr)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Unbound input tests
+// ---------------------------------------------------------------------------
+
+func TestParseTemplate_StableID_UnboundInput(t *testing.T) {
+	html := `<body><input type="text" placeholder="Name" /></body>`
+	nodes, err := ParseTemplate(html, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	if nodes[0].StableID == "" {
+		t.Error("expected StableID on unbound input, got empty")
+	}
+}
+
+func TestParseTemplate_StableID_BoundInput(t *testing.T) {
+	html := `<body><input type="text" g-bind="Name" /></body>`
+	nodes, err := ParseTemplate(html, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	if nodes[0].StableID != "" {
+		t.Errorf("expected no StableID on bound input, got %q", nodes[0].StableID)
+	}
+}
+
+func TestParseTemplate_StableID_NonInput(t *testing.T) {
+	html := `<body><div>hello</div></body>`
+	nodes, err := ParseTemplate(html, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	if nodes[0].StableID != "" {
+		t.Errorf("expected no StableID on div, got %q", nodes[0].StableID)
+	}
+}
+
+func TestParseTemplate_StableID_Stable(t *testing.T) {
+	html := `<body><input type="text" /></body>`
+	nodes, err := ParseTemplate(html, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id1 := nodes[0].StableID
+
+	// Parse again — different UUID each time (templates are parsed once)
+	nodes2, _ := ParseTemplate(html, nil)
+	id2 := nodes2[0].StableID
+
+	if id1 == "" || id2 == "" {
+		t.Fatal("expected non-empty StableIDs")
+	}
+	if id1 == id2 {
+		t.Error("different parse calls should produce different UUIDs (each is unique)")
+	}
+}
+
+func TestParseTemplate_StableID_Textarea(t *testing.T) {
+	html := `<body><textarea></textarea></body>`
+	nodes, err := ParseTemplate(html, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodes[0].StableID == "" {
+		t.Error("expected StableID on unbound textarea")
+	}
+}
+
+func TestParseTemplate_StableID_Select(t *testing.T) {
+	html := `<body><select><option>A</option></select></body>`
+	nodes, err := ParseTemplate(html, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodes[0].StableID == "" {
+		t.Error("expected StableID on unbound select")
+	}
+}
+
+func TestResolveFacts_UnboundValueInjection(t *testing.T) {
+	tmpl := &TemplateNode{
+		Tag:      "input",
+		StableID: "test-uuid-123",
+	}
+	ctx := &ResolveContext{
+		State:         reflect.ValueOf(&testDirectiveState{}),
+		Vars:          make(map[string]any),
+		IDs:           &IDCounter{},
+		UnboundValues: map[string]any{"test-uuid-123": "saved-value"},
+		NodeStableIDs: make(map[int]string),
+	}
+	nodeID := ctx.IDs.Next()
+	f := resolveFacts(tmpl, ctx, nodeID)
+
+	if f.Props == nil || f.Props["value"] != "saved-value" {
+		t.Errorf("expected Props[value]='saved-value', got %v", f.Props)
+	}
+	if ctx.NodeStableIDs[nodeID] != "test-uuid-123" {
+		t.Errorf("expected NodeStableIDs[%d]='test-uuid-123', got %q", nodeID, ctx.NodeStableIDs[nodeID])
+	}
+}
+
+func TestResolveFacts_UnboundValueNotPresent(t *testing.T) {
+	tmpl := &TemplateNode{
+		Tag:      "input",
+		StableID: "test-uuid-456",
+	}
+	ctx := &ResolveContext{
+		State:         reflect.ValueOf(&testDirectiveState{}),
+		Vars:          make(map[string]any),
+		IDs:           &IDCounter{},
+		UnboundValues: map[string]any{},
+		NodeStableIDs: make(map[int]string),
+	}
+	nodeID := ctx.IDs.Next()
+	f := resolveFacts(tmpl, ctx, nodeID)
+
+	// No value injected, but NodeStableIDs should still be recorded
+	if f.Props != nil && f.Props["value"] != nil {
+		t.Errorf("expected no value injection, got %v", f.Props["value"])
+	}
+	if ctx.NodeStableIDs[nodeID] != "test-uuid-456" {
+		t.Errorf("expected NodeStableIDs mapping, got %q", ctx.NodeStableIDs[nodeID])
+	}
+}
+
+func TestResolveFacts_UnboundNilValues(t *testing.T) {
+	tmpl := &TemplateNode{
+		Tag:      "input",
+		StableID: "test-uuid-789",
+	}
+	ctx := &ResolveContext{
+		State:         reflect.ValueOf(&testDirectiveState{}),
+		Vars:          make(map[string]any),
+		IDs:           &IDCounter{},
+		UnboundValues: nil, // nil on first build
+		NodeStableIDs: make(map[int]string),
+	}
+	nodeID := ctx.IDs.Next()
+	_ = resolveFacts(tmpl, ctx, nodeID)
+
+	// NodeStableIDs should still be recorded even when UnboundValues is nil
+	if ctx.NodeStableIDs[nodeID] != "test-uuid-789" {
+		t.Errorf("expected NodeStableIDs mapping even with nil UnboundValues, got %q", ctx.NodeStableIDs[nodeID])
+	}
+}
+
+func TestUnboundKey_NoForIndices(t *testing.T) {
+	key := unboundKey("abc-123", nil)
+	if key != "abc-123" {
+		t.Errorf("expected 'abc-123', got %q", key)
+	}
+}
+
+func TestUnboundKey_WithForIndices(t *testing.T) {
+	key := unboundKey("abc-123", []int{2})
+	if key != "abc-123:2" {
+		t.Errorf("expected 'abc-123:2', got %q", key)
+	}
+}
+
+func TestUnboundKey_NestedForIndices(t *testing.T) {
+	key := unboundKey("abc-123", []int{1, 3})
+	if key != "abc-123:1,3" {
+		t.Errorf("expected 'abc-123:1,3', got %q", key)
+	}
+}
+
+func TestIsFormInput(t *testing.T) {
+	if !isFormInput("input") {
+		t.Error("input should be a form input")
+	}
+	if !isFormInput("textarea") {
+		t.Error("textarea should be a form input")
+	}
+	if !isFormInput("select") {
+		t.Error("select should be a form input")
+	}
+	if isFormInput("div") {
+		t.Error("div should not be a form input")
+	}
+	if isFormInput("button") {
+		t.Error("button should not be a form input")
+	}
+}
+
+func TestHasBind(t *testing.T) {
+	if !hasBind([]Directive{{Type: "bind", Expr: "Name"}}) {
+		t.Error("expected hasBind=true for bind directive")
+	}
+	if hasBind([]Directive{{Type: "click", Expr: "DoIt"}}) {
+		t.Error("expected hasBind=false for non-bind directive")
+	}
+	if hasBind(nil) {
+		t.Error("expected hasBind=false for nil directives")
+	}
+}

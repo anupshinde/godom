@@ -277,10 +277,13 @@ func buildTree(ci *component.Info) *vdom.ElementNode {
 	if ci.IDCounter == nil {
 		ci.IDCounter = &vdom.IDCounter{}
 	}
+	nodeStableIDs := make(map[int]string)
 	ctx := &vdom.ResolveContext{
-		State: ci.Value,
-		Vars:  make(map[string]any),
-		IDs:   ci.IDCounter,
+		State:         ci.Value,
+		Vars:          make(map[string]any),
+		IDs:           ci.IDCounter,
+		UnboundValues: ci.UnboundValues,
+		NodeStableIDs: nodeStableIDs,
 	}
 	children := vdom.ResolveTree(ci.VDOMTemplates, ctx)
 	root := &vdom.ElementNode{NodeBase: vdom.NodeBase{ID: ci.IDCounter.Next()}, Tag: "body", Children: children}
@@ -290,6 +293,7 @@ func buildTree(ci *component.Info) *vdom.ElementNode {
 	if ctx.Bindings != nil {
 		ci.Bindings = ctx.Bindings
 	}
+	ci.NodeStableIDs = nodeStableIDs
 
 	return root
 }
@@ -533,6 +537,14 @@ func handleNodeEvent(ci *component.Info, nodeID int32, value string, pool *connP
 		el.Facts.Props = make(map[string]any)
 	}
 	el.Facts.Props["value"] = value
+
+	// Store unbound input value so it survives tree rebuilds
+	if stableKey, ok := ci.NodeStableIDs[int(nodeID)]; ok {
+		if ci.UnboundValues == nil {
+			ci.UnboundValues = make(map[string]any)
+		}
+		ci.UnboundValues[stableKey] = value
+	}
 
 	// Build a targeted facts patch — no need for a full diff
 	patch := vdom.Patch{

@@ -1,6 +1,7 @@
 package vdom
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -48,6 +49,10 @@ type TemplateNode struct {
 	IsPlugin   bool
 	PluginName string // plugin name from g-plugin:name
 	PluginExpr string // data expression
+
+	// StableID is a UUID assigned at parse time to unbound form inputs.
+	// Used to preserve input values across tree rebuilds.
+	StableID string
 }
 
 // Directive represents a single g-* directive on an element.
@@ -136,6 +141,11 @@ func htmlElementToTemplate(n *html.Node, componentTags map[string]bool) *Templat
 
 	tn := &TemplateNode{Tag: tag}
 	tn.Attrs, tn.Directives = extractAttrsAndDirectives(n)
+
+	// Assign a stable ID to unbound form inputs so their values survive rebuilds.
+	if isFormInput(tag) && !hasBind(tn.Directives) {
+		tn.StableID = genUUID()
+	}
 
 	if tag == "svg" || n.Namespace == "svg" {
 		tn.Namespace = "http://www.w3.org/2000/svg"
@@ -405,6 +415,11 @@ type ResolveContext struct {
 	Vars     map[string]any       // loop variables: {todo: item, i: index}
 	IDs      *IDCounter           // node ID allocator (must persist across renders)
 	Bindings map[string][]Binding // field name → bindings (built during resolve)
+
+	// Unbound input support
+	UnboundValues map[string]any    // stableKey → stored value (passed in from component.Info)
+	NodeStableIDs map[int]string    // nodeID → stableKey (built during resolve, read by server)
+	ForIndices    []int             // current g-for loop index stack (for composite stable keys)
 }
 
 // addBinding records a dependency from a field expression to a node.
@@ -554,9 +569,12 @@ func resolveForNode(t *TemplateNode, ctx *ResolveContext) []Node {
 		item := rv.Index(i).Interface()
 
 		childCtx := &ResolveContext{
-			State: ctx.State,
-			Vars:  CopyVars(ctx.Vars),
-			IDs:   ctx.IDs,
+			State:         ctx.State,
+			Vars:          CopyVars(ctx.Vars),
+			IDs:           ctx.IDs,
+			UnboundValues: ctx.UnboundValues,
+			NodeStableIDs: ctx.NodeStableIDs,
+			ForIndices:    append(append([]int{}, ctx.ForIndices...), i),
 		}
 		childCtx.Vars[t.ForItem] = item
 		if t.ForIndex != "" {
@@ -755,7 +773,61 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext, nodeID int) Facts {
 		}
 	}
 
+	// Inject unbound input values: if the template node has a StableID,
+	// look up the stored value and set it as Props["value"].
+	if t.StableID != "" {
+		key := unboundKey(t.StableID, ctx.ForIndices)
+		if ctx.UnboundValues != nil {
+			if val, ok := ctx.UnboundValues[key]; ok {
+				if f.Props == nil {
+					f.Props = make(map[string]any)
+				}
+				f.Props["value"] = fmt.Sprint(val)
+			}
+		}
+		if ctx.NodeStableIDs != nil {
+			ctx.NodeStableIDs[nodeID] = key
+		}
+	}
+
 	return f
+}
+
+// isFormInput returns true for tags whose value should be preserved across rebuilds.
+func isFormInput(tag string) bool {
+	return tag == "input" || tag == "textarea" || tag == "select"
+}
+
+// hasBind returns true if any directive is a "bind" directive.
+func hasBind(directives []Directive) bool {
+	for _, d := range directives {
+		if d.Type == "bind" {
+			return true
+		}
+	}
+	return false
+}
+
+// genUUID generates a random UUID v4 string.
+func genUUID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
+// unboundKey computes the storage key for an unbound input.
+// Inside g-for loops, it combines the StableID with the loop indices.
+func unboundKey(stableID string, forIndices []int) string {
+	if len(forIndices) == 0 {
+		return stableID
+	}
+	parts := make([]string, len(forIndices))
+	for i, idx := range forIndices {
+		parts[i] = fmt.Sprintf("%d", idx)
+	}
+	return stableID + ":" + strings.Join(parts, ",")
 }
 
 // ---------------------------------------------------------------------------

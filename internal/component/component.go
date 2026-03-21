@@ -44,6 +44,10 @@ type Info struct {
 	Tree      vdom.Node               // last rendered tree (for diffing)
 	IDCounter     *vdom.IDCounter         // monotonic node ID allocator (persists across renders)
 	Bindings      map[string][]vdom.Binding // field name → node bindings (built during first resolve)
+
+	// Unbound input support
+	UnboundValues map[string]any    // stableKey → value (survives tree rebuilds)
+	NodeStableIDs map[int]string    // nodeID → stableKey (rebuilt each resolve)
 }
 
 // Reg holds the registration info for a stateful component.
