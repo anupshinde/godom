@@ -21,6 +21,11 @@
         <input type="text" placeholder="Type something..." />
         <input type="text" placeholder="Another input..." />
         <button g-click="Ping">Ping (<span g-text="PingCount">0</span>)</button>
+        <button g-click="AddItem">Add Input</button>
+        <button g-click="DoNothing">Do Nothing</button>
+        <div g-for="item, i in Items">
+            <input type="text" g-attr:placeholder="i" />
+        </div>
     </div>
     <!-- <div class="box" g-style:top="BoxTop" g-style:left="BoxLeft"
          g-mousedown="DragStart" g-mousemove="DragMove" g-mouseup="DragEnd">Drag me</div>

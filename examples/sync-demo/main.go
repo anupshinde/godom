@@ -16,6 +16,7 @@ type App struct {
 	BoxTop    string
 	BoxLeft   string
 	PingCount int
+	Items     []string
 
 	dragging bool
 	posX     float64
@@ -55,11 +56,20 @@ func (a *App) Ping() {
 	fmt.Printf("Ping %d\n", a.PingCount)
 }
 
+func (a *App) AddItem() {
+	a.Items = append(a.Items, "")
+}
+
+func (a *App) DoNothing() {
+	fmt.Println("DoNothing does nothing")
+}
+
 func main() {
 	app := &App{posX: 100, posY: 250}
 	app.updateCSS()
 
 	eng := godom.NewEngine()
+	eng.Port = 61820
 	eng.Mount(app, ui, "ui/index.html")
 	log.Fatal(eng.Start())
 }
