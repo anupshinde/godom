@@ -76,6 +76,7 @@ func Run(cfg Config) error {
 				pool.broadcast(data)
 			}
 		} else {
+			ci.Tree = nil
 			msg := BuildInit(ci)
 			ci.Mu.Unlock()
 			data, _ := proto.Marshal(msg)
