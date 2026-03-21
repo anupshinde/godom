@@ -215,7 +215,7 @@ func Run(cfg Config) error {
 		url += "?token=" + token
 	}
 	if !cfg.Quiet {
-		fmt.Printf("godom running at %s\n", url)
+		fmt.Printf("godom running at\n%s\n", url)
 		printQR(url)
 	}
 
