@@ -69,19 +69,20 @@ func Run(cfg Config) error {
 		ci.MarkedFields = nil
 		if len(fields) > 0 {
 			patches := buildSurgicalPatches(ci, fields)
-			ci.Mu.Unlock()
 			if len(patches) > 0 {
+				ci.Mu.Unlock()
 				msg := render.EncodePatchMessage(patches)
 				data, _ := proto.Marshal(msg)
 				pool.broadcast(data)
+				return
 			}
-		} else {
-			ci.Tree = nil
-			msg := BuildInit(ci)
-			ci.Mu.Unlock()
-			data, _ := proto.Marshal(msg)
-			pool.broadcast(data)
+			// No patches produced (fields had no bindings) — fall through to full rebuild.
 		}
+		ci.Tree = nil
+		msg := BuildInit(ci)
+		ci.Mu.Unlock()
+		data, _ := proto.Marshal(msg)
+		pool.broadcast(data)
 	}
 
 	mux := http.NewServeMux()
