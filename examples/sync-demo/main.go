@@ -17,6 +17,7 @@ type App struct {
 	BoxLeft   string
 	PingCount int
 	Items     []string
+	Inputs    map[string]any
 
 	dragging bool
 	posX     float64
@@ -65,7 +66,7 @@ func (a *App) DoNothing() {
 }
 
 func main() {
-	app := &App{posX: 100, posY: 250}
+	app := &App{posX: 100, posY: 250, Inputs: map[string]any{}}
 	app.updateCSS()
 
 	eng := godom.NewEngine()

@@ -180,8 +180,34 @@ func (ci *Info) CallMethod(name string, args []json.RawMessage) error {
 }
 
 // SetField sets an exported field on the component (used for g-bind).
+// Supports bracket syntax for map access: "Inputs[first]" sets map key "first" on field Inputs.
 func (ci *Info) SetField(path string, rawValue json.RawMessage) error {
 	v := ci.Value.Elem()
+
+	// Handle bracket map access: "Inputs[first]"
+	if bracketIdx := strings.Index(path, "["); bracketIdx != -1 && strings.HasSuffix(path, "]") {
+		fieldName := path[:bracketIdx]
+		mapKey := path[bracketIdx+1 : len(path)-1]
+		field := v.FieldByName(fieldName)
+		if !field.IsValid() || !field.CanSet() {
+			return fmt.Errorf("field %q not found or not settable", fieldName)
+		}
+		if field.Kind() != reflect.Map {
+			return fmt.Errorf("field %q is not a map", fieldName)
+		}
+		if field.IsNil() {
+			field.Set(reflect.MakeMap(field.Type()))
+		}
+		// Unmarshal the value to the map's value type
+		valType := field.Type().Elem()
+		ptr := reflect.New(valType)
+		if err := json.Unmarshal(rawValue, ptr.Interface()); err != nil {
+			return fmt.Errorf("field %q key %q: %w", fieldName, mapKey, err)
+		}
+		field.SetMapIndex(reflect.ValueOf(mapKey), ptr.Elem())
+		return nil
+	}
+
 	field := v.FieldByName(path)
 	if !field.IsValid() || !field.CanSet() {
 		return fmt.Errorf("field %q not found or not settable", path)

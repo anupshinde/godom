@@ -256,6 +256,10 @@ func validateBindExpr(expr string, ci *component.Info, loopVars map[string]*loop
 	}
 
 	root := strings.Split(expr, ".")[0]
+	// Handle bracket syntax: "Inputs[first]" → root is "Inputs"
+	if idx := strings.Index(root, "["); idx != -1 {
+		root = root[:idx]
+	}
 
 	// If it's a method, fail loudly
 	if ci.HasMethod(root) && !ci.HasField(root) {
@@ -282,7 +286,7 @@ func validateFieldExpr(expr string, ci *component.Info, loopVars map[string]*loo
 	parts := strings.Split(expr, ".")
 	root := parts[0]
 
-	// Check if it's a loop variable
+	// Check if it's a loop variable (loop vars never use bracket syntax)
 	if lv, ok := loopVars[root]; ok {
 		// Validate remaining path against the loop variable's type
 		if len(parts) > 1 && lv.itemType != nil && lv.itemType.Kind() == reflect.Struct {
@@ -291,11 +295,17 @@ func validateFieldExpr(expr string, ci *component.Info, loopVars map[string]*loo
 		return nil
 	}
 
+	// Handle bracket syntax: "Inputs[first]" → field root is "Inputs"
+	fieldRoot := root
+	if idx := strings.Index(root, "["); idx != -1 {
+		fieldRoot = root[:idx]
+	}
+
 	// Check if it's a component field
-	if ci.HasField(root) {
+	if ci.HasField(fieldRoot) {
 		// Validate remaining path against the field's type
-		if len(parts) > 1 {
-			f, _ := ci.Typ.FieldByName(root)
+		if len(parts) > 1 && fieldRoot == root {
+			f, _ := ci.Typ.FieldByName(fieldRoot)
 			return validateTypePath(f.Type, parts[1:], expr)
 		}
 		return nil

@@ -18,8 +18,9 @@
     <h1>Sync Demo</h1>
     <p class="hint">Drag the box. Open in two windows to see sync.</p>
     <div class="content">
-        <input type="text" placeholder="Type something..." />
-        <input type="text" placeholder="Another input..." />
+        <input type="text" placeholder="Type something..." g-bind="Inputs[first]" />
+        <input type="text" placeholder="Another input..." g-bind="Inputs[second]" />
+        <input type="text" placeholder="Unbound input" />
         <button g-click="Ping">Ping (<span g-text="PingCount">0</span>)</button>
         <button g-click="AddItem">Add Input</button>
         <button g-click="DoNothing">Do Nothing</button>

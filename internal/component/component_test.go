@@ -946,3 +946,70 @@ func TestGetState_ExcludesOnlyComponentField(t *testing.T) {
 		}
 	}
 }
+
+// --- Map bracket access tests for SetField ---
+
+type testMapComp struct {
+	Component struct{}
+	Inputs    map[string]any
+	Counts    map[string]int
+}
+
+func TestSetField_MapBracket(t *testing.T) {
+	comp := &testMapComp{Inputs: map[string]any{}}
+	ci := newTestCI(comp)
+
+	err := ci.SetField("Inputs[first]", json.RawMessage(`"hello"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comp.Inputs["first"] != "hello" {
+		t.Errorf("Inputs[first] = %v, want 'hello'", comp.Inputs["first"])
+	}
+}
+
+func TestSetField_MapBracket_NilMap(t *testing.T) {
+	comp := &testMapComp{} // Inputs is nil
+	ci := newTestCI(comp)
+
+	err := ci.SetField("Inputs[key]", json.RawMessage(`"value"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comp.Inputs["key"] != "value" {
+		t.Errorf("Inputs[key] = %v, want 'value'", comp.Inputs["key"])
+	}
+}
+
+func TestSetField_MapBracket_TypedValue(t *testing.T) {
+	comp := &testMapComp{Counts: map[string]int{}}
+	ci := newTestCI(comp)
+
+	err := ci.SetField("Counts[total]", json.RawMessage(`42`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comp.Counts["total"] != 42 {
+		t.Errorf("Counts[total] = %v, want 42", comp.Counts["total"])
+	}
+}
+
+func TestSetField_MapBracket_NotAMap(t *testing.T) {
+	comp := &testComp{Name: "Alice"}
+	ci := newTestCI(comp)
+
+	err := ci.SetField("Name[key]", json.RawMessage(`"x"`))
+	if err == nil {
+		t.Error("expected error for bracket access on non-map field")
+	}
+}
+
+func TestSetField_MapBracket_MissingField(t *testing.T) {
+	comp := &testMapComp{}
+	ci := newTestCI(comp)
+
+	err := ci.SetField("Missing[key]", json.RawMessage(`"x"`))
+	if err == nil {
+		t.Error("expected error for missing field")
+	}
+}

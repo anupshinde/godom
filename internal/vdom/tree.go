@@ -396,6 +396,7 @@ type Binding struct {
 	NodeID int
 	Kind   string // "style", "prop", "attr", "text"
 	Prop   string // property/style/attr name (empty for text)
+	Expr   string // original expression (e.g., "Inputs[first]") — used by g-bind to write back
 }
 
 // ResolveContext holds the state and loop variables available during tree resolution.
@@ -416,10 +417,15 @@ func (ctx *ResolveContext) addBinding(expr string, nodeID int, kind, prop string
 	if _, isVar := ctx.Vars[expr]; isVar {
 		return
 	}
+	// For bracket expressions like "Inputs[first]", bind to the field name "Inputs"
+	bindKey := expr
+	if field, _, ok := ParseMapAccess(expr); ok {
+		bindKey = field
+	}
 	if ctx.Bindings == nil {
 		ctx.Bindings = make(map[string][]Binding)
 	}
-	ctx.Bindings[expr] = append(ctx.Bindings[expr], Binding{NodeID: nodeID, Kind: kind, Prop: prop})
+	ctx.Bindings[bindKey] = append(ctx.Bindings[bindKey], Binding{NodeID: nodeID, Kind: kind, Prop: prop, Expr: expr})
 }
 
 // ResolveTree resolves a list of template nodes into concrete Nodes.
@@ -838,12 +844,49 @@ func callMethodWithArgs(v reflect.Value, name string, args []any) any {
 	return m.Call(in)[0].Interface()
 }
 
+// ParseMapAccess parses "Field[key]" into ("Field", "key", true).
+// Returns ("", "", false) if the expression doesn't match bracket syntax.
+func ParseMapAccess(expr string) (field, key string, ok bool) {
+	bracketIdx := strings.Index(expr, "[")
+	if bracketIdx == -1 || !strings.HasSuffix(expr, "]") {
+		return "", "", false
+	}
+	field = expr[:bracketIdx]
+	key = expr[bracketIdx+1 : len(expr)-1]
+	return field, key, true
+}
+
 func resolveStructField(v reflect.Value, path string) any {
 	for v.Kind() == reflect.Ptr {
 		if v.IsNil() {
 			return nil
 		}
 		v = v.Elem()
+	}
+
+	// Handle bracket map access: "Inputs[first]"
+	if field, key, ok := ParseMapAccess(path); ok {
+		if v.Kind() != reflect.Struct {
+			return nil
+		}
+		fv := v.FieldByName(field)
+		if !fv.IsValid() {
+			return nil
+		}
+		for fv.Kind() == reflect.Ptr {
+			if fv.IsNil() {
+				return nil
+			}
+			fv = fv.Elem()
+		}
+		if fv.Kind() != reflect.Map {
+			return nil
+		}
+		mapVal := fv.MapIndex(reflect.ValueOf(key))
+		if !mapVal.IsValid() {
+			return ""
+		}
+		return mapVal.Interface()
 	}
 
 	parts := strings.Split(path, ".")

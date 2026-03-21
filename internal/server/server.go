@@ -248,6 +248,10 @@ func BuildInit(ci *component.Info) *gproto.VDomMessage {
 // BuildUpdate rebuilds the tree from templates, diffs against Tree, and
 // returns a patch message. Returns nil if no changes.
 func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
+	// Reset the ID counter so the new tree gets the same IDs as the old tree.
+	// MergeTree preserves old node IDs, and bindings reference new tree IDs,
+	// so they must match.
+	ci.IDCounter = &vdom.IDCounter{}
 	newTree := buildTree(ci)
 
 	if ci.Tree == nil {
@@ -582,7 +586,11 @@ func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPoo
 				if err != nil {
 					continue
 				}
-				ci.SetField(field, json.RawMessage(raw))
+				setPath := field
+			if b.Expr != "" {
+				setPath = b.Expr
+			}
+			ci.SetField(setPath, json.RawMessage(raw))
 			}
 		}
 	}

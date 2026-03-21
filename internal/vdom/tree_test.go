@@ -1810,6 +1810,38 @@ func TestResolveStructField(t *testing.T) {
 			t.Errorf("expected nil for non-struct intermediate, got %v", val)
 		}
 	})
+
+	t.Run("map bracket access", func(t *testing.T) {
+		state := &testDirectiveState{ChartData: map[string]int{"sales": 42}}
+		val := resolveStructField(reflect.ValueOf(state), "ChartData[sales]")
+		if val != 42 {
+			t.Errorf("expected 42, got %v", val)
+		}
+	})
+
+	t.Run("map bracket missing key", func(t *testing.T) {
+		state := &testDirectiveState{ChartData: map[string]int{"sales": 42}}
+		val := resolveStructField(reflect.ValueOf(state), "ChartData[missing]")
+		if val != "" {
+			t.Errorf("expected empty string for missing map key, got %v", val)
+		}
+	})
+
+	t.Run("map bracket nil map", func(t *testing.T) {
+		state := &testDirectiveState{}
+		val := resolveStructField(reflect.ValueOf(state), "ChartData[sales]")
+		if val != "" {
+			t.Errorf("expected empty string for nil map, got %v", val)
+		}
+	})
+
+	t.Run("bracket on non-map field", func(t *testing.T) {
+		state := &testDirectiveState{Name: "Alice"}
+		val := resolveStructField(reflect.ValueOf(state), "Name[key]")
+		if val != nil {
+			t.Errorf("expected nil for bracket on non-map field, got %v", val)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -2772,4 +2804,82 @@ func findNodeText(nodes []Node, text string) bool {
 		}
 	}
 	return false
+}
+
+func TestParseMapAccess(t *testing.T) {
+	tests := []struct {
+		expr      string
+		wantField string
+		wantKey   string
+		wantOK    bool
+	}{
+		{"Inputs[first]", "Inputs", "first", true},
+		{"Data[key]", "Data", "key", true},
+		{"Name", "", "", false},
+		{"User.Name", "", "", false},
+		{"[key]", "", "key", true},  // degenerate but parseable
+		{"Inputs[]", "Inputs", "", true}, // empty key
+	}
+	for _, tt := range tests {
+		field, key, ok := ParseMapAccess(tt.expr)
+		if ok != tt.wantOK || field != tt.wantField || key != tt.wantKey {
+			t.Errorf("ParseMapAccess(%q) = (%q, %q, %v), want (%q, %q, %v)",
+				tt.expr, field, key, ok, tt.wantField, tt.wantKey, tt.wantOK)
+		}
+	}
+}
+
+func TestResolveExpr_MapBracketAccess(t *testing.T) {
+	state := &testDirectiveState{ChartData: map[string]int{"sales": 100}}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+		IDs:   &IDCounter{},
+	}
+	val := ResolveExpr("ChartData[sales]", ctx)
+	if val != 100 {
+		t.Errorf("expected 100, got %v", val)
+	}
+}
+
+func TestResolveExpr_MapBracketMissingKey(t *testing.T) {
+	state := &testDirectiveState{ChartData: map[string]int{"sales": 100}}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+		IDs:   &IDCounter{},
+	}
+	val := ResolveExpr("ChartData[missing]", ctx)
+	if val != "" {
+		t.Errorf("expected empty string, got %v", val)
+	}
+}
+
+func TestAddBinding_BracketExpr(t *testing.T) {
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&testDirectiveState{}),
+		Vars:  make(map[string]any),
+		IDs:   &IDCounter{},
+	}
+	ctx.addBinding("Inputs[first]", 10, "bind", "value")
+	ctx.addBinding("Inputs[second]", 11, "bind", "value")
+	ctx.addBinding("Name", 12, "text", "")
+
+	// Bracket bindings should be grouped under the field name "Inputs"
+	if len(ctx.Bindings["Inputs"]) != 2 {
+		t.Errorf("expected 2 bindings for 'Inputs', got %d", len(ctx.Bindings["Inputs"]))
+	}
+	if ctx.Bindings["Inputs"][0].Expr != "Inputs[first]" {
+		t.Errorf("expected Expr 'Inputs[first]', got %q", ctx.Bindings["Inputs"][0].Expr)
+	}
+	if ctx.Bindings["Inputs"][1].Expr != "Inputs[second]" {
+		t.Errorf("expected Expr 'Inputs[second]', got %q", ctx.Bindings["Inputs"][1].Expr)
+	}
+	// Simple field binding should work as before
+	if len(ctx.Bindings["Name"]) != 1 {
+		t.Errorf("expected 1 binding for 'Name', got %d", len(ctx.Bindings["Name"]))
+	}
+	if ctx.Bindings["Name"][0].Expr != "Name" {
+		t.Errorf("expected Expr 'Name', got %q", ctx.Bindings["Name"][0].Expr)
+	}
 }
