@@ -106,19 +106,19 @@
             <h2>Palette</h2>
             <div g-for="color, i in Palette" class="palette-item"
                  g-style:background-color="color.Hex"
-                 g-draggable="i">
+                 g-draggable:palette="i">
                 <span g-text="color.Name"></span>
             </div>
         </div>
 
         <div class="canvas-area">
             <h2>Canvas</h2>
-            <div class="canvas" g-drop="Add">
+            <div class="canvas" g-drop:palette="Add">
                 <div g-if="Canvas">
                     <div g-for="card, i in Canvas" class="canvas-card"
                          g-style:background-color="card.Color"
-                         g-draggable="i"
-                         g-drop="Reorder">
+                         g-draggable:canvas="i"
+                         g-drop:canvas="Reorder">
                         <span g-text="card.Label"></span>
                         <span class="remove" g-click="Remove(i, 0)">&times;</span>
                     </div>
@@ -128,7 +128,7 @@
                 </div>
             </div>
 
-            <div class="trash" g-drop="Remove">
+            <div class="trash" g-drop:canvas="Remove">
                 Drop here to remove
             </div>
         </div>
