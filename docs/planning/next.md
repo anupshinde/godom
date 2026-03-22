@@ -4,61 +4,22 @@ Potential features, roughly ordered by value.
 
 ---
 
-## Computed Properties
+## Pluggable transport layer
 
-Methods that derive from state, auto-called on render:
+The server currently hardcodes gorilla/websocket. The goal is to make the transport pluggable so users can choose what fits their deployment context.
 
-```go
-func (t *TodoApp) Remaining() int {
-    count := 0
-    for _, todo := range t.Todos {
-        if !todo.Done {
-            count++
-        }
-    }
-    return count
-}
-```
+**Candidates:**
 
-Used in HTML: `<span g-text="Remaining"></span>`
+| Transport | Use case | Status |
+|-----------|----------|--------|
+| WebSocket (gorilla) | Default — low latency, bidirectional, works everywhere | Current, stays as default |
+| SSE + POST | Proxy-friendly — works behind corporate proxies that block WebSocket upgrades | Not implemented |
+| REST API | Non-browser clients — CLI tools, scripts, other Go programs can interact with godom apps | Not implemented |
+| WebTransport | High-frequency media — unreliable datagrams, multiple streams, no head-of-line blocking | Not stable yet (experimental Go support, limited browser support) |
 
-Framework detects it's a method (not a field), calls it, uses the return value.
+**Why this is feasible:** The VDOM pipeline doesn't care how bytes move. The server sends `VDomMessage` and receives `NodeEvent`/`MethodCall` — all protobuf. The abstraction boundary already exists; the server just needs a transport interface instead of direct gorilla calls.
 
----
-
-## Component Lifecycle Hooks
-
-- `OnMount()` — called when component first renders
-- `OnUnmount()` — called when component is removed
-- `OnUpdate()` — called after state change
-
----
-
-## Application Context & Object Hierarchy
-
-Support a hierarchy where the app holds views, views hold components, each with their own lifecycle and state scope. Enables patterns like "settings panel with temporary state" or "modal form that gets discarded on cancel."
-
----
-
-## Drop gorilla/websocket dependency
-
-Currently using `github.com/gorilla/websocket`. Evaluate alternatives:
-- `golang.org/x/net/websocket` — already in dep tree (used for HTML parsing), covers godom's needs (binary WebSocket read/write for protobuf)
-- SSE + POST — see [docs/transport.md](transport.md) for detailed analysis
-- Stdlib websocket — not available yet, monitor future Go releases
-
-Note: the wire format is already Protocol Buffers (binary WebSocket). Any WebSocket replacement just needs to support binary message read/write.
-
----
-
-## Validator hardening
-
-The startup validator (`internal/template/validate.go`) has known limitations — it's useful as a guardrail but not a source of truth:
-
-- **g-bind validation is broader than runtime**: validates dotted-path and loop-scoped binds, but runtime `setField` only supports direct top-level fields via `FieldByName`. Valid templates can still fail at runtime.
-- **g-props collection is global**: `collectLoopVars` scans all g-props in the entire HTML for every g-for, not scoped to the actual subtree. Can create false positives in complex nested structures.
-
-These are low priority — the runtime parser/render path is more solid than the validator.
+See [transport.md](../transport.md) for the WebSocket vs SSE+POST analysis and [protocol.md](../protocol.md) for the wire format details.
 
 ---
 
@@ -71,6 +32,7 @@ These items were on the next list and have been implemented:
 - ~~Disconnect Handling~~ ✅ — Bridge shows overlay on disconnect/crash with auto-reconnect or error message
 - ~~Publish module path~~ ✅ — Module path changed to `github.com/anupshinde/godom`
 - ~~Child-local state lost when scoped event also changes root state~~ ✅ — Fixed with dual-update approach
-- ~~bridge.js g-for innerHTML parsing is context-sensitive~~ ✅ — Fixed with `contextWrappers` lookup map
+- ~~bridge.js g-for innerHTML parsing is context-sensitive~~ ✅ — No longer applicable: VDOM rewrite builds DOM from tree descriptions, not innerHTML
 - ~~Keyed identity for g-for~~ ✅ — Implemented via `g-key="item.ID"` with `KeyedElementNode` and `PatchReorder`
 - ~~Virtual DOM~~ ✅ — Full VDOM pipeline: tree-based init, diff-based patches, stable node IDs
+- ~~Computed properties~~ ✅ — `ResolveExpr` tries field first, falls back to calling zero-arg methods with one return value

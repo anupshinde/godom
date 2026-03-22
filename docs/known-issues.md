@@ -12,4 +12,4 @@ When clicking a button very fast (10+ clicks per second), occasional click event
 
 ## ~~bridge.js g-for innerHTML parsing is context-sensitive~~ ✅
 
-**Fixed.** `createTmpContainer()` now uses `start.parentNode.tagName` to determine the correct wrapper element instead of inspecting the HTML string. A `contextWrappers` lookup map covers `TABLE`, `THEAD`, `TBODY`, `TFOOT`, `TR`, `SELECT`, and `OPTGROUP` — all context-sensitive elements in one shot.
+**No longer applicable.** The VDOM rewrite replaced innerHTML-based list rendering with tree-based DOM construction. The bridge now builds elements directly from JSON tree descriptions, so context-sensitive parsing is not needed.

@@ -170,7 +170,6 @@ Prove the system works for real applications.
 - ~~Presentational components~~ — done (`stat-card`)
 - ~~Charts~~ — done (`examples/system-monitor-chartjs/` — line, doughnut, multi-dataset)
 - ~~Tables~~ — done (`examples/stock-ticker/` — `g-for` on `<tr>` with 30 live-updating rows)
-- Routing between views
 
 ---
 
@@ -206,12 +205,7 @@ Go decodes video frames via ffmpeg and renders them on a canvas element in the b
 - Browser auto-reconnects and gets fresh state
 - `godom dev` command
 
-### 8.2 Multi-component support — partially done
-- ~~Component communication (props, events, shared state)~~ — done via props
-- ~~Nested components~~ — done (presentational)
-- Multiple components on one page (not in g-for context) — not yet
-
-### 8.3 Debugging
+### 8.2 Debugging
 - Log state changes to console
 - Element inspector showing Go field bindings
 - Clear error messages for missing methods, bad expressions, etc.
@@ -234,8 +228,5 @@ Not urgent while godom targets single-user local apps, but required before any m
 
 ## Open Questions
 
-- **Component lifecycle:** Init/Mount/Unmount hooks?
-- **Computed properties:** Methods that derive from state (like `Remaining() int`)? Auto-called on render?
-- **Routing:** Single page with dynamic content, or URL-based routing?
 - **Persistence:** Optional state save to disk?
 - **Testing:** How to test components without a browser? (Unit tests exist for parsing, rendering, validation, diffing, and merging — but no integration tests yet)
