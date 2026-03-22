@@ -39,7 +39,6 @@ func newValTestCI() *component.Info {
 	return &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Registry: make(map[string]*component.Reg),
 	}
 }
 
@@ -187,23 +186,6 @@ func TestValidateDirectives_StyleDirective(t *testing.T) {
 	}
 }
 
-func TestValidateDirectives_ChildComponentFallback(t *testing.T) {
-	// Simulate a child component registered with a field "Local"
-	type childComp struct {
-		Component struct{}
-		Local     string
-	}
-	childCI := newValTestCI()
-	childCI.Registry["my-child"] = &component.Reg{
-		Typ: reflect.TypeOf(childComp{}),
-	}
-
-	// "Local" doesn't exist on the parent, but exists on the child
-	html := `<span g-text="Local"></span>`
-	if err := ValidateDirectives(html, childCI); err != nil {
-		t.Errorf("unexpected error (should fallback to child): %v", err)
-	}
-}
 
 func TestValidateDirectives_Draggable(t *testing.T) {
 	html := `<li g-for="todo, i in Todos"><span g-draggable="i"></span></li>`
@@ -282,7 +264,6 @@ func TestValidateDirectives_NestedFor(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Registry: make(map[string]*component.Reg),
 	}
 	if err := ValidateDirectives(html, ci); err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -296,7 +277,6 @@ func TestValidateDirectives_NestedForUnknownPath(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Registry: make(map[string]*component.Reg),
 	}
 	// "group.Missing" — "group" is a valid loop var, so this passes validation
 	// (we trust the loop variable's type at the validate level)
@@ -449,72 +429,7 @@ func TestValidateDirectives_EmptyValueExpr(t *testing.T) {
 	}
 }
 
-// --- validateAgainstChildren: click and keydown fallback paths ---
 
-type childMethodComp struct {
-	Component struct{}
-	Local     string
-}
-
-func (c *childMethodComp) ChildAction() {}
-func (c *childMethodComp) ChildDrop(from, to float64) {}
-
-func TestValidateDirectives_ChildFallback_Click(t *testing.T) {
-	ci := newValTestCI()
-	ci.Registry["my-child"] = &component.Reg{
-		Typ: reflect.TypeOf(childMethodComp{}),
-	}
-	// ChildAction doesn't exist on parent, but exists on child
-	html := `<button g-click="ChildAction">X</button>`
-	if err := ValidateDirectives(html, ci); err != nil {
-		t.Errorf("unexpected error (should fallback to child): %v", err)
-	}
-}
-
-func TestValidateDirectives_ChildFallback_Keydown(t *testing.T) {
-	ci := newValTestCI()
-	ci.Registry["my-child"] = &component.Reg{
-		Typ: reflect.TypeOf(childMethodComp{}),
-	}
-	html := `<input g-keydown="Enter:ChildAction" />`
-	if err := ValidateDirectives(html, ci); err != nil {
-		t.Errorf("unexpected error (should fallback to child keydown): %v", err)
-	}
-}
-
-func TestValidateDirectives_ChildFallback_Drop(t *testing.T) {
-	ci := newValTestCI()
-	ci.Registry["my-child"] = &component.Reg{
-		Typ: reflect.TypeOf(childMethodComp{}),
-	}
-	html := `<div g-drop="ChildDrop"></div>`
-	if err := ValidateDirectives(html, ci); err != nil {
-		t.Errorf("unexpected error (should fallback to child drop): %v", err)
-	}
-}
-
-func TestValidateDirectives_ChildFallback_FieldNotOnEither(t *testing.T) {
-	ci := newValTestCI()
-	ci.Registry["my-child"] = &component.Reg{
-		Typ: reflect.TypeOf(childMethodComp{}),
-	}
-	// "Nonexistent" is not on parent or child
-	html := `<span g-text="Nonexistent"></span>`
-	if err := ValidateDirectives(html, ci); err == nil {
-		t.Error("expected error when field is on neither parent nor child")
-	}
-}
-
-func TestValidateDirectives_ChildFallback_MethodNotOnEither(t *testing.T) {
-	ci := newValTestCI()
-	ci.Registry["my-child"] = &component.Reg{
-		Typ: reflect.TypeOf(childMethodComp{}),
-	}
-	html := `<button g-click="Nonexistent">X</button>`
-	if err := ValidateDirectives(html, ci); err == nil {
-		t.Error("expected error when method is on neither parent nor child")
-	}
-}
 
 // --- validateMethodRef: invalid arg propagation ---
 
@@ -554,35 +469,6 @@ func TestValidateDirectives_KeydownTrailingSemicolon(t *testing.T) {
 	}
 }
 
-// --- buildChildCIs: nil registry ---
-
-func TestValidateDirectives_NilRegistry(t *testing.T) {
-	comp := &valTestComp{}
-	v := reflect.ValueOf(comp)
-	ci := &component.Info{
-		Value:    v,
-		Typ:      v.Elem().Type(),
-		Registry: nil, // nil registry
-	}
-	html := `<span g-text="Name"></span>`
-	if err := ValidateDirectives(html, ci); err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestValidateDirectives_NilRegistryUnknownField(t *testing.T) {
-	comp := &valTestComp{}
-	v := reflect.ValueOf(comp)
-	ci := &component.Info{
-		Value:    v,
-		Typ:      v.Elem().Type(),
-		Registry: nil,
-	}
-	html := `<span g-text="Missing"></span>`
-	if err := ValidateDirectives(html, ci); err == nil {
-		t.Error("expected error for unknown field with nil registry")
-	}
-}
 
 // --- validateTypePath and resolveFieldType: pointer deref, non-struct intermediate ---
 
@@ -612,7 +498,6 @@ func newValPtrCI() *component.Info {
 	return &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Registry: make(map[string]*component.Reg),
 	}
 }
 
@@ -646,7 +531,6 @@ func newValMapCI() *component.Info {
 	return &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Registry: make(map[string]*component.Reg),
 	}
 }
 
@@ -691,7 +575,6 @@ func TestValidateDirectives_NestedForNonStructIntermediate(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Registry: make(map[string]*component.Reg),
 	}
 	html := `<div g-for="item in Items"><li g-for="opt in item.Data.Something"><span g-text="opt"></span></li></div>`
 	if err := ValidateDirectives(html, ci); err != nil {
@@ -749,7 +632,6 @@ func TestValidateDirectives_ForDottedPathLoopVar(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Registry: make(map[string]*component.Reg),
 	}
 	if err := ValidateDirectives(html, ci); err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -802,51 +684,9 @@ func TestValidateDirectives_NoDirectives(t *testing.T) {
 	}
 }
 
-// --- Mouse event child fallback ---
-
-func TestValidateDirectives_ChildFallback_MouseEvent(t *testing.T) {
-	// ChildAction exists as a method on the child component.
-	// g-mousedown="ChildAction" should pass via child fallback, just like g-click does.
-	ci := newValTestCI()
-	ci.Registry["my-child"] = &component.Reg{
-		Typ: reflect.TypeOf(childMethodComp{}),
-	}
-	html := `<canvas g-mousedown="ChildAction"></canvas>`
-	if err := ValidateDirectives(html, ci); err != nil {
-		t.Errorf("child has ChildAction method — mousedown child fallback should pass: %v", err)
-	}
-}
-
-// --- validateBindExpr: child component fallback ---
-
-func TestValidateDirectives_BindChildFallback(t *testing.T) {
-	ci := newValTestCI()
-	ci.Registry["my-child"] = &component.Reg{
-		Typ: reflect.TypeOf(childMethodComp{}),
-	}
-	// "Local" exists on child but not parent
-	html := `<input g-bind="Local" />`
-	if err := ValidateDirectives(html, ci); err != nil {
-		t.Errorf("unexpected error (should fallback to child for bind): %v", err)
-	}
-}
 
 // === Negative tests and edge cases ===
 
-// --- g-drop.group child fallback ---
-
-func TestValidateDirectives_DropGroupChildFallback(t *testing.T) {
-	// ChildDrop exists as a method on the child component.
-	// g-drop:canvas="ChildDrop" should pass via child fallback, just like g-drop="ChildDrop" does.
-	ci := newValTestCI()
-	ci.Registry["my-child"] = &component.Reg{
-		Typ: reflect.TypeOf(childMethodComp{}),
-	}
-	html := `<div g-drop:canvas="ChildDrop"></div>`
-	if err := ValidateDirectives(html, ci); err != nil {
-		t.Errorf("child has ChildDrop method — g-drop:group child fallback should pass: %v", err)
-	}
-}
 
 // --- Multi-arg method used as computed value ---
 
@@ -946,7 +786,6 @@ func TestValidateDirectives_LoopVarNonStructDottedAccess(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Registry: make(map[string]*component.Reg),
 	}
 	// This passes because non-struct loop var dotted paths can't be validated
 	if err := ValidateDirectives(html, ci); err != nil {
@@ -966,7 +805,6 @@ func TestValidateDirectives_LoopVarNilItemTypeDottedAccess(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Registry: make(map[string]*component.Reg),
 	}
 	// item.Data is map → resolveFieldType returns nil → inner loop var "sub" has nil itemType
 	// "sub.Anything" → root "sub" is loop var, lv.itemType is nil → return nil (tolerated)
@@ -986,24 +824,6 @@ func TestValidateDirectives_MultipleDirectivesOneInvalid(t *testing.T) {
 	}
 }
 
-// --- g-for error is not rescued by child fallback ---
-
-func TestValidateDirectives_ForErrorNotRescuedByChild(t *testing.T) {
-	// g-for errors return directly — no child fallback
-	type childWithItems struct {
-		Component struct{}
-		Items     []string
-	}
-	ci := newValTestCI()
-	ci.Registry["my-child"] = &component.Reg{
-		Typ: reflect.TypeOf(childWithItems{}),
-	}
-	// "Items" doesn't exist on parent — g-for returns error immediately
-	html := `<li g-for="item in Items"><span g-text="item"></span></li>`
-	if err := ValidateDirectives(html, ci); err == nil {
-		t.Error("expected error: g-for doesn't fall through to child validation")
-	}
-}
 
 // --- g-value valid field ---
 

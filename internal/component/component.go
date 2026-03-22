@@ -19,9 +19,6 @@ type Info struct {
 
 	HTMLBody string
 
-	// Registry reference (from App) for creating child instances
-	Registry map[string]*Reg
-
 	// RefreshFn is set by Start() to broadcast current state to all clients.
 	// If fields are given, only those fields' bound nodes are patched (surgical).
 	// If no fields, full init is broadcast.
@@ -40,12 +37,6 @@ type Info struct {
 	// Unbound input support
 	UnboundValues map[string]any // stableKey → value (survives tree rebuilds)
 	NodeStableIDs map[int]string // nodeID → stableKey (rebuilt each resolve)
-}
-
-// Reg holds the registration info for a stateful component.
-type Reg struct {
-	Typ   reflect.Type  // the struct type (not pointer)
-	Proto reflect.Value // pointer to the prototype instance
 }
 
 // CallMethod calls an exported method on the component by name with the given arguments.

@@ -76,8 +76,7 @@ type TextPart struct {
 // ---------------------------------------------------------------------------
 
 // ParseTemplate parses HTML into a template tree.
-// componentTags is the set of registered custom element names.
-func ParseTemplate(htmlStr string, componentTags map[string]bool) ([]*TemplateNode, error) {
+func ParseTemplate(htmlStr string) ([]*TemplateNode, error) {
 	doc, err := html.Parse(strings.NewReader(htmlStr))
 	if err != nil { // unreachable: html.Parse never errors, but kept as defensive check
 		return nil, fmt.Errorf("parse HTML: %w", err)
@@ -90,14 +89,14 @@ func ParseTemplate(htmlStr string, componentTags map[string]bool) ([]*TemplateNo
 
 	var nodes []*TemplateNode
 	for c := body.FirstChild; c != nil; c = c.NextSibling {
-		if tn := htmlToTemplate(c, componentTags); tn != nil {
+		if tn := htmlToTemplate(c); tn != nil {
 			nodes = append(nodes, tn)
 		}
 	}
 	return nodes, nil
 }
 
-func htmlToTemplate(n *html.Node, componentTags map[string]bool) *TemplateNode {
+func htmlToTemplate(n *html.Node) *TemplateNode {
 	switch n.Type {
 	case html.TextNode:
 		text := n.Data
@@ -107,7 +106,7 @@ func htmlToTemplate(n *html.Node, componentTags map[string]bool) *TemplateNode {
 		return &TemplateNode{IsText: true, TextParts: ParseTextInterpolations(text)}
 
 	case html.ElementNode:
-		return htmlElementToTemplate(n, componentTags)
+		return htmlElementToTemplate(n)
 
 	case html.CommentNode:
 		return nil
@@ -117,15 +116,11 @@ func htmlToTemplate(n *html.Node, componentTags map[string]bool) *TemplateNode {
 	}
 }
 
-func htmlElementToTemplate(n *html.Node, componentTags map[string]bool) *TemplateNode {
+func htmlElementToTemplate(n *html.Node) *TemplateNode {
 	tag := n.Data
 
 	if forExpr := getAttrVal(n, "g-for"); forExpr != "" {
-		return parseForTemplate(n, forExpr, componentTags)
-	}
-
-	if componentTags[tag] {
-		return parseComponentTemplate(n, tag, componentTags)
+		return parseForTemplate(n, forExpr)
 	}
 
 	pluginName, pluginExpr := extractPluginDirective(n)
@@ -153,7 +148,7 @@ func htmlElementToTemplate(n *html.Node, componentTags map[string]bool) *Templat
 	}
 
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		if child := htmlToTemplate(c, componentTags); child != nil {
+		if child := htmlToTemplate(c); child != nil {
 			if tn.Namespace != "" && !child.IsText {
 				child.Namespace = tn.Namespace
 			}
@@ -164,7 +159,7 @@ func htmlElementToTemplate(n *html.Node, componentTags map[string]bool) *Templat
 	return tn
 }
 
-func parseForTemplate(n *html.Node, forExpr string, componentTags map[string]bool) *TemplateNode {
+func parseForTemplate(n *html.Node, forExpr string) *TemplateNode {
 	item, index, list := ParseForExpr(forExpr)
 
 	keyExpr := getAttrVal(n, "g-key")
@@ -181,18 +176,12 @@ func parseForTemplate(n *html.Node, forExpr string, componentTags map[string]boo
 	itemTemplate := &TemplateNode{Tag: n.Data}
 	itemTemplate.Attrs, itemTemplate.Directives = extractAttrsAndDirectives(n)
 
-	if componentTags[n.Data] {
-		itemTemplate.IsComponent = true
-		itemTemplate.ComponentTag = n.Data
-		itemTemplate.PropExprs = extractPropExprs(n)
-	}
-
 	if n.Data == "svg" || n.Namespace == "svg" {
 		itemTemplate.Namespace = "http://www.w3.org/2000/svg"
 	}
 
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		if child := htmlToTemplate(c, componentTags); child != nil {
+		if child := htmlToTemplate(c); child != nil {
 			if itemTemplate.Namespace != "" && !child.IsText {
 				child.Namespace = itemTemplate.Namespace
 			}
@@ -201,23 +190,6 @@ func parseForTemplate(n *html.Node, forExpr string, componentTags map[string]boo
 	}
 
 	tn.ForBody = []*TemplateNode{itemTemplate}
-	return tn
-}
-
-func parseComponentTemplate(n *html.Node, tag string, componentTags map[string]bool) *TemplateNode {
-	tn := &TemplateNode{
-		Tag:          tag,
-		IsComponent:  true,
-		ComponentTag: tag,
-		PropExprs:    extractPropExprs(n),
-	}
-	tn.Attrs, tn.Directives = extractAttrsAndDirectives(n)
-
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		if child := htmlToTemplate(c, componentTags); child != nil {
-			tn.Children = append(tn.Children, child)
-		}
-	}
 	return tn
 }
 

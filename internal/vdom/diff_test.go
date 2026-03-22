@@ -1230,7 +1230,7 @@ func TestDiff_EndToEnd(t *testing.T) {
 		<div g-if="ShowPanel">panel</div>
 	</body></html>`
 
-	templates, err := ParseTemplate(htmlStr, nil)
+	templates, err := ParseTemplate(htmlStr)
 	if err != nil {
 		t.Fatal(err)
 	}

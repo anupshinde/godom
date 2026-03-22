@@ -36,9 +36,6 @@ func TestNewEngine(t *testing.T) {
 	if e == nil {
 		t.Fatal("expected non-nil Engine")
 	}
-	if e.components == nil {
-		t.Error("expected non-nil components map")
-	}
 	if e.plugins == nil {
 		t.Error("expected non-nil plugins map")
 	}
@@ -148,75 +145,6 @@ func TestRefresh_MarkedFieldsPassedThrough(t *testing.T) {
 
 	if len(ci.MarkedFields) != 2 || ci.MarkedFields[0] != "Name" || ci.MarkedFields[1] != "Count" {
 		t.Errorf("expected MarkedFields [Name Count], got %v", ci.MarkedFields)
-	}
-}
-
-// --- RegisterComponent ---
-
-func TestRegisterComponent_Valid(t *testing.T) {
-	e := NewEngine()
-	app := &testApp{}
-	e.RegisterComponent("my-app", app)
-
-	reg, ok := e.components["my-app"]
-	if !ok {
-		t.Fatal("expected 'my-app' to be registered")
-	}
-	if reg.Typ != reflect.TypeOf(testApp{}) {
-		t.Errorf("expected type testApp, got %v", reg.Typ)
-	}
-	// Proto must point to the original prototype value
-	if reg.Proto.Pointer() != reflect.ValueOf(app).Pointer() {
-		t.Error("expected Proto to point to the original app instance")
-	}
-}
-
-func TestRegisterComponent_NonPointer(t *testing.T) {
-	if os.Getenv("TEST_FATAL_NONPOINTER") == "1" {
-		e := NewEngine()
-		e.RegisterComponent("my-app", testApp{}) // not a pointer → log.Fatal
-		return
-	}
-	out := runSubprocess(t, "TestRegisterComponent_NonPointer", "TEST_FATAL_NONPOINTER")
-	if !strings.Contains(out, "requires a pointer to a struct") {
-		t.Errorf("expected error about pointer to struct, got: %s", out)
-	}
-}
-
-func TestRegisterComponent_PointerToNonStruct(t *testing.T) {
-	if os.Getenv("TEST_FATAL_NONSTRUCT") == "1" {
-		e := NewEngine()
-		n := 42
-		e.RegisterComponent("my-app", &n) // pointer to int, not struct → log.Fatal
-		return
-	}
-	out := runSubprocess(t, "TestRegisterComponent_PointerToNonStruct", "TEST_FATAL_NONSTRUCT")
-	if !strings.Contains(out, "requires a pointer to a struct") {
-		t.Errorf("expected error about pointer to struct, got: %s", out)
-	}
-}
-
-func TestRegisterComponent_NoHyphen(t *testing.T) {
-	if os.Getenv("TEST_FATAL_NOHYPHEN") == "1" {
-		e := NewEngine()
-		e.RegisterComponent("myapp", &testApp{}) // no hyphen → log.Fatal
-		return
-	}
-	out := runSubprocess(t, "TestRegisterComponent_NoHyphen", "TEST_FATAL_NOHYPHEN")
-	if !strings.Contains(out, "must contain a hyphen") {
-		t.Errorf("expected error about hyphen, got: %s", out)
-	}
-}
-
-func TestRegisterComponent_NoEmbed(t *testing.T) {
-	if os.Getenv("TEST_FATAL_NOEMBED") == "1" {
-		e := NewEngine()
-		e.RegisterComponent("my-app", &noComponentApp{}) // no Component embed → log.Fatal
-		return
-	}
-	out := runSubprocess(t, "TestRegisterComponent_NoEmbed", "TEST_FATAL_NOEMBED")
-	if !strings.Contains(out, "must embed godom.Component") {
-		t.Errorf("expected error about embedding Component, got: %s", out)
 	}
 }
 
@@ -359,26 +287,6 @@ func TestMount_BadEntryPath(t *testing.T) {
 	}
 }
 
-func TestMount_ComponentExpansionError(t *testing.T) {
-	if os.Getenv("TEST_FATAL_MOUNT_EXPAND") == "1" {
-		e := NewEngine()
-		// Register a component but don't provide its HTML file in the FS
-		e.RegisterComponent("child-widget", &testApp{})
-		htmlWithComponent := `<!DOCTYPE html><html><head></head><body>
-			<child-widget></child-widget>
-		</body></html>`
-		badFS := fstest.MapFS{
-			"index.html": &fstest.MapFile{Data: []byte(htmlWithComponent)},
-		}
-		e.Mount(&testApp{}, badFS, "index.html")
-		return
-	}
-	out := runSubprocess(t, "TestMount_ComponentExpansionError", "TEST_FATAL_MOUNT_EXPAND")
-	if !strings.Contains(out, "expand components") && !strings.Contains(out, "child-widget") {
-		t.Errorf("expected error about component expansion, got: %s", out)
-	}
-}
-
 // --- Start ---
 
 func TestMount_SetsValueAndType(t *testing.T) {
@@ -402,21 +310,6 @@ func TestMount_RefreshWorksAfterMount(t *testing.T) {
 
 	// After Mount, Refresh should not panic (ci is wired, but RefreshFn is nil until Start)
 	app.Refresh()
-}
-
-func TestMount_RegistryPassedThrough(t *testing.T) {
-	e := NewEngine()
-	e.RegisterComponent("child-comp", &testApp{})
-
-	app := &testApp{}
-	e.Mount(app, makeTestFS(), "index.html")
-
-	if e.comp.Registry == nil {
-		t.Fatal("expected Registry to be set")
-	}
-	if _, ok := e.comp.Registry["child-comp"]; !ok {
-		t.Error("expected 'child-comp' in Registry")
-	}
 }
 
 func TestMount_InvalidDirective(t *testing.T) {

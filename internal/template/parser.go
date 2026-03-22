@@ -5,8 +5,6 @@ import (
 	"io/fs"
 	"regexp"
 	"strings"
-
-	"github.com/anupshinde/godom/internal/component"
 )
 
 // --- Template expansion (custom elements → HTML) ---
@@ -22,7 +20,7 @@ var gAttrRe = regexp.MustCompile(`(g-[a-z]+(?::[a-z-]+)?)\s*=\s*"([^"]*)"`)
 
 // ExpandComponents takes HTML and recursively replaces custom element tags
 // with the contents of their corresponding HTML files from the filesystem.
-func ExpandComponents(htmlStr string, fsys fs.FS, registry map[string]*component.Reg) (string, error) {
+func ExpandComponents(htmlStr string, fsys fs.FS) (string, error) {
 	maxDepth := 10
 	for depth := 0; depth < maxDepth; depth++ {
 		loc := openTagRe.FindStringSubmatchIndex(htmlStr)
@@ -72,11 +70,6 @@ func ExpandComponents(htmlStr string, fsys fs.FS, registry map[string]*component
 			if propsAttr != "" {
 				expanded = TransferAttrsToRoot(expanded, `g-props="`+propsAttr+`"`)
 			}
-		}
-
-		// Mark registered (stateful) components so the parser can scope them
-		if _, ok := registry[tagName]; ok {
-			expanded = TransferAttrsToRoot(expanded, `data-g-component="`+tagName+`"`)
 		}
 
 		htmlStr = htmlStr[:loc[0]] + expanded + htmlStr[end:]

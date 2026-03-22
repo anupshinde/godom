@@ -26,13 +26,8 @@ type loopVarInfo struct {
 
 // ValidateDirectives parses HTML for g-* directives and validates them
 // against the component's struct fields and methods. Called at Mount() time.
-// For directives inside registered component subtrees, validation falls through
-// to the child component's struct.
 func ValidateDirectives(htmlStr string, ci *component.Info) error {
 	loopVars := collectLoopVars(htmlStr, ci)
-
-	// Build child CIs for registered components (for fallback validation)
-	childCIs := buildChildCIs(ci)
 
 	matches := directiveRe.FindAllStringSubmatch(htmlStr, -1)
 	for _, m := range matches {
@@ -54,84 +49,32 @@ func ValidateDirectives(htmlStr string, ci *component.Info) error {
 			}
 		case "bind":
 			if err := validateBindExpr(expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(baseDirType, expr, childCIs) {
-					return err
-				}
+				return err
 			}
 		case "click":
 			if err := validateMethodRef("g-click", expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(baseDirType, expr, childCIs) {
-					return err
-				}
+				return err
 			}
 		case "keydown":
 			if err := validateKeydownExpr(expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(baseDirType, expr, childCIs) {
-					return err
-				}
+				return err
 			}
 		case "mousedown", "mousemove", "mouseup", "wheel":
 			if err := validateMethodRef("g-"+dirType, expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(baseDirType, expr, childCIs) {
-					return err
-				}
+				return err
 			}
 		case "drop":
 			if err := validateMethodRef("g-drop", expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(baseDirType, expr, childCIs) {
-					return err
-				}
+				return err
 			}
 		default:
 			if err := validateFieldExpr(expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(baseDirType, expr, childCIs) {
-					return err
-				}
+				return err
 			}
 		}
 	}
 
 	return nil
-}
-
-// buildChildCIs creates temporary component.Infos for each registered component
-// in the registry, used for validation fallback.
-func buildChildCIs(parentCI *component.Info) []*component.Info {
-	if parentCI.Registry == nil {
-		return nil
-	}
-	var children []*component.Info
-	for _, reg := range parentCI.Registry {
-		children = append(children, &component.Info{
-			Value:    reflect.New(reg.Typ),
-			Typ:      reg.Typ,
-			Registry: parentCI.Registry,
-		})
-	}
-	return children
-}
-
-// validateAgainstChildren tries validating a directive against any registered
-// child component struct. Returns true if any child validates successfully.
-func validateAgainstChildren(dirType, expr string, childCIs []*component.Info) bool {
-	for _, childCI := range childCIs {
-		childLoopVars := map[string]*loopVarInfo{}
-		switch dirType {
-		case "click", "drop", "mousedown", "mousemove", "mouseup", "wheel":
-			if validateMethodRef("g-"+dirType, expr, childCI, childLoopVars) == nil {
-				return true
-			}
-		case "keydown":
-			if validateKeydownExpr(expr, childCI, childLoopVars) == nil {
-				return true
-			}
-		default:
-			if validateFieldExpr(expr, childCI, childLoopVars) == nil {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // collectLoopVars finds all loop variables declared in g-for expressions

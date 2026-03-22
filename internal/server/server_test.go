@@ -53,7 +53,7 @@ func makeCounterCI(app *counterApp) *component.Info {
 	v := reflect.ValueOf(app)
 	t := v.Elem().Type()
 
-	templates, err := vdom.ParseTemplate(counterHTML, nil)
+	templates, err := vdom.ParseTemplate(counterHTML)
 	if err != nil {
 		panic(err)
 	}
@@ -858,7 +858,7 @@ func (a *refreshApp) IncrementAndRefresh() {
 func TestHandleMethodCall_SkipsRebuildWhenRefreshed(t *testing.T) {
 	app := &refreshApp{Count: 0}
 	v := reflect.ValueOf(app)
-	templates, err := vdom.ParseTemplate(`<!DOCTYPE html><html><head></head><body><span g-text="Count">0</span></body></html>`, nil)
+	templates, err := vdom.ParseTemplate(`<!DOCTYPE html><html><head></head><body><span g-text="Count">0</span></body></html>`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1008,7 +1008,7 @@ const surgicalHTML = `<!DOCTYPE html><html><head></head><body>
 func makeSurgicalCI(app *surgicalApp) *component.Info {
 	v := reflect.ValueOf(app)
 	t := v.Elem().Type()
-	templates, err := vdom.ParseTemplate(surgicalHTML, nil)
+	templates, err := vdom.ParseTemplate(surgicalHTML)
 	if err != nil {
 		panic(err)
 	}
@@ -1516,7 +1516,7 @@ const unboundHTML = `<!DOCTYPE html><html><head></head><body>
 func makeUnboundCI(app *unboundApp) *component.Info {
 	v := reflect.ValueOf(app)
 	t := v.Elem().Type()
-	templates, err := vdom.ParseTemplate(unboundHTML, nil)
+	templates, err := vdom.ParseTemplate(unboundHTML)
 	if err != nil {
 		panic(err)
 	}
@@ -1652,7 +1652,7 @@ func (a *argsApp) SetResult(val string) {
 func TestHandleMethodCall_WithArgs(t *testing.T) {
 	app := &argsApp{Result: ""}
 	v := reflect.ValueOf(app)
-	templates, err := vdom.ParseTemplate(`<!DOCTYPE html><html><head></head><body><span g-text="Result">x</span></body></html>`, nil)
+	templates, err := vdom.ParseTemplate(`<!DOCTYPE html><html><head></head><body><span g-text="Result">x</span></body></html>`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2853,7 +2853,7 @@ const gifHTML = `<!DOCTYPE html><html><head></head><body>
 func makeGifCI(app *gifApp) *component.Info {
 	v := reflect.ValueOf(app)
 	t := v.Elem().Type()
-	templates, err := vdom.ParseTemplate(gifHTML, nil)
+	templates, err := vdom.ParseTemplate(gifHTML)
 	if err != nil {
 		panic(err)
 	}
@@ -3177,7 +3177,7 @@ func TestBuildUpdate_RemapsNodeStableIDs(t *testing.T) {
 	// mapping so handleNodeEvent can still find the right stable key.
 	app := &stableRemapApp{Label: "hello"}
 	v := reflect.ValueOf(app)
-	templates, err := vdom.ParseTemplate(stableRemapHTML, nil)
+	templates, err := vdom.ParseTemplate(stableRemapHTML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3257,7 +3257,7 @@ func TestBuildUpdate_RemapsNodeStableIDs_ElseBranch(t *testing.T) {
 	templates, err := vdom.ParseTemplate(`<!DOCTYPE html><html><head></head><body>
 	<div g-if="ShowExtra"><span>extra</span></div>
 	<input type="text" placeholder="unbound"/>
-</body></html>`, nil)
+</body></html>`)
 	if err != nil {
 		t.Fatal(err)
 	}

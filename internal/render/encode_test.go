@@ -1485,7 +1485,7 @@ func TestEndToEnd_ParseResolveDiffEncode(t *testing.T) {
 		<button g-click="Increment">+</button>
 	</body></html>`
 
-	templates, err := vdom.ParseTemplate(htmlStr, nil)
+	templates, err := vdom.ParseTemplate(htmlStr)
 	if err != nil {
 		t.Fatal(err)
 	}

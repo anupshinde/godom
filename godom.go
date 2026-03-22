@@ -9,7 +9,6 @@ import (
 	"os"
 	"path"
 	"reflect"
-	"strings"
 
 	"github.com/anupshinde/godom/internal/component"
 	"github.com/anupshinde/godom/internal/server"
@@ -35,9 +34,8 @@ type Engine struct {
 	Token      string // fixed auth token; empty = generate random token
 	NoBrowser  bool   // don't open browser on start
 	Quiet      bool   // suppress startup output
-	comp       *component.Info
-	components map[string]*component.Reg // tag name → registered component
-	plugins    map[string][]string       // plugin name → JS scripts
+	comp    *component.Info
+	plugins map[string][]string // plugin name → JS scripts
 	staticFS   fs.FS                     // embedded UI filesystem for static assets
 }
 
@@ -78,39 +76,13 @@ func (c Component) Refresh() {
 // NewEngine creates a new godom Engine.
 func NewEngine() *Engine {
 	return &Engine{
-		components: make(map[string]*component.Reg),
-		plugins:    make(map[string][]string),
+		plugins: make(map[string][]string),
 	}
 }
 
 // RegisterPlugin registers a named plugin with one or more JS scripts.
 func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts
-}
-
-// RegisterComponent registers a stateful component struct for a custom element tag.
-// The tag must contain a hyphen (e.g., "todo-item").
-// The comp argument must be a pointer to a struct that embeds godom.Component.
-func (a *Engine) RegisterComponent(tag string, comp interface{}) {
-	v := reflect.ValueOf(comp)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		log.Fatalf("godom: Component(%q) requires a pointer to a struct", tag)
-	}
-
-	t := v.Elem().Type()
-
-	if !strings.Contains(tag, "-") {
-		log.Fatalf("godom: Component tag %q must contain a hyphen", tag)
-	}
-
-	if !embedsComponent(t) {
-		log.Fatalf("godom: Component(%q) struct must embed godom.Component", tag)
-	}
-
-	a.components[tag] = &component.Reg{
-		Typ:   t,
-		Proto: v,
-	}
 }
 
 // Mount registers a component struct with an embedded filesystem containing HTML templates.
@@ -144,7 +116,7 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 		log.Fatalf("godom: failed to read %s: %v", entryPath, err)
 	}
 
-	composed, err := template.ExpandComponents(string(indexHTML), a.staticFS, a.components)
+	composed, err := template.ExpandComponents(string(indexHTML), a.staticFS)
 	if err != nil {
 		log.Fatalf("godom: failed to expand components: %v", err)
 	}
@@ -153,18 +125,13 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 		Value:    v,
 		Typ:      t,
 		HTMLBody: composed,
-		Registry: a.components,
 	}
 
 	if err := template.ValidateDirectives(composed, ci); err != nil {
 		log.Fatalf("godom: %v", err)
 	}
 
-	componentTags := make(map[string]bool)
-	for tag := range a.components {
-		componentTags[tag] = true
-	}
-	templates, err := vdom.ParseTemplate(composed, componentTags)
+	templates, err := vdom.ParseTemplate(composed)
 	if err != nil {
 		log.Fatalf("godom: failed to parse templates: %v", err)
 	}

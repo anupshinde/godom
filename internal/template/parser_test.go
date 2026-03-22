@@ -2,12 +2,9 @@ package template
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
-
-	"github.com/anupshinde/godom/internal/component"
 )
 
 func TestParseForExprParts(t *testing.T) {
@@ -158,7 +155,7 @@ func TestExpandComponents(t *testing.T) {
 		"my-comp.html": {Data: []byte(`<span>hello</span>`)},
 	}
 
-	result, err := ExpandComponents(`<div><my-comp></my-comp></div>`, fsys, nil)
+	result, err := ExpandComponents(`<div><my-comp></my-comp></div>`, fsys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +173,7 @@ func TestExpandComponents_WithGAttrs(t *testing.T) {
 		"my-item.html": {Data: []byte(`<li>item</li>`)},
 	}
 
-	result, err := ExpandComponents(`<my-item g-for="x in Items"></my-item>`, fsys, nil)
+	result, err := ExpandComponents(`<my-item g-for="x in Items"></my-item>`, fsys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +188,7 @@ func TestExpandComponents_WithProps(t *testing.T) {
 		"my-item.html": {Data: []byte(`<li>item</li>`)},
 	}
 
-	result, err := ExpandComponents(`<my-item :name="item.Name" :index="i"></my-item>`, fsys, nil)
+	result, err := ExpandComponents(`<my-item :name="item.Name" :index="i"></my-item>`, fsys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +203,7 @@ func TestExpandComponents_SelfClosing(t *testing.T) {
 		"my-tag.html": {Data: []byte(`<div>content</div>`)},
 	}
 
-	result, err := ExpandComponents(`<my-tag />`, fsys, nil)
+	result, err := ExpandComponents(`<my-tag />`, fsys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +216,7 @@ func TestExpandComponents_SelfClosing(t *testing.T) {
 func TestExpandComponents_MissingFile(t *testing.T) {
 	fsys := fstest.MapFS{}
 
-	_, err := ExpandComponents(`<my-tag></my-tag>`, fsys, nil)
+	_, err := ExpandComponents(`<my-tag></my-tag>`, fsys)
 	if err == nil {
 		t.Error("expected error for missing component file")
 	}
@@ -239,7 +236,7 @@ func TestExpandComponents_MissingClosingTag(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-comp.html": {Data: []byte(`<span>hello</span>`)},
 	}
-	_, err := ExpandComponents(`<div><my-comp>content</div>`, fsys, nil)
+	_, err := ExpandComponents(`<div><my-comp>content</div>`, fsys)
 	if err == nil {
 		t.Error("expected error for missing closing tag")
 	}
@@ -248,43 +245,12 @@ func TestExpandComponents_MissingClosingTag(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_RegisteredComponent(t *testing.T) {
-	fsys := fstest.MapFS{
-		"my-widget.html": {Data: []byte(`<div>widget</div>`)},
-	}
-	registry := map[string]*component.Reg{
-		"my-widget": {Typ: reflect.TypeOf(struct{}{})},
-	}
-	result, err := ExpandComponents(`<my-widget></my-widget>`, fsys, registry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result, `data-g-component="my-widget"`) {
-		t.Errorf("expected data-g-component attribute, got: %s", result)
-	}
-}
-
-func TestExpandComponents_RegisteredComponentNotInRegistry(t *testing.T) {
-	// Tag not in registry should NOT get data-g-component
-	fsys := fstest.MapFS{
-		"my-widget.html": {Data: []byte(`<div>widget</div>`)},
-	}
-	registry := map[string]*component.Reg{}
-	result, err := ExpandComponents(`<my-widget></my-widget>`, fsys, registry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(result, `data-g-component`) {
-		t.Errorf("should not have data-g-component when not in registry, got: %s", result)
-	}
-}
-
 func TestExpandComponents_Recursive(t *testing.T) {
 	fsys := fstest.MapFS{
 		"outer-comp.html": {Data: []byte(`<div><inner-comp></inner-comp></div>`)},
 		"inner-comp.html": {Data: []byte(`<span>inner</span>`)},
 	}
-	result, err := ExpandComponents(`<outer-comp></outer-comp>`, fsys, nil)
+	result, err := ExpandComponents(`<outer-comp></outer-comp>`, fsys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +266,7 @@ func TestExpandComponents_SelfClosingWithGAttrsAndProps(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-item.html": {Data: []byte(`<li>item</li>`)},
 	}
-	result, err := ExpandComponents(`<my-item g-text="Name" :val="x" />`, fsys, nil)
+	result, err := ExpandComponents(`<my-item g-text="Name" :val="x" />`, fsys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +282,7 @@ func TestExpandComponents_NoCustomElements(t *testing.T) {
 	// Plain HTML with no custom elements should pass through unchanged
 	fsys := fstest.MapFS{}
 	input := `<div><span>hello</span></div>`
-	result, err := ExpandComponents(input, fsys, nil)
+	result, err := ExpandComponents(input, fsys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +297,7 @@ func TestExpandComponents_AttrsNoGAttrsNoProps(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-tag.html": {Data: []byte(`<div>content</div>`)},
 	}
-	result, err := ExpandComponents(`<my-tag class="foo" id="bar"></my-tag>`, fsys, nil)
+	result, err := ExpandComponents(`<my-tag class="foo" id="bar"></my-tag>`, fsys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +325,7 @@ func TestExpandComponents_MaxDepthExhaustion(t *testing.T) {
 	// The last level just has content
 	fsys["level-12.html"] = &fstest.MapFile{Data: []byte(`<span>bottom</span>`)}
 
-	result, err := ExpandComponents(`<level-0></level-0>`, fsys, nil)
+	result, err := ExpandComponents(`<level-0></level-0>`, fsys)
 	if err != nil {
 		t.Fatal(err)
 	}

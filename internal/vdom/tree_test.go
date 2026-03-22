@@ -29,7 +29,7 @@ import (
 
 func TestParseTemplate_SimpleText(t *testing.T) {
 	html := `<!DOCTYPE html><html><head></head><body>Hello World</body></html>`
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestParseTemplate_SimpleText(t *testing.T) {
 
 func TestParseTemplate_Element(t *testing.T) {
 	html := `<!DOCTYPE html><html><head></head><body><div class="main"><span>hi</span></div></body></html>`
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestParseTemplate_Directives(t *testing.T) {
 		<div g-attr:transform="Transform">text</div>
 	</body></html>`
 
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestParseTemplate_Directives_Negative(t *testing.T) {
 		<div id="main" class="box" data-x="1" g-text="Name" g-click="Save">text</div>
 	</body></html>`
 
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestParseTemplate_GFor(t *testing.T) {
 		</ul>
 	</body></html>`
 
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestParseTemplate_TextInterpolation(t *testing.T) {
 		<p>Hello {{Name}}, you have {{Count}} items</p>
 	</body></html>`
 
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,38 +260,6 @@ func TestParseTemplate_TextInterpolation(t *testing.T) {
 	}
 }
 
-func TestParseTemplate_Component(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body>
-		<todo-item :text="todo.Text" :done="todo.Done"></todo-item>
-	</body></html>`
-
-	comps := map[string]bool{"todo-item": true}
-	nodes, err := ParseTemplate(html, comps)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var comp *TemplateNode
-	for _, n := range nodes {
-		if n.IsComponent {
-			comp = n
-			break
-		}
-	}
-	if comp == nil {
-		t.Fatal("expected component node")
-	}
-	if comp.ComponentTag != "todo-item" {
-		t.Errorf("expected tag 'todo-item', got %q", comp.ComponentTag)
-	}
-	if comp.PropExprs["text"] != "todo.Text" {
-		t.Errorf("expected prop 'text' = 'todo.Text', got %q", comp.PropExprs["text"])
-	}
-	if comp.PropExprs["done"] != "todo.Done" {
-		t.Errorf("expected prop 'done' = 'todo.Done', got %q", comp.PropExprs["done"])
-	}
-}
-
 // ---------------------------------------------------------------------------
 // resolveTree tests
 // ---------------------------------------------------------------------------
@@ -308,7 +276,7 @@ func TestResolveTree_SimpleElement(t *testing.T) {
 		<button g-click="Increment">+</button>
 	</body></html>`
 
-	templates, err := ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +315,7 @@ func TestResolveTree_GFor(t *testing.T) {
 		</ul>
 	</body></html>`
 
-	templates, err := ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +366,7 @@ func TestResolveTree_GForWithIndex(t *testing.T) {
 		</ol>
 	</body></html>`
 
-	templates, err := ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,7 +427,7 @@ func TestResolveTree_GForEmptyList(t *testing.T) {
 		</ul>
 	</body></html>`
 
-	templates, err := ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +458,7 @@ func TestResolveTree_GFor_Negative(t *testing.T) {
 		html := `<!DOCTYPE html><html><head></head><body>
 			<ul><li g-for="x in Text"><span g-text="x"></span></li></ul>
 		</body></html>`
-		templates, err := ParseTemplate(html, nil)
+		templates, err := ParseTemplate(html)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -513,7 +481,7 @@ func TestResolveTree_GFor_Negative(t *testing.T) {
 		html := `<!DOCTYPE html><html><head></head><body>
 			<ul><li g-for="x in NoSuchField"><span g-text="x"></span></li></ul>
 		</body></html>`
-		templates, err := ParseTemplate(html, nil)
+		templates, err := ParseTemplate(html)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -537,7 +505,7 @@ func TestResolveTree_GIf(t *testing.T) {
 		<div g-if="Done">completed</div>
 	</body></html>`
 
-	templates, err := ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -564,7 +532,7 @@ func TestResolveTree_TextInterpolation(t *testing.T) {
 		<p>Count is {{Count}}</p>
 	</body></html>`
 
-	templates, err := ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -583,7 +551,7 @@ func TestResolveTree_GShow(t *testing.T) {
 		<div g-show="Done">hidden when false</div>
 	</body></html>`
 
-	templates, err := ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -618,7 +586,7 @@ func TestResolveTree_GClass(t *testing.T) {
 		<div class="base" g-class:active="Done">text</div>
 	</body></html>`
 
-	templates, err := ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -655,7 +623,7 @@ func TestResolveTree_GClass_Negative(t *testing.T) {
 		<div class="base" g-class:active="Done">text</div>
 	</body></html>`
 
-	templates, err := ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -709,7 +677,7 @@ func TestResolveTree_GClassMultiple(t *testing.T) {
 		<div class="btn" g-class:active="IsActive" g-class:selected="IsSelected" g-class:disabled="IsDisabled">text</div>
 	</body></html>`
 
-	templates, err := ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1524,46 +1492,6 @@ func TestResolve_GIfNegation(t *testing.T) {
 	})
 }
 
-func TestResolve_ComponentNode(t *testing.T) {
-	tmpl := &TemplateNode{
-		Tag:          "todo-item",
-		IsComponent:  true,
-		ComponentTag: "todo-item",
-		PropExprs:    map[string]string{"text": "Name", "count": "Count"},
-	}
-
-	t.Run("props resolve from expressions", func(t *testing.T) {
-		state := &testDirectiveState{Name: "hello", Count: 42}
-		ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
-		nodes := ResolveTemplateNode(tmpl, ctx)
-		if len(nodes) != 1 {
-			t.Fatalf("expected 1 node, got %d", len(nodes))
-		}
-		cn, ok := nodes[0].(*ComponentNode)
-		if !ok {
-			t.Fatalf("expected ComponentNode, got %T", nodes[0])
-		}
-		if cn.Tag != "todo-item" {
-			t.Errorf("expected tag 'todo-item', got %q", cn.Tag)
-		}
-		if cn.Props["text"] != "hello" {
-			t.Errorf("expected text='hello', got %v", cn.Props["text"])
-		}
-		if cn.Props["count"] != 42 {
-			t.Errorf("expected count=42, got %v", cn.Props["count"])
-		}
-	})
-
-	t.Run("SubTree is nil at resolve time", func(t *testing.T) {
-		state := &testDirectiveState{Name: "x"}
-		ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
-		nodes := ResolveTemplateNode(tmpl, ctx)
-		cn := nodes[0].(*ComponentNode)
-		if cn.SubTree != nil {
-			t.Error("expected SubTree to be nil at resolve time")
-		}
-	})
-}
 
 // ---------------------------------------------------------------------------
 // Section 2: Expression engine tests
@@ -2008,7 +1936,7 @@ func TestParse_SVGNamespace(t *testing.T) {
 		<div>not svg</div>
 	</body></html>`
 
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2044,7 +1972,7 @@ func TestResolveFacts_ClassAttrToClassName(t *testing.T) {
 		<div class="foo bar" id="main" style="color:red">text</div>
 	</body></html>`
 
-	templates, err := ParseTemplate(html, nil)
+	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2087,7 +2015,7 @@ func TestParse_CommentIgnored(t *testing.T) {
 		<span>after</span>
 	</body></html>`
 
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2112,7 +2040,7 @@ func TestParse_KeydownMultiHandler(t *testing.T) {
 		<input g-keydown="Enter:Save;Escape:Cancel"/>
 	</body></html>`
 
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2153,7 +2081,7 @@ func TestParse_PluginDirective(t *testing.T) {
 		<div g-plugin:chart="ChartData" class="chart-container">content</div>
 	</body></html>`
 
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2173,74 +2101,13 @@ func TestParse_PluginDirective(t *testing.T) {
 	}
 }
 
-func TestParse_ComponentWithChildren(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body>
-		<my-comp :title="Name"><span>child</span></my-comp>
-	</body></html>`
-
-	comps := map[string]bool{"my-comp": true}
-	nodes, err := ParseTemplate(html, comps)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var comp *TemplateNode
-	for _, n := range nodes {
-		if n.IsComponent {
-			comp = n
-			break
-		}
-	}
-	if comp == nil {
-		t.Fatal("expected component node")
-	}
-	if comp.ComponentTag != "my-comp" {
-		t.Errorf("expected tag 'my-comp', got %q", comp.ComponentTag)
-	}
-	// Should have children
-	if len(comp.Children) == 0 {
-		t.Error("expected component to have children")
-	}
-}
-
-func TestParse_ForWithComponent(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body>
-		<todo-item g-for="t in Todos" :text="t.Text"></todo-item>
-	</body></html>`
-
-	comps := map[string]bool{"todo-item": true}
-	nodes, err := ParseTemplate(html, comps)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Should have a g-for node
-	var forNode *TemplateNode
-	for _, n := range nodes {
-		if n.IsFor {
-			forNode = n
-			break
-		}
-	}
-	if forNode == nil {
-		t.Fatal("expected g-for node")
-	}
-	// The body template should be a component
-	if len(forNode.ForBody) != 1 {
-		t.Fatalf("expected 1 body template, got %d", len(forNode.ForBody))
-	}
-	body := forNode.ForBody[0]
-	if !body.IsComponent {
-		t.Error("expected body template to be a component")
-	}
-}
 
 func TestParse_ForWithSVG(t *testing.T) {
 	html := `<!DOCTYPE html><html><head></head><body>
 		<svg><rect g-for="r in Rects" g-attr:width="r.W"></rect></svg>
 	</body></html>`
 
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2274,7 +2141,7 @@ func TestParse_DropzoneDirective(t *testing.T) {
 		<div g-dropzone="HandleDrop">drop here</div>
 	</body></html>`
 
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2290,7 +2157,7 @@ func TestParse_PropPrefixSkipped(t *testing.T) {
 	html := `<!DOCTYPE html><html><head></head><body>
 		<div :title="Name" class="x">text</div>
 	</body></html>`
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2313,7 +2180,7 @@ func TestParse_PropPrefixSkipped(t *testing.T) {
 func TestParse_NoBody(t *testing.T) {
 	// Go's html.Parse always synthesizes a <body> node, so findBody never returns nil.
 	// Even an input with no explicit <body> tag produces an empty body → empty node list.
-	nodes, err := ParseTemplate("<html><head></head></html>", nil)
+	nodes, err := ParseTemplate("<html><head></head></html>")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2404,7 +2271,7 @@ func TestParse_DraggableDirective(t *testing.T) {
 		<div g-draggable:cards="ItemID">drag card</div>
 	</body></html>`
 
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2447,7 +2314,7 @@ func TestParse_DropDirective(t *testing.T) {
 		<div g-drop:canvas="Reorder">drop canvas</div>
 	</body></html>`
 
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2537,7 +2404,7 @@ func TestParse_AllDirectiveTypes(t *testing.T) {
 	// Exercises every case branch in extractAttrsAndDirectives
 	// Main element: all directives except g-for/g-key (those are handled separately)
 	tmplHTML := `<div g-text="Name" g-bind="Email" g-value="Name" g-checked="Done" g-if="Visible" g-show="Visible" g-hide="Hidden" g-class:active="Done" g-attr:role="Name" g-style:width="Width" g-click="Save" g-keydown="Enter:Submit" g-mousedown="Down" g-mousemove="Move" g-mouseup="Up" g-wheel="Scroll" g-drop="HandleDrop" g-draggable="Name" g-dropzone="HandleDrop" data-custom="val"></div>`
-	nodes, err := ParseTemplate(tmplHTML, nil)
+	nodes, err := ParseTemplate(tmplHTML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2572,7 +2439,7 @@ func TestParse_AllDirectiveTypes(t *testing.T) {
 
 	// Separate element: g-for with g-key exercises the g-for/g-key continue + g-plugin + :prop skip
 	tmplHTML2 := `<div g-for="x in Items" g-key="x.ID" g-plugin:chart="Data" :text="Name" g-click="Save"></div>`
-	nodes2, err := ParseTemplate(tmplHTML2, nil)
+	nodes2, err := ParseTemplate(tmplHTML2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2601,7 +2468,7 @@ func TestParse_AllDirectiveTypes(t *testing.T) {
 func TestParse_ShowClickDropDirectives(t *testing.T) {
 	// Exercises extractAttrsAndDirectives for g-show, g-click, g-drop
 	tmplHTML := `<div g-show="Visible" g-click="Save" g-drop="HandleDrop"></div>`
-	nodes, err := ParseTemplate(tmplHTML, nil)
+	nodes, err := ParseTemplate(tmplHTML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2637,7 +2504,7 @@ func TestParse_ShowClickDropDirectives(t *testing.T) {
 func TestParse_AllMouseDirectives(t *testing.T) {
 	// Exercises extractAttrsAndDirectives for all mouse events + wheel
 	tmplHTML := `<div g-mousedown="Down" g-mousemove="Move" g-mouseup="Up" g-wheel="Scroll"></div>`
-	nodes, err := ParseTemplate(tmplHTML, nil)
+	nodes, err := ParseTemplate(tmplHTML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2659,7 +2526,7 @@ func TestParse_AllMouseDirectives(t *testing.T) {
 func TestParse_StyleAndIdAttrs(t *testing.T) {
 	// Exercises resolveFacts for style and id as props (not attrs)
 	tmplHTML := `<div style="color:red" id="main"></div>`
-	nodes, err := ParseTemplate(tmplHTML, nil)
+	nodes, err := ParseTemplate(tmplHTML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2688,7 +2555,7 @@ func TestParse_StyleAndIdAttrs(t *testing.T) {
 func TestResolve_RegularAttrToFactsAttrs(t *testing.T) {
 	// Exercises resolveFacts else branch: non-class/style/id attr → f.Attrs
 	tmplHTML := `<div data-testid="foo" aria-label="bar"></div>`
-	nodes, err := ParseTemplate(tmplHTML, nil)
+	nodes, err := ParseTemplate(tmplHTML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2710,7 +2577,7 @@ func TestResolve_RegularAttrToFactsAttrs(t *testing.T) {
 func TestResolve_GClassAppendExisting(t *testing.T) {
 	// Exercises g-class "existing != ''" branch: class attr + two truthy g-class directives
 	tmplHTML := `<div class="base" g-class:active="A" g-class:highlight="B"></div>`
-	nodes, err := ParseTemplate(tmplHTML, nil)
+	nodes, err := ParseTemplate(tmplHTML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2738,7 +2605,7 @@ func TestResolve_GClassNoExistingClassName(t *testing.T) {
 	// Exercises g-class else branch: no prior className, truthy g-class → set directly
 	// Also exercises f.Props == nil init inside g-class when no class/style/id attrs exist
 	tmplHTML := `<div g-class:active="A"></div>`
-	nodes, err := ParseTemplate(tmplHTML, nil)
+	nodes, err := ParseTemplate(tmplHTML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2797,7 +2664,7 @@ func TestResolveExpr_MethodWithArgsNoReturn(t *testing.T) {
 func TestParse_KeydownTrailingSemicolon(t *testing.T) {
 	// Exercises g-keydown empty part continue (line 255-256 in extractAttrsAndDirectives)
 	tmplHTML := `<div g-keydown="Enter:Save;"></div>`
-	nodes, err := ParseTemplate(tmplHTML, nil)
+	nodes, err := ParseTemplate(tmplHTML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2820,7 +2687,7 @@ func TestParse_KeydownTrailingSemicolon(t *testing.T) {
 func TestParse_ForOnSVGWithChildren(t *testing.T) {
 	// Exercises parseForTemplate child iteration with SVG namespace propagation (lines 183-189)
 	tmplHTML := `<svg g-for="g in Groups"><rect width="10"></rect><circle r="5"></circle></svg>`
-	nodes, err := ParseTemplate(tmplHTML, nil)
+	nodes, err := ParseTemplate(tmplHTML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2896,7 +2763,7 @@ func TestResolveExpr_CallMethodWithActualNilArg(t *testing.T) {
 func TestParse_ForSVGElement(t *testing.T) {
 	// Exercises parseForTemplate SVG namespace path (line 179-181)
 	tmplHTML := `<svg><rect g-for="r in Rects" width="10"></rect></svg>`
-	nodes, err := ParseTemplate(tmplHTML, nil)
+	nodes, err := ParseTemplate(tmplHTML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2941,8 +2808,7 @@ func TestResolveStructField_NilPtrInPath(t *testing.T) {
 func TestParse_ExtractPropExprsNone(t *testing.T) {
 	// Test component with no :prop attrs → PropExprs is nil
 	html := `<my-comp></my-comp>`
-	comps := map[string]bool{"my-comp": true}
-	nodes, err := ParseTemplate(html, comps)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2952,30 +2818,6 @@ func TestParse_ExtractPropExprsNone(t *testing.T) {
 	comp := nodes[0]
 	if comp.PropExprs != nil {
 		t.Errorf("expected nil PropExprs when no :props, got %v", comp.PropExprs)
-	}
-}
-
-func TestParse_ForComponentNoChildren(t *testing.T) {
-	// Tests parseForTemplate with a component tag that has no child nodes
-	html := `<my-item g-for="item in Items" :text="item.Text"></my-item>`
-	comps := map[string]bool{"my-item": true}
-	nodes, err := ParseTemplate(html, comps)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(nodes) == 0 {
-		t.Fatal("no nodes")
-	}
-	forNode := nodes[0]
-	if !forNode.IsFor {
-		t.Fatal("expected for node")
-	}
-	body := forNode.ForBody[0]
-	if !body.IsComponent {
-		t.Error("expected component in for body")
-	}
-	if body.PropExprs == nil || body.PropExprs["text"] != "item.Text" {
-		t.Error("expected :text prop expr")
 	}
 }
 
@@ -3124,7 +2966,7 @@ func TestAddBinding_DottedLoopVar(t *testing.T) {
 
 func TestParseTemplate_StableID_UnboundInput(t *testing.T) {
 	html := `<body><input type="text" placeholder="Name" /></body>`
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3138,7 +2980,7 @@ func TestParseTemplate_StableID_UnboundInput(t *testing.T) {
 
 func TestParseTemplate_StableID_BoundInput(t *testing.T) {
 	html := `<body><input type="text" g-bind="Name" /></body>`
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3152,7 +2994,7 @@ func TestParseTemplate_StableID_BoundInput(t *testing.T) {
 
 func TestParseTemplate_StableID_NonInput(t *testing.T) {
 	html := `<body><div>hello</div></body>`
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3166,14 +3008,14 @@ func TestParseTemplate_StableID_NonInput(t *testing.T) {
 
 func TestParseTemplate_StableID_Stable(t *testing.T) {
 	html := `<body><input type="text" /></body>`
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
 	id1 := nodes[0].StableID
 
 	// Parse again — different UUID each time (templates are parsed once)
-	nodes2, _ := ParseTemplate(html, nil)
+	nodes2, _ := ParseTemplate(html)
 	id2 := nodes2[0].StableID
 
 	if id1 == "" || id2 == "" {
@@ -3186,7 +3028,7 @@ func TestParseTemplate_StableID_Stable(t *testing.T) {
 
 func TestParseTemplate_StableID_Textarea(t *testing.T) {
 	html := `<body><textarea></textarea></body>`
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3197,7 +3039,7 @@ func TestParseTemplate_StableID_Textarea(t *testing.T) {
 
 func TestParseTemplate_StableID_Select(t *testing.T) {
 	html := `<body><select><option>A</option></select></body>`
-	nodes, err := ParseTemplate(html, nil)
+	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
 	}
