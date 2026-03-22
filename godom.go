@@ -153,7 +153,6 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 		Value:    v,
 		Typ:      t,
 		HTMLBody: composed,
-		Children: make(map[string][]*component.Info),
 		Registry: a.components,
 	}
 

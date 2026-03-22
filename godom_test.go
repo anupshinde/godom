@@ -404,16 +404,6 @@ func TestMount_RefreshWorksAfterMount(t *testing.T) {
 	app.Refresh()
 }
 
-func TestMount_ChildrenMapInitialized(t *testing.T) {
-	e := NewEngine()
-	app := &testApp{}
-	e.Mount(app, makeTestFS(), "index.html")
-
-	if e.comp.Children == nil {
-		t.Error("expected Children map to be initialized")
-	}
-}
-
 func TestMount_RegistryPassedThrough(t *testing.T) {
 	e := NewEngine()
 	e.RegisterComponent("child-comp", &testApp{})

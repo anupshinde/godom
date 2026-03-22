@@ -39,7 +39,6 @@ func newValTestCI() *component.Info {
 	return &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Children: make(map[string][]*component.Info),
 		Registry: make(map[string]*component.Reg),
 	}
 }
@@ -283,7 +282,6 @@ func TestValidateDirectives_NestedFor(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Children: make(map[string][]*component.Info),
 		Registry: make(map[string]*component.Reg),
 	}
 	if err := ValidateDirectives(html, ci); err != nil {
@@ -298,7 +296,6 @@ func TestValidateDirectives_NestedForUnknownPath(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Children: make(map[string][]*component.Info),
 		Registry: make(map[string]*component.Reg),
 	}
 	// "group.Missing" — "group" is a valid loop var, so this passes validation
@@ -565,7 +562,6 @@ func TestValidateDirectives_NilRegistry(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Children: make(map[string][]*component.Info),
 		Registry: nil, // nil registry
 	}
 	html := `<span g-text="Name"></span>`
@@ -580,7 +576,6 @@ func TestValidateDirectives_NilRegistryUnknownField(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Children: make(map[string][]*component.Info),
 		Registry: nil,
 	}
 	html := `<span g-text="Missing"></span>`
@@ -617,7 +612,6 @@ func newValPtrCI() *component.Info {
 	return &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Children: make(map[string][]*component.Info),
 		Registry: make(map[string]*component.Reg),
 	}
 }
@@ -652,7 +646,6 @@ func newValMapCI() *component.Info {
 	return &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Children: make(map[string][]*component.Info),
 		Registry: make(map[string]*component.Reg),
 	}
 }
@@ -698,7 +691,6 @@ func TestValidateDirectives_NestedForNonStructIntermediate(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Children: make(map[string][]*component.Info),
 		Registry: make(map[string]*component.Reg),
 	}
 	html := `<div g-for="item in Items"><li g-for="opt in item.Data.Something"><span g-text="opt"></span></li></div>`
@@ -757,7 +749,6 @@ func TestValidateDirectives_ForDottedPathLoopVar(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Children: make(map[string][]*component.Info),
 		Registry: make(map[string]*component.Reg),
 	}
 	if err := ValidateDirectives(html, ci); err != nil {
@@ -955,7 +946,6 @@ func TestValidateDirectives_LoopVarNonStructDottedAccess(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Children: make(map[string][]*component.Info),
 		Registry: make(map[string]*component.Reg),
 	}
 	// This passes because non-struct loop var dotted paths can't be validated
@@ -976,7 +966,6 @@ func TestValidateDirectives_LoopVarNilItemTypeDottedAccess(t *testing.T) {
 	ci := &component.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
-		Children: make(map[string][]*component.Info),
 		Registry: make(map[string]*component.Reg),
 	}
 	// item.Data is map → resolveFieldType returns nil → inner loop var "sub" has nil itemType
