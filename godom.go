@@ -61,6 +61,11 @@ func (c Component) MarkRefresh(fields ...string) {
 // Refresh pushes updates to all connected browsers.
 // If fields were marked via MarkRefresh(), only those bound nodes are patched.
 // Otherwise, a full refresh is sent.
+//
+// Do not call Refresh inside methods invoked by browser events (e.g. g-click).
+// The framework automatically refreshes after every method call, so calling
+// Refresh there would result in a redundant double invocation.
+// Use Refresh only from background goroutines (timers, tickers, async work).
 func (c Component) Refresh() {
 	if c.ci == nil {
 		return
