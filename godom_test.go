@@ -116,7 +116,6 @@ func TestRefresh_NilCI(t *testing.T) {
 	c := Component{ci: nil}
 	// Should not panic
 	c.Refresh()
-	c.Refresh("SomeField")
 }
 
 func TestRefresh_NilRefreshFn(t *testing.T) {
@@ -127,34 +126,28 @@ func TestRefresh_NilRefreshFn(t *testing.T) {
 }
 
 func TestRefresh_DelegatesToRefreshFn(t *testing.T) {
-	var calledWith []string
-	c := Component{ci: &component.Info{
-		RefreshFn: func(fields ...string) {
-			calledWith = fields
-		},
-	}}
-
-	c.Refresh("Name", "Count")
-
-	if len(calledWith) != 2 || calledWith[0] != "Name" || calledWith[1] != "Count" {
-		t.Errorf("expected RefreshFn called with [Name Count], got %v", calledWith)
-	}
-}
-
-func TestRefresh_NoArgs(t *testing.T) {
 	called := false
 	c := Component{ci: &component.Info{
-		RefreshFn: func(fields ...string) {
+		RefreshFn: func() {
 			called = true
-			if len(fields) != 0 {
-				t.Errorf("expected no fields, got %v", fields)
-			}
 		},
 	}}
 
 	c.Refresh()
+
 	if !called {
 		t.Error("expected RefreshFn to be called")
+	}
+}
+
+func TestRefresh_MarkedFieldsPassedThrough(t *testing.T) {
+	ci := &component.Info{}
+	c := Component{ci: ci}
+
+	c.MarkRefresh("Name", "Count")
+
+	if len(ci.MarkedFields) != 2 || ci.MarkedFields[0] != "Name" || ci.MarkedFields[1] != "Count" {
+		t.Errorf("expected MarkedFields [Name Count], got %v", ci.MarkedFields)
 	}
 }
 
@@ -409,7 +402,6 @@ func TestMount_RefreshWorksAfterMount(t *testing.T) {
 
 	// After Mount, Refresh should not panic (ci is wired, but RefreshFn is nil until Start)
 	app.Refresh()
-	app.Refresh("Name")
 }
 
 func TestMount_ChildrenMapInitialized(t *testing.T) {
