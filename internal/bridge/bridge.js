@@ -23,6 +23,7 @@
     var ws;
     var nodeMap = {};       // node ID (int) → DOM node
     var pluginState = {};   // node ID → true if plugin init called
+    var pendingPluginInits = []; // deferred init calls (element not yet in DOM)
     var rootNode;           // the root DOM node (document.body)
 
     var Proto = godomProto;
@@ -93,6 +94,13 @@
                         }
                     }
                 }
+                // Flush deferred plugin inits now that the tree is in the DOM.
+                for (var pi = 0; pi < pendingPluginInits.length; pi++) {
+                    var p = pendingPluginInits[pi];
+                    p.handler.init(p.el, p.data);
+                    pluginState[p.id] = true;
+                }
+                pendingPluginInits = [];
             } else if (msg.type === "patch") {
                 applyPatches(msg.patches);
             }
@@ -169,13 +177,13 @@
             }
         }
 
-        // Plugin init
+        // Plugin init — deferred until tree is appended to document.body
+        // so that plugins can measure element dimensions.
         if (tree.plug) {
             el._godomPlugin = tree.plug;
             var handler = window.godom && window.godom._plugins && window.godom._plugins[tree.plug];
             if (handler && tree.pd !== undefined) {
-                handler.init(el, tree.pd);
-                pluginState[tree.id] = true;
+                pendingPluginInits.push({el: el, id: tree.id, handler: handler, data: tree.pd});
             }
         }
 
