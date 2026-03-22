@@ -171,6 +171,7 @@
 
         // Plugin init
         if (tree.plug) {
+            el._godomPlugin = tree.plug;
             var handler = window.godom && window.godom._plugins && window.godom._plugins[tree.plug];
             if (handler && tree.pd !== undefined) {
                 handler.init(el, tree.pd);
