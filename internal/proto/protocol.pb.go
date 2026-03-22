@@ -296,7 +296,7 @@ type EventCommand struct {
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`   // data-gid
 	On            string                 `protobuf:"bytes,2,opt,name=on,proto3" json:"on,omitempty"`   // "click","keydown","mousedown","mousemove","mouseup","wheel","input"
 	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"` // key filter for keydown
-	Msg           []byte                 `protobuf:"bytes,4,opt,name=msg,proto3" json:"msg,omitempty"` // pre-built Envelope.msg bytes — bridge sends back untouched
+	Msg           []byte                 `protobuf:"bytes,4,opt,name=msg,proto3" json:"msg,omitempty"` // pre-built message bytes — bridge sends back untouched
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

@@ -39,7 +39,7 @@ message EventCommand {
   string id = 1;                      // data-gid
   string on = 2;                      // "click","keydown","mousedown","mousemove","mouseup","wheel","input"
   string key = 3;                     // key filter for keydown
-  bytes msg = 4;                      // pre-built Envelope.msg bytes — bridge sends back untouched
+  bytes msg = 4;                      // pre-built message bytes — bridge sends back untouched
 }
 
 // --- VDOM: Go → Browser patch messages ---

@@ -329,7 +329,7 @@ Directives are extracted from `g-*` attributes during parsing:
 
 ```go
 type Directive struct {
-    Type string // "text", "bind", "checked", "if", "show", "class", "attr", "style",
+    Type string // "text", "bind", "value", "checked", "if", "show", "hide", "class", "attr", "style",
                // "click", "keydown", "mousedown", "mousemove", "mouseup", "wheel",
                // "drop", "draggable", "dropzone"
     Name string // modifier: class name, style property, key filter, drag group, etc.
@@ -554,13 +554,16 @@ func main() {
 
 ```
 internal/vdom/
-├── node.go       Node interface, NodeBase, all node types, Facts, EventHandler, ComputeDescendants
-├── patch.go      Patch struct, FactsDiff, all patch payload structs
-├── diff.go       Diff(), DiffFacts(), keyed diff algorithm, equality helpers
-├── tree.go       IDCounter, ResolveContext, ParseTemplate(), ResolveTree(), ResolveExpr(),
-│                 text interpolation, for-loop parsing, method call parsing, IsTruthy, helpers
-├── diff_test.go  Tests for diffing, keyed diffing, facts diffing, NodeID targeting
-└── tree_test.go  Tests for parsing, resolution, text interpolation, for expressions
+├── node.go        Node interface, NodeBase, all node types, Facts, EventHandler, ComputeDescendants
+├── tree.go        IDCounter, ResolveContext, ParseTemplate(), ResolveTree(), ResolveExpr(),
+│                  text interpolation, for-loop parsing, method call parsing, IsTruthy, helpers
+├── diff.go        Diff(), DiffFacts(), keyed diff algorithm, equality helpers
+├── patch.go       Patch struct, FactsDiff, all patch payload structs
+├── merge.go       MergeTree(), MergeAdjacentText() — tree merging utilities
+├── node_test.go   Tests for node types and ComputeDescendants
+├── tree_test.go   Tests for parsing, resolution, text interpolation, for expressions
+├── diff_test.go   Tests for diffing, keyed diffing, facts diffing, NodeID targeting
+└── merge_test.go  Tests for tree merging and adjacent text merging
 ```
 
 ---

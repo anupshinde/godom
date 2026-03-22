@@ -70,8 +70,8 @@ When a drop occurs:
 1. Bridge reads `from` (the draggable's value from `dataTransfer`)
 2. Bridge reads `to` (the drop target's `g-dropzone` value, or its own `g-draggable` value for sortable lists)
 3. Bridge computes `position` (`"above"` or `"below"` based on cursor Y relative to the element's midpoint)
-4. Bridge sends `[from, to, position]` as JSON in `Envelope.value`
-5. Go unpacks the array and calls the method with these arguments
+4. Bridge sends `from`, `to`, and `position` as JSON-encoded `MethodCall` args
+5. Go unpacks the arguments and calls the method
 
 The Go method signature is flexible:
 - `Reorder(from, to float64)` — position is ignored (extra args are discarded)

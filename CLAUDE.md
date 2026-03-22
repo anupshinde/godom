@@ -33,6 +33,12 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 ## Key docs
 - `docs/why.md` — project rationale and motivation
 - `docs/architecture.md` — system design, VDOM pipeline, data flow, wire protocol
+- `docs/configuration.md` — settings, CLI flags, authentication, precedence rules
+- `docs/plugins.md` — plugin system overview
+- `docs/javascript-libraries.md` — guide for using JS libraries with godom
+- `docs/drag-drop.md` — drag and drop design decisions and implementation
+- `docs/nested-for.md` — nested g-for loop design
+- `docs/known-issues.md` — known issues and workarounds
 - `docs/planning/plan.md` — phased roadmap
 - `docs/planning/next.md` — future work
 - `docs/planning/ideas/` — longer-term ideas
