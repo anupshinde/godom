@@ -606,6 +606,11 @@
                     textEncoder.encode(String(domEvent.clientY))
                 );
             }
+            if (eventType === "wheel") {
+                allArgs.unshift(
+                    textEncoder.encode(String(domEvent.deltaY))
+                );
+            }
             sendMethodCall(nodeId, ev.method, allArgs);
         });
     }
