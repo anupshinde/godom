@@ -2376,6 +2376,47 @@ func TestParse_DraggableDirective(t *testing.T) {
 	}
 }
 
+func TestParse_DropDirective(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body>
+		<div g-drop="Add">drop here</div>
+		<div g-drop:canvas="Reorder">drop canvas</div>
+	</body></html>`
+
+	nodes, err := ParseTemplate(html, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var noGroup, withGroup *TemplateNode
+	for _, n := range nodes {
+		for _, d := range n.Directives {
+			if d.Type == "drop" && d.Name == "" {
+				noGroup = n
+			}
+			if d.Type == "drop" && d.Name == "canvas" {
+				withGroup = n
+			}
+		}
+		for _, c := range n.Children {
+			for _, d := range c.Directives {
+				if d.Type == "drop" && d.Name == "" {
+					noGroup = c
+				}
+				if d.Type == "drop" && d.Name == "canvas" {
+					withGroup = c
+				}
+			}
+		}
+	}
+
+	if noGroup == nil {
+		t.Error("expected drop directive without group")
+	}
+	if withGroup == nil {
+		t.Error("expected drop directive with group 'canvas'")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------

@@ -214,7 +214,7 @@ func TestValidateDirectives_Draggable(t *testing.T) {
 }
 
 func TestValidateDirectives_DraggableWithGroup(t *testing.T) {
-	html := `<div g-draggable.palette="'red'"></div>`
+	html := `<div g-draggable:palette="'red'"></div>`
 	ci := newValTestCI()
 	if err := ValidateDirectives(html, ci); err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -238,7 +238,7 @@ func TestValidateDirectives_DropEvent(t *testing.T) {
 }
 
 func TestValidateDirectives_DropEventWithGroup(t *testing.T) {
-	html := `<div g-drop.palette="Add"></div>`
+	html := `<div g-drop:palette="Add"></div>`
 	ci := newValTestCI()
 	if err := ValidateDirectives(html, ci); err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -827,14 +827,14 @@ func TestValidateDirectives_BindChildFallback(t *testing.T) {
 
 func TestValidateDirectives_DropGroupChildFallback(t *testing.T) {
 	// ChildDrop exists as a method on the child component.
-	// g-drop.canvas="ChildDrop" should pass via child fallback, just like g-drop="ChildDrop" does.
+	// g-drop:canvas="ChildDrop" should pass via child fallback, just like g-drop="ChildDrop" does.
 	ci := newValTestCI()
 	ci.Registry["my-child"] = &component.Reg{
 		Typ: reflect.TypeOf(childMethodComp{}),
 	}
-	html := `<div g-drop.canvas="ChildDrop"></div>`
+	html := `<div g-drop:canvas="ChildDrop"></div>`
 	if err := ValidateDirectives(html, ci); err != nil {
-		t.Errorf("child has ChildDrop method — g-drop.group child fallback should pass: %v", err)
+		t.Errorf("child has ChildDrop method — g-drop:group child fallback should pass: %v", err)
 	}
 }
 
@@ -1098,20 +1098,20 @@ func TestValidateDirectives_MouseupUnknown(t *testing.T) {
 // --- g-drop unknown method with group ---
 
 func TestValidateDirectives_DropGroupUnknownMethod(t *testing.T) {
-	html := `<div g-drop.canvas="Unknown"></div>`
+	html := `<div g-drop:canvas="Unknown"></div>`
 	ci := newValTestCI()
 	if err := ValidateDirectives(html, ci); err == nil {
-		t.Error("expected error for unknown method in g-drop.group")
+		t.Error("expected error for unknown method in g-drop:group")
 	}
 }
 
-// --- g-draggable.group unknown field ---
+// --- g-draggable:group unknown field ---
 
 func TestValidateDirectives_DraggableGroupUnknown(t *testing.T) {
-	html := `<div g-draggable.palette="Missing"></div>`
+	html := `<div g-draggable:palette="Missing"></div>`
 	ci := newValTestCI()
 	if err := ValidateDirectives(html, ci); err == nil {
-		t.Error("expected error for unknown field in g-draggable.group")
+		t.Error("expected error for unknown field in g-draggable:group")
 	}
 }
 

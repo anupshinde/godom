@@ -11,7 +11,7 @@ import (
 )
 
 // directiveRe matches g-* attributes in HTML.
-var directiveRe = regexp.MustCompile(`g-(text|bind|value|click|keydown|mousedown|mousemove|mouseup|wheel|for|if|show|hide|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|style:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+|draggable(?:\.[a-zA-Z0-9_-]+)?|dropzone|drop(?:\.[a-zA-Z0-9_-]+)?)\s*=\s*"([^"]*)"`)
+var directiveRe = regexp.MustCompile(`g-(text|bind|value|click|keydown|mousedown|mousemove|mouseup|wheel|for|if|show|hide|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|style:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+|draggable(?::[a-zA-Z0-9_-]+)?|dropzone|drop(?::[a-zA-Z0-9_-]+)?)\s*=\s*"([^"]*)"`)
 
 // gForRe matches g-for attributes to extract loop variable names.
 var gForRe = regexp.MustCompile(`g-for\s*=\s*"([^"]*)"`)
@@ -39,11 +39,11 @@ func ValidateDirectives(htmlStr string, ci *component.Info) error {
 		dirType := m[1]
 		expr := m[2]
 
-		// Normalize group variants: "drop.canvas" → "drop", "draggable.palette" → "draggable"
+		// Normalize group variants: "drop:canvas" → "drop", "draggable:palette" → "draggable"
 		baseDirType := dirType
-		if strings.HasPrefix(dirType, "drop.") {
+		if strings.HasPrefix(dirType, "drop:") {
 			baseDirType = "drop"
-		} else if strings.HasPrefix(dirType, "draggable.") {
+		} else if strings.HasPrefix(dirType, "draggable:") {
 			baseDirType = "draggable"
 		}
 

@@ -281,8 +281,12 @@ func extractAttrsAndDirectives(n *html.Node) ([]html.Attribute, []Directive) {
 			dirs = append(dirs, Directive{Type: "mouseup", Expr: a.Val})
 		case a.Key == "g-wheel":
 			dirs = append(dirs, Directive{Type: "wheel", Expr: a.Val})
-		case a.Key == "g-drop":
-			dirs = append(dirs, Directive{Type: "drop", Expr: a.Val})
+		case a.Key == "g-drop" || strings.HasPrefix(a.Key, "g-drop:"):
+			group := ""
+			if strings.HasPrefix(a.Key, "g-drop:") {
+				group = a.Key[len("g-drop:"):]
+			}
+			dirs = append(dirs, Directive{Type: "drop", Name: group, Expr: a.Val})
 
 		case a.Key == "g-draggable" || strings.HasPrefix(a.Key, "g-draggable:"):
 			group := ""
