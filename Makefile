@@ -7,7 +7,7 @@ build:
 # Build examples (compile check only)
 # monitor and system-monitor-chartjs have their own go.mod, so they're built separately
 build-examples:
-	go build ./examples/counter ./examples/clock ./examples/todolist ./examples/todolist-stateful ./examples/charts-without-plugin ./examples/solar-system
+	go build ./examples/counter ./examples/clock ./examples/todolist ./examples/charts-without-plugin ./examples/solar-system ./examples/drag-demo ./examples/drag-tiles ./examples/progress-bar ./examples/stock-ticker ./examples/sync-demo ./examples/basic-form-builder ./examples/video-player
 	cd examples/system-monitor && go build .
 	cd examples/system-monitor-chartjs && go build .
 
