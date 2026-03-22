@@ -55,7 +55,6 @@ Note: the wire format is already Protocol Buffers (binary WebSocket). Any WebSoc
 
 The startup validator (`internal/template/validate.go`) has known limitations — it's useful as a guardrail but not a source of truth:
 
-- **Child component validation is too permissive**: if a directive doesn't validate against the parent, it falls back to any registered child component type, not the actual subtree where it appears. Can allow incorrect templates to pass.
 - **g-bind validation is broader than runtime**: validates dotted-path and loop-scoped binds, but runtime `setField` only supports direct top-level fields via `FieldByName`. Valid templates can still fail at runtime.
 - **g-props collection is global**: `collectLoopVars` scans all g-props in the entire HTML for every g-for, not scoped to the actual subtree. Can create false positives in complex nested structures.
 

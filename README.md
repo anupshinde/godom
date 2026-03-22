@@ -224,34 +224,6 @@ Split HTML into reusable files. Any HTML file in your embedded filesystem can be
 
 Props are passed with `:propName="expr"` and become template variables in the child HTML. The child's directives resolve against the parent's state.
 
-### Stateful components
-
-Register a Go struct as a component for scoped state and methods:
-
-```go
-type TodoItem struct {
-    godom.Component
-    Text  string `godom:"prop"`
-    Done  bool   `godom:"prop"`
-    Index int    `godom:"prop"`
-}
-
-func (t *TodoItem) Toggle() {
-    // mutate local state, framework handles sync
-}
-
-func main() {
-    eng := godom.NewEngine()
-    eng.RegisterComponent("todo-item", &TodoItem{})
-    eng.Mount(&TodoApp{}, ui, "ui/index.html")
-    log.Fatal(eng.Start())
-}
-```
-
-Key differences from presentational components:
-- **Own struct**: fields tagged `godom:"prop"` are set by the parent
-- **Scoped methods**: `g-click="Toggle"` calls the child's `Toggle()`, not the parent's
-
 ## API
 
 ### App
@@ -264,7 +236,6 @@ eng.NoAuth = true                       // Disable token auth (default false = a
 eng.Token = "my-secret"                 // Fixed token (default: random per startup)
 eng.NoBrowser = true                    // Don't auto-open browser
 eng.Quiet = true                        // Suppress startup output
-eng.RegisterComponent("tag", &T{})      // Register a stateful component (tag must contain a hyphen)
 eng.RegisterPlugin("chartjs", libJS, bridgeJS)   // Register a plugin with one or more JS scripts
 eng.Mount(&MyApp{}, fsys, "ui/index.html")  // Mount root component with embedded filesystem and entry path
 eng.Start()                                 // Start server, open browser, block forever

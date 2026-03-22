@@ -28,7 +28,6 @@ The bridge never evaluates expressions, resolves data, or makes decisions. It re
 
 ```go
 eng := godom.NewEngine()
-eng.RegisterComponent("todo-item", &TodoItem{})       // optional: register stateful components
 eng.Mount(&TodoApp{}, ui, "ui/index.html")             // parse, validate, prepare
 log.Fatal(eng.Start())                                 // serve, open browser, block
 ```
@@ -36,9 +35,9 @@ log.Fatal(eng.Start())                                 // serve, open browser, b
 `Mount()` does the heavy lifting before any HTTP traffic:
 
 1. **Read the entry HTML** from the embedded filesystem at the given path (e.g., `"ui/index.html"`)
-2. **Expand components** — custom element tags like `<todo-item>` are replaced with the contents of `todo-item.html`. Props (`:todo="todo"`) are encoded as `g-props` attributes. Stateful components get a `data-g-component` marker
+2. **Expand components** — custom element tags like `<todo-item>` are replaced with the contents of `todo-item.html`. Props (`:todo="todo"`) are encoded as `g-props` attributes
 3. **Validate directives** — every `g-*` attribute is checked against the component struct via reflection. Unknown fields or methods cause `log.Fatal`. This happens at startup, not at runtime
-4. **Parse templates** — the expanded HTML is parsed into a reusable `[]*vdom.TemplateNode` tree. Directives, text interpolations (`{{expr}}`), `g-for` loops, component tags, and plugin bindings are all extracted into structured template nodes. This tree is parsed once and reused on every render
+4. **Parse templates** — the expanded HTML is parsed into a reusable `[]*vdom.TemplateNode` tree. Directives, text interpolations (`{{expr}}`), `g-for` loops, and plugin bindings are all extracted into structured template nodes. This tree is parsed once and reused on every render
 
 `Mount()` also wires up the embedded `Component` struct's internal pointer (`ci`) so that `Refresh()` and `MarkRefresh()` work even if a goroutine starts before `Start()` is called.
 
@@ -58,7 +57,7 @@ log.Fatal(eng.Start())                                 // serve, open browser, b
 |---------|----------------|
 | `godom.go` | Engine, Mount, Start — the public API surface |
 | `internal/vdom/` | Virtual DOM: node types, template parsing, tree resolution, diffing, merging, patch types |
-| `internal/component/` | Component struct, Info, Reg, method dispatch, field access |
+| `internal/component/` | Component struct, Info, method dispatch, field access |
 | `internal/server/` | HTTP server, WebSocket handling, connection pool, init/update pipeline, surgical refresh |
 | `internal/render/` | Encode patches to protobuf `DomPatch`, encode VDOM trees to JSON wire format |
 | `internal/template/` | HTML parsing, component expansion, directive validation |
@@ -127,7 +126,6 @@ The VDOM is the core abstraction. It lives in `internal/vdom/`.
 | `*TextNode` | Leaf node containing plain text |
 | `*ElementNode` | HTML/SVG element with tag, facts, and ordered children |
 | `*KeyedElementNode` | Like `ElementNode` but children have stable string keys for efficient reordering |
-| `*ComponentNode` | Stateful child component with props and its own rendered subtree |
 | `*PluginNode` | Opaque node whose rendering is delegated to a JS library |
 | `*LazyNode` | Deferred computation — if function and args are reference-equal to last render, subtree is skipped |
 
@@ -189,19 +187,6 @@ An HTML file used as a custom element tag. The parent's state flows in via `:pro
 Parent struct         ───props───►    Child HTML template
 (state + methods)                     (resolves against parent state)
 ```
-
-### Stateful components
-
-A Go struct registered with `eng.RegisterComponent("tag", &T{})`. Has its own state, methods, and lifecycle. Props are struct fields tagged `godom:"prop"` — the parent sets them, the child owns them after that.
-
-```
-Parent struct         ───props───►    Child struct
-(state + methods)                     (own state + methods)
-```
-
-### Child instances in g-for
-
-When a `g-for` iterates over a list with a stateful component, godom will create one `component.Info` per list item. (Runtime instantiation of child components is not yet implemented — currently only validation and template expansion work.)
 
 ## The bridge (bridge.js)
 
@@ -273,7 +258,5 @@ At `Mount()` time, before the server starts, godom validates every directive in 
 - `g-click="Remove(i)"` — checks that `Remove` is a method and `i` is a known variable
 - `g-for="todo in Todos"` — checks that `Todos` is an exported field
 - Dotted paths like `todo.Text` — validates `Text` exists on the element type of the slice
-
-For stateful child components, if a directive doesn't match the parent, godom falls back to validating against registered child component structs.
 
 Invalid directives cause `log.Fatal` — the app won't start with a typo in the HTML.

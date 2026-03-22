@@ -1,12 +1,5 @@
 package component
 
-// [COVERAGE GAP] SnapshotState (line 122-128): The log.Fatalf branch is only
-// reachable when GetState() returns a json.Marshal error (e.g. a struct with a
-// channel field). Since log.Fatalf calls os.Exit(1), testing it would kill the
-// test process. Covering this would require subprocess-based testing which adds
-// complexity for minimal correctness value — the fatal path is a deliberate
-// panic-on-impossible-error guard.
-
 import (
 	"encoding/json"
 	"reflect"
@@ -56,17 +49,6 @@ type testNumeric struct {
 	Float32   float32
 	BoolVal   bool
 	unexported string //nolint
-}
-
-// testWithSub has a struct field for JSON round-trip testing in SetProps.
-type testWithSub struct {
-	Component struct{}
-	Sub       testSub `godom:"prop"`
-}
-
-type testSub struct {
-	X int
-	Y string
 }
 
 func newTestCI(comp interface{}) *Info {

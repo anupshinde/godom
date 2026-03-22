@@ -26,7 +26,6 @@ Everything is a component. A component is a Go struct.
 - Handler dispatch: browser sends `MethodCall`, Go calls via reflection
 - `Refresh()` — push state from background goroutines to all connected browsers
 - `MarkRefresh(fields...)` — surgical refresh of only the bound nodes for specific fields
-- Stateful components: `eng.RegisterComponent("tag", &T{})` (validation and template expansion work; runtime instantiation not yet implemented)
 - Presentational components: HTML includes with `:prop="expr"` template variables
 
 ---
@@ -114,7 +113,7 @@ See [protocol.md](../protocol.md) for the full rationale and alternatives consid
 
 Replaced the command-based rendering pipeline with a proper virtual DOM system.
 
-- **VDOM node types**: TextNode, ElementNode, KeyedElementNode, ComponentNode, PluginNode, LazyNode
+- **VDOM node types**: TextNode, ElementNode, KeyedElementNode, PluginNode, LazyNode
 - **Template parsing**: HTML with `g-*` directives parsed into reusable `TemplateNode` tree at Mount() time
 - **Tree resolution**: templates resolved against component state each render, producing concrete node trees with stable IDs
 - **Diffing**: `Diff(oldTree, newTree)` produces minimal patches — text, facts, append, remove-last, reorder, plugin, lazy, redraw
@@ -209,7 +208,7 @@ Go decodes video frames via ffmpeg and renders them on a canvas element in the b
 
 ### 8.2 Multi-component support — partially done
 - ~~Component communication (props, events, shared state)~~ — done via props
-- ~~Nested components~~ — done (presentational + stateful)
+- ~~Nested components~~ — done (presentational)
 - Multiple components on one page (not in g-for context) — not yet
 
 ### 8.3 Debugging

@@ -48,7 +48,6 @@ IDs are assigned by a monotonic `IDCounter` during `ResolveTree()`. The counter 
 | `*TextNode` | `NodeText` | Leaf node containing plain text |
 | `*ElementNode` | `NodeElement` | HTML/SVG element with a tag, facts, and ordered children |
 | `*KeyedElementNode` | `NodeKeyed` | Like `ElementNode` but children have stable string keys for efficient reordering |
-| `*ComponentNode` | `NodeComponent` | A stateful child component with props and its own rendered sub-tree |
 | `*PluginNode` | `NodePlugin` | An opaque node whose rendering is delegated to an external system (e.g. a JS library) |
 | `*LazyNode` | `NodeLazy` | Deferred computation — if the function and args haven't changed, the entire subtree is skipped |
 
@@ -181,23 +180,6 @@ chart := &vdom.PluginNode{
 
 The differ JSON-compares `Data` — if it changed, it emits a `PatchPlugin` with the new data.
 
-### Component nodes (child components)
-
-```go
-comp := &vdom.ComponentNode{
-    NodeBase: vdom.NodeBase{ID: 40},
-    Tag:      "todo-item",
-    Props:    map[string]any{"text": "Buy milk", "done": false},
-    SubTree: &vdom.ElementNode{  // rendered by the component's own template
-        NodeBase: vdom.NodeBase{ID: 41},
-        Tag:      "li",
-        Children: []vdom.Node{&vdom.TextNode{NodeBase: vdom.NodeBase{ID: 42}, Text: "Buy milk"}},
-    },
-}
-```
-
-Components are transparent to the differ — it diffs through the `SubTree` directly.
-
 ---
 
 ## Diffing two trees
@@ -306,8 +288,7 @@ html := `<div>
     <p g-if="ShowFooter">That's all!</p>
 </div>`
 
-// componentTags: set of custom element names (can be nil if no components)
-templates, err := vdom.ParseTemplate(html, nil)
+templates, err := vdom.ParseTemplate(html)
 ```
 
 `ParseTemplate()` returns `[]*TemplateNode` — a tree of template nodes that can be resolved repeatedly against different state values. This is parsed once and reused.
@@ -334,11 +315,6 @@ type TemplateNode struct {
     ForList  string           // list field: "Items"
     ForKey   string           // key expression: "item.ID" (empty = positional)
     ForBody  []*TemplateNode  // template for each iteration
-
-    // Component nodes
-    IsComponent  bool
-    ComponentTag string
-    PropExprs    map[string]string // :propName="expr"
 
     // Plugin nodes
     IsPlugin   bool
@@ -495,7 +471,7 @@ type Counter struct {
 func main() {
     html := `<div><p>Count: {{Count}}</p></div>`
 
-    templates, _ := vdom.ParseTemplate(html, nil)
+    templates, _ := vdom.ParseTemplate(html)
 
     // ID counter persists across renders — never reset.
     ids := &vdom.IDCounter{}
