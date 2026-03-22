@@ -1,6 +1,6 @@
 # Configuration
 
-godom apps can be configured in two ways: **in code** (by setting fields on the `App` struct) and **via CLI flags** (passed when running the binary). CLI flags override framework defaults, but values set in code always take priority.
+godom apps can be configured in two ways: **in code** (by setting fields on the `Engine` struct) and **via CLI flags** (passed when running the binary). CLI flags override framework defaults, but values set in code always take priority.
 
 ## Settings
 
@@ -11,7 +11,7 @@ The TCP port to listen on.
 | | Value |
 |---|---|
 | Default | `0` (random available port) |
-| Code | `app.Port = 8081` |
+| Code | `eng.Port = 8081` |
 | CLI | `--port=8081` |
 
 ### Host
@@ -21,7 +21,7 @@ The network interface to bind to.
 | | Value |
 |---|---|
 | Default | `localhost` (loopback only) |
-| Code | `app.Host = "0.0.0.0"` |
+| Code | `eng.Host = "0.0.0.0"` |
 | CLI | `--host=0.0.0.0` |
 
 Set to `0.0.0.0` to allow access from other machines on the network. The startup URL and QR code will show your machine's LAN IP instead of `localhost`.
@@ -33,7 +33,7 @@ Disable token-based authentication.
 | | Value |
 |---|---|
 | Default | `false` (auth enabled) |
-| Code | `app.NoAuth = true` |
+| Code | `eng.NoAuth = true` |
 | CLI | `--no-auth` |
 
 ### Token
@@ -43,7 +43,7 @@ Use a fixed auth token instead of generating a random one on each startup. Usefu
 | | Value |
 |---|---|
 | Default | `""` (generate random token) |
-| Code | `app.Token = "my-secret"` |
+| Code | `eng.Token = "my-secret"` |
 | CLI | `--token=my-secret` |
 
 Ignored when `NoAuth` is set.
@@ -55,7 +55,7 @@ Don't open the browser automatically on startup. Useful for headless servers or 
 | | Value |
 |---|---|
 | Default | `false` (open browser) |
-| Code | `app.NoBrowser = true` |
+| Code | `eng.NoBrowser = true` |
 | CLI | `--no-browser` |
 
 ### Quiet
@@ -65,7 +65,7 @@ Suppress the startup URL and QR code output.
 | | Value |
 |---|---|
 | Default | `false` (print URL and QR code) |
-| Code | `app.Quiet = true` |
+| Code | `eng.Quiet = true` |
 | CLI | `--quiet` |
 
 ## CLI flags
@@ -101,8 +101,8 @@ If a developer explicitly sets a value in code, the CLI flag for that setting is
 For example:
 
 ```go
-app := godom.New()
-app.Port = 9000  // locked to 9000 — `--port` flag is ignored
+eng := godom.NewEngine()
+eng.Port = 9000  // locked to 9000 — `--port` flag is ignored
 // Host is not set — `--host` flag applies
 // NoAuth is not set — `--no-auth` flag applies
 ```
@@ -141,7 +141,7 @@ By default, a new random token is generated on every startup. This means restart
 Use a fixed token for stable access across restarts:
 
 ```go
-app.Token = "my-secret"  // in code
+eng.Token = "my-secret"  // in code
 ```
 
 ```
@@ -152,7 +152,7 @@ app.Token = "my-secret"  // in code
 
 To give someone else access to your app over the network:
 
-1. Set `app.Host = "0.0.0.0"` (or run with `--host=0.0.0.0`)
+1. Set `eng.Host = "0.0.0.0"` (or run with `--host=0.0.0.0`)
 2. Share the token URL from the terminal output
 3. They visit the URL once, get a cookie, and can revisit without the token
 
@@ -163,7 +163,7 @@ Anyone without the token or cookie gets a 401 Unauthorized response.
 For local-only tools where multi-user security isn't a concern:
 
 ```go
-app.NoAuth = true   // in code
+eng.NoAuth = true   // in code
 ```
 
 ```

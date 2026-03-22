@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Player</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+        }
+        canvas {
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .controls {
+            display: flex;
+            gap: 0.6rem;
+            margin-top: 1rem;
+            align-items: center;
+        }
+        .controls button {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #ccc;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+        .controls button:hover {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+        }
+        .status {
+            color: #888;
+            font-size: 0.8rem;
+            margin-top: 0.8rem;
+        }
+        .frame-info {
+            color: #555;
+            font-size: 0.75rem;
+            margin-top: 0.4rem;
+            font-variant-numeric: tabular-nums;
+        }
+    </style>
+</head>
+<body>
+    <h1>Video Player</h1>
+    <p class="subtitle">Go decodes frames via ffmpeg, renders on Canvas</p>
+
+    <canvas g-plugin:videocanvas="Player"></canvas>
+
+    <div class="controls">
+        <button g-click="Backward">&#9664;&#9664; -5s</button>
+        <button g-click="PlayPause">
+            <span g-hide="Playing">&#9654; Play</span>
+            <span g-show="Playing">&#9646;&#9646; Pause</span>
+        </button>
+        <button g-click="Stop">&#9632; Stop</button>
+        <button g-click="Forward">+5s &#9654;&#9654;</button>
+    </div>
+
+    <p class="status" g-text="Status"></p>
+    <p class="frame-info">
+        Frame <span g-text="FrameNum"></span> / <span g-text="Total"></span>
+    </p>
+</body>
+</html>

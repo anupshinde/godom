@@ -1,4 +1,4 @@
-package godom
+package template
 
 import (
 	"fmt"
@@ -6,10 +6,12 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/anupshinde/godom/internal/component"
 )
 
 // directiveRe matches g-* attributes in HTML.
-var directiveRe = regexp.MustCompile(`g-(text|bind|click|keydown|mousedown|mousemove|mouseup|wheel|for|if|show|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|style:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+|draggable(?:\.[a-zA-Z0-9_-]+)?|dropzone|drop(?:\.[a-zA-Z0-9_-]+)?)\s*=\s*"([^"]*)"`)
+var directiveRe = regexp.MustCompile(`g-(text|bind|value|click|keydown|mousedown|mousemove|mouseup|wheel|for|if|show|hide|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|style:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+|draggable(?::[a-zA-Z0-9_-]+)?|dropzone|drop(?::[a-zA-Z0-9_-]+)?)\s*=\s*"([^"]*)"`)
 
 // gForRe matches g-for attributes to extract loop variable names.
 var gForRe = regexp.MustCompile(`g-for\s*=\s*"([^"]*)"`)
@@ -22,26 +24,21 @@ type loopVarInfo struct {
 	itemType reflect.Type // element type of the array/slice
 }
 
-// validateDirectives parses HTML for g-* directives and validates them
+// ValidateDirectives parses HTML for g-* directives and validates them
 // against the component's struct fields and methods. Called at Mount() time.
-// For directives inside registered component subtrees, validation falls through
-// to the child component's struct.
-func validateDirectives(htmlStr string, ci *componentInfo) error {
+func ValidateDirectives(htmlStr string, ci *component.Info) error {
 	loopVars := collectLoopVars(htmlStr, ci)
-
-	// Build child CIs for registered components (for fallback validation)
-	childCIs := buildChildCIs(ci)
 
 	matches := directiveRe.FindAllStringSubmatch(htmlStr, -1)
 	for _, m := range matches {
 		dirType := m[1]
 		expr := m[2]
 
-		// Normalize group variants: "drop.canvas" → "drop", "draggable.palette" → "draggable"
+		// Normalize group variants: "drop:canvas" → "drop", "draggable:palette" → "draggable"
 		baseDirType := dirType
-		if strings.HasPrefix(dirType, "drop.") {
+		if strings.HasPrefix(dirType, "drop:") {
 			baseDirType = "drop"
-		} else if strings.HasPrefix(dirType, "draggable.") {
+		} else if strings.HasPrefix(dirType, "draggable:") {
 			baseDirType = "draggable"
 		}
 
@@ -50,35 +47,29 @@ func validateDirectives(htmlStr string, ci *componentInfo) error {
 			if err := validateForExpr(expr, ci, loopVars); err != nil {
 				return err
 			}
+		case "bind":
+			if err := validateBindExpr(expr, ci, loopVars); err != nil {
+				return err
+			}
 		case "click":
 			if err := validateMethodRef("g-click", expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(dirType, expr, childCIs) {
-					return err
-				}
+				return err
 			}
 		case "keydown":
 			if err := validateKeydownExpr(expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(dirType, expr, childCIs) {
-					return err
-				}
+				return err
 			}
 		case "mousedown", "mousemove", "mouseup", "wheel":
 			if err := validateMethodRef("g-"+dirType, expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(dirType, expr, childCIs) {
-					return err
-				}
+				return err
 			}
 		case "drop":
 			if err := validateMethodRef("g-drop", expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(dirType, expr, childCIs) {
-					return err
-				}
+				return err
 			}
 		default:
 			if err := validateFieldExpr(expr, ci, loopVars); err != nil {
-				if !validateAgainstChildren(dirType, expr, childCIs) {
-					return err
-				}
+				return err
 			}
 		}
 	}
@@ -86,51 +77,9 @@ func validateDirectives(htmlStr string, ci *componentInfo) error {
 	return nil
 }
 
-// buildChildCIs creates temporary componentInfos for each registered component
-// in the registry, used for validation fallback.
-func buildChildCIs(parentCI *componentInfo) []*componentInfo {
-	if parentCI.registry == nil {
-		return nil
-	}
-	var children []*componentInfo
-	for _, reg := range parentCI.registry {
-		children = append(children, &componentInfo{
-			value:    reflect.New(reg.typ),
-			typ:      reg.typ,
-			registry: parentCI.registry,
-		})
-	}
-	return children
-}
-
-// validateAgainstChildren tries validating a directive against any registered
-// child component struct. Returns true if any child validates successfully.
-func validateAgainstChildren(dirType, expr string, childCIs []*componentInfo) bool {
-	for _, childCI := range childCIs {
-		childLoopVars := map[string]*loopVarInfo{}
-		switch dirType {
-		case "click", "drop":
-			if validateMethodRef("g-"+dirType, expr, childCI, childLoopVars) == nil {
-				return true
-			}
-		case "keydown":
-			if validateKeydownExpr(expr, childCI, childLoopVars) == nil {
-				return true
-			}
-		default:
-			if validateFieldExpr(expr, childCI, childLoopVars) == nil {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // collectLoopVars finds all loop variables declared in g-for expressions
 // and resolves their types from the component struct.
-// e.g., g-for="todo, i in Todos" where Todos is []Todo
-// → loopVars["todo"] = {itemType: Todo}, loopVars["i"] = {itemType: int}
-func collectLoopVars(htmlStr string, ci *componentInfo) map[string]*loopVarInfo {
+func collectLoopVars(htmlStr string, ci *component.Info) map[string]*loopVarInfo {
 	vars := map[string]*loopVarInfo{}
 	matches := gForRe.FindAllStringSubmatch(htmlStr, -1)
 	for _, m := range matches {
@@ -146,7 +95,7 @@ func collectLoopVars(htmlStr string, ci *componentInfo) map[string]*loopVarInfo 
 		// Resolve the element type of the list field
 		var elemType reflect.Type
 		pathParts := strings.Split(listField, ".")
-		if f, ok := ci.typ.FieldByName(listField); ok && (f.Type.Kind() == reflect.Slice || f.Type.Kind() == reflect.Array) {
+		if f, ok := ci.Typ.FieldByName(listField); ok && (f.Type.Kind() == reflect.Slice || f.Type.Kind() == reflect.Array) {
 			// Top-level field (e.g., "Todos")
 			elemType = f.Type.Elem()
 		} else if len(pathParts) > 1 {
@@ -171,18 +120,17 @@ func collectLoopVars(htmlStr string, ci *componentInfo) map[string]*loopVarInfo 
 		}
 
 		// Collect prop aliases — they map to loop variables
-		// e.g., g-props="index:i,todo:todo" → "index" gets same type as "i"
 		propMatches := gPropsRe.FindAllStringSubmatch(htmlStr, -1)
 		for _, pm := range propMatches {
-			props := parsePropsAttr(pm[1])
+			props := ParsePropsAttr(pm[1])
 			for propName, parentExpr := range props {
 				if parentExpr == itemVar {
 					vars[propName] = &loopVarInfo{itemType: elemType}
 				} else if parentExpr == indexVar {
 					vars[propName] = &loopVarInfo{itemType: reflect.TypeOf(0)}
-				} else if ci.hasField(parentExpr) {
+				} else if ci.HasField(parentExpr) {
 					// Prop references a top-level field
-					pf, _ := ci.typ.FieldByName(parentExpr)
+					pf, _ := ci.Typ.FieldByName(parentExpr)
 					vars[propName] = &loopVarInfo{itemType: pf.Type}
 				}
 			}
@@ -191,7 +139,7 @@ func collectLoopVars(htmlStr string, ci *componentInfo) map[string]*loopVarInfo 
 	return vars
 }
 
-func validateForExpr(expr string, ci *componentInfo, loopVars map[string]*loopVarInfo) error {
+func validateForExpr(expr string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
 	parts := strings.SplitN(expr, " in ", 2)
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid g-for syntax: %q (expected 'item in List' or 'item, index in List')", expr)
@@ -199,7 +147,7 @@ func validateForExpr(expr string, ci *componentInfo, loopVars map[string]*loopVa
 	listField := strings.TrimSpace(parts[1])
 
 	// Top-level field (e.g., "Todos")
-	if ci.hasField(listField) {
+	if ci.HasField(listField) {
 		return nil
 	}
 
@@ -209,13 +157,13 @@ func validateForExpr(expr string, ci *componentInfo, loopVars map[string]*loopVa
 		return nil // trust the loop variable's type
 	}
 
-	return fmt.Errorf("g-for references unknown field %q on %s", listField, ci.typ.Name())
+	return fmt.Errorf("g-for references unknown field %q on %s", listField, ci.Typ.Name())
 }
 
-func validateMethodRef(dirName, expr string, ci *componentInfo, loopVars map[string]*loopVarInfo) error {
-	name, args := parseCallExpr(expr)
-	if !ci.hasMethod(name) {
-		return fmt.Errorf("%s references unknown method %q on %s", dirName, name, ci.typ.Name())
+func validateMethodRef(dirName, expr string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
+	name, args := component.ParseCallExpr(expr)
+	if !ci.HasMethod(name) {
+		return fmt.Errorf("%s references unknown method %q on %s", dirName, name, ci.Typ.Name())
 	}
 	for _, arg := range args {
 		if err := validateArgExpr(arg, ci, loopVars); err != nil {
@@ -225,7 +173,7 @@ func validateMethodRef(dirName, expr string, ci *componentInfo, loopVars map[str
 	return nil
 }
 
-func validateKeydownExpr(expr string, ci *componentInfo, loopVars map[string]*loopVarInfo) error {
+func validateKeydownExpr(expr string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
 	for _, part := range strings.Split(expr, ";") {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -242,19 +190,46 @@ func validateKeydownExpr(expr string, ci *componentInfo, loopVars map[string]*lo
 	return nil
 }
 
-func validateFieldExpr(expr string, ci *componentInfo, loopVars map[string]*loopVarInfo) error {
+// validateBindExpr ensures g-bind references a field, not a method.
+// g-bind is two-way — it must be able to write back, which only works with fields.
+func validateBindExpr(expr string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return fmt.Errorf("empty g-bind expression")
+	}
+
+	root := strings.Split(expr, ".")[0]
+	// Handle bracket syntax: "Inputs[first]" → root is "Inputs"
+	if idx := strings.Index(root, "["); idx != -1 {
+		root = root[:idx]
+	}
+
+	// If it's a method, fail loudly
+	if ci.HasMethod(root) && !ci.HasField(root) {
+		return fmt.Errorf("g-bind=%q references a method, not a field — g-bind requires a field for two-way binding (use g-value for one-way)", expr)
+	}
+
+	// Otherwise validate as a normal field expression
+	return validateFieldExpr(expr, ci, loopVars)
+}
+
+func validateFieldExpr(expr string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
 	expr = strings.TrimSpace(expr)
 	if expr == "" {
 		return fmt.Errorf("empty directive expression")
 	}
-	if isLiteral(expr) {
+	// Strip leading ! for negation
+	if strings.HasPrefix(expr, "!") {
+		expr = strings.TrimSpace(expr[1:])
+	}
+	if IsLiteral(expr) {
 		return nil
 	}
 
 	parts := strings.Split(expr, ".")
 	root := parts[0]
 
-	// Check if it's a loop variable
+	// Check if it's a loop variable (loop vars never use bracket syntax)
 	if lv, ok := loopVars[root]; ok {
 		// Validate remaining path against the loop variable's type
 		if len(parts) > 1 && lv.itemType != nil && lv.itemType.Kind() == reflect.Struct {
@@ -263,21 +238,35 @@ func validateFieldExpr(expr string, ci *componentInfo, loopVars map[string]*loop
 		return nil
 	}
 
+	// Handle bracket syntax: "Inputs[first]" → field root is "Inputs"
+	fieldRoot := root
+	if idx := strings.Index(root, "["); idx != -1 {
+		fieldRoot = root[:idx]
+	}
+
 	// Check if it's a component field
-	if ci.hasField(root) {
+	if ci.HasField(fieldRoot) {
 		// Validate remaining path against the field's type
-		if len(parts) > 1 {
-			f, _ := ci.typ.FieldByName(root)
+		if len(parts) > 1 && fieldRoot == root {
+			f, _ := ci.Typ.FieldByName(fieldRoot)
 			return validateTypePath(f.Type, parts[1:], expr)
 		}
 		return nil
 	}
 
-	return fmt.Errorf("directive references unknown field %q (expression: %q) on %s", root, expr, ci.typ.Name())
+	// Check if it's a zero-arg, single-return method (computed value)
+	if len(parts) == 1 && ci.HasMethod(root) {
+		m, _ := ci.Value.Type().MethodByName(root)
+		// Method on pointer receiver: first param is the receiver itself
+		if m.Type.NumIn() == 1 && m.Type.NumOut() == 1 {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("directive references unknown field or method %q (expression: %q) on %s", root, expr, ci.Typ.Name())
 }
 
 // validateTypePath walks a dotted path through struct types.
-// e.g., for type Todo with field Text, validateTypePath(Todo, ["Text"], ...) succeeds.
 func validateTypePath(t reflect.Type, path []string, fullExpr string) error {
 	current := t
 	for _, part := range path {
@@ -298,9 +287,9 @@ func validateTypePath(t reflect.Type, path []string, fullExpr string) error {
 	return nil
 }
 
-func validateArgExpr(arg string, ci *componentInfo, loopVars map[string]*loopVarInfo) error {
+func validateArgExpr(arg string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
 	arg = strings.TrimSpace(arg)
-	if isLiteral(arg) {
+	if IsLiteral(arg) {
 		return nil
 	}
 
@@ -312,7 +301,7 @@ func validateArgExpr(arg string, ci *componentInfo, loopVars map[string]*loopVar
 	if _, ok := loopVars[root]; ok {
 		return nil
 	}
-	if ci.hasField(root) {
+	if ci.HasField(root) {
 		return nil
 	}
 
@@ -338,7 +327,7 @@ func resolveFieldType(t reflect.Type, path []string) reflect.Type {
 	return current
 }
 
-func isLiteral(s string) bool {
+func IsLiteral(s string) bool {
 	if s == "true" || s == "false" {
 		return true
 	}
@@ -349,18 +338,4 @@ func isLiteral(s string) bool {
 		return true
 	}
 	return false
-}
-
-// hasField checks if the component struct has an exported field with the given name.
-func (ci *componentInfo) hasField(name string) bool {
-	f, ok := ci.typ.FieldByName(name)
-	if !ok {
-		return false
-	}
-	return f.IsExported() && f.Name != "Component"
-}
-
-// hasMethod checks if the component has an exported method with the given name.
-func (ci *componentInfo) hasMethod(name string) bool {
-	return ci.value.MethodByName(name).IsValid()
 }

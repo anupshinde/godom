@@ -291,13 +291,13 @@ func formatUptime(secs uint64) string {
 }
 
 func main() {
-	app := godom.New()
-	chartjs.Register(app)
+	eng := godom.NewEngine()
+	chartjs.Register(eng)
 
 	root := &App{}
 	go root.startMonitor()
 
 	fmt.Println("System monitor — CPU, memory, disk, swap, load with Chart.js")
-	app.Mount(root, ui)
-	log.Fatal(app.Start())
+	eng.Mount(root, ui, "ui/index.html")
+	log.Fatal(eng.Start())
 }

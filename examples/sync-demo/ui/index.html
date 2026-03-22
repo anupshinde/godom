@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Sync Demo</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 0; padding: 0; }
+        h1 { margin: 20px; }
+        .hint { color: #888; font-size: 14px; margin: 0 20px 12px; }
+        .arena { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; }
+        .box { position: fixed; width: 80px; height: 80px; background: #4a90d9; border-radius: 8px; cursor: grab; user-select: none; z-index: 10; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 600; }
+        .box:active { cursor: grabbing; }
+        .content { position: relative; z-index: 20; padding: 0 20px; }
+        input { width: calc(100% - 20px); padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <h1>Sync Demo</h1>
+    <p class="hint">Drag the box. Open in two windows to see sync.</p>
+    <div class="content">
+        <input type="text" placeholder="Type something..." g-bind="Inputs[first]" />
+        <input type="text" placeholder="Another input..." g-bind="Inputs[second]" />
+        <input type="text" placeholder="Unbound input" />
+        <button g-click="Ping">Ping (<span g-text="PingCount">0</span>)</button>
+        <button g-click="AddItem">Add Input</button>
+        <button g-click="DoNothing">Do Nothing</button>
+        <div g-for="item, i in Items">
+            <input type="text" g-attr:placeholder="i" />
+        </div>
+    </div>
+    <div class="box" g-style:top="Box.Top" g-style:left="Box.Left"
+         g-mousedown="DragStart" g-mousemove="DragMove" g-mouseup="DragEnd">Drag me</div>
+    <div class="arena" g-mousemove="DragMove" g-mouseup="DragEnd"></div>
+</body>
+</html>

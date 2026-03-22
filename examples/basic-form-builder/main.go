@@ -31,19 +31,23 @@ type FormField struct {
 	IsSection  bool
 }
 
+type PaletteItem struct {
+	Type  string
+	Label string
+	Icon  string
+	Color string
+}
+
 type FormBuilder struct {
 	godom.Component
 
-	Title  string
-	Fields []FormField
+	Title   string
+	Palette []PaletteItem
+	Fields  []FormField
 
 	// Selection
 	Selected     int
 	HasSelection bool
-	NoSelection  bool // inverse of HasSelection
-	HasFields    bool // true when Fields is non-empty
-	ShowEmpty    bool // true when Fields is empty (inverse of HasFields)
-	Editing      bool // true when not in preview mode
 
 	// Preview
 	Preview        bool
@@ -131,15 +135,18 @@ func splitOptions(s string) []string {
 }
 
 // AddField is called when a palette item is dropped on the canvas.
-func (f *FormBuilder) AddField(fieldType string) {
+// Receives: (paletteIndex, targetValue) from the drop handler.
+func (f *FormBuilder) AddField(from, to float64) {
+	i := int(from)
+	if i < 0 || i >= len(f.Palette) {
+		return
+	}
 	f.applyConfig()
-	f.Fields = append(f.Fields, newField(fieldType))
-	f.HasFields = true
-	f.ShowEmpty = false
+	f.Fields = append(f.Fields, newField(f.Palette[i].Type))
 }
 
 // Reorder is called when a canvas field is dropped on another canvas field.
-func (f *FormBuilder) Reorder(from, to float64, position string) {
+func (f *FormBuilder) Reorder(from, to float64) {
 	f.applyConfig()
 	fr, t := int(from), int(to)
 	if fr == t || fr < 0 || t < 0 || fr >= len(f.Fields) || t >= len(f.Fields) {
@@ -150,12 +157,6 @@ func (f *FormBuilder) Reorder(from, to float64, position string) {
 	item := f.Fields[fr]
 	f.Fields = append(f.Fields[:fr], f.Fields[fr+1:]...)
 
-	if position == "below" && t <= fr {
-		t++
-		if t > len(f.Fields) {
-			t = len(f.Fields)
-		}
-	}
 	f.Fields = append(f.Fields[:t], append([]FormField{item}, f.Fields[t:]...)...)
 
 	// Update selected index to follow the moved item
@@ -185,7 +186,6 @@ func (f *FormBuilder) SelectField(i int) {
 	f.Selected = i
 	f.Fields[i].Selected = true
 	f.HasSelection = true
-	f.NoSelection = false
 	// Load config
 	fld := f.Fields[i]
 	f.CfgType = fld.Type
@@ -210,7 +210,6 @@ func (f *FormBuilder) Deselect() {
 	}
 	f.Selected = -1
 	f.HasSelection = false
-	f.NoSelection = true
 }
 
 // DeleteField removes a field by index.
@@ -222,14 +221,11 @@ func (f *FormBuilder) DeleteField(i int) {
 	f.Fields = append(f.Fields[:i], f.Fields[i+1:]...)
 	if len(f.Fields) == 0 {
 		f.Fields = nil
-		f.HasFields = false
-		f.ShowEmpty = true
 	}
 	// Update selection
 	if f.Selected == i {
 		f.Selected = -1
 		f.HasSelection = false
-	f.NoSelection = true
 	} else if f.Selected > i {
 		f.Selected--
 	}
@@ -237,7 +233,7 @@ func (f *FormBuilder) DeleteField(i int) {
 }
 
 // RemoveField is called when a canvas field is dropped on the trash zone.
-func (f *FormBuilder) RemoveField(from float64) {
+func (f *FormBuilder) RemoveField(from, to float64) {
 	f.DeleteField(int(from))
 }
 
@@ -245,7 +241,6 @@ func (f *FormBuilder) RemoveField(from float64) {
 func (f *FormBuilder) TogglePreview() {
 	f.applyConfig()
 	f.Preview = !f.Preview
-	f.Editing = !f.Preview
 	if f.Preview {
 		f.PreviewBtnText = "Edit"
 	} else {
@@ -302,23 +297,27 @@ func (f *FormBuilder) updateSelectionFlags() {
 	if f.Selected >= 0 && f.Selected < len(f.Fields) {
 		f.Fields[f.Selected].Selected = true
 		f.HasSelection = true
-	f.NoSelection = false
 	} else {
 		f.HasSelection = false
-	f.NoSelection = true
 	}
 }
 
 func main() {
-	app := godom.New()
-	app.Port = 8084
-	app.Mount(&FormBuilder{
-		Title:          "My Form",
+	eng := godom.NewEngine()
+	eng.Port = 8084
+	eng.Mount(&FormBuilder{
+		Title: "My Form",
+		Palette: []PaletteItem{
+			{Type: "text", Label: "Text Input", Icon: "T", Color: "#4a90d9"},
+			{Type: "textarea", Label: "Text Area", Icon: "\u00b6", Color: "#27ae60"},
+			{Type: "select", Label: "Dropdown", Icon: "\u25be", Color: "#8e44ad"},
+			{Type: "checkbox", Label: "Checkbox", Icon: "\u2713", Color: "#e67e22"},
+			{Type: "number", Label: "Number", Icon: "#", Color: "#e74c3c"},
+			{Type: "date", Label: "Date", Icon: "\U0001f4c5", Color: "#16a085"},
+			{Type: "section", Label: "Section", Icon: "\u2014", Color: "#7f8c8d"},
+		},
 		Selected:       -1,
-		Editing:        true,
-		ShowEmpty:      true,
-		NoSelection:    true,
 		PreviewBtnText: "Preview",
-	}, ui)
-	log.Fatal(app.Start())
+	}, ui, "ui/index.html")
+	log.Fatal(eng.Start())
 }

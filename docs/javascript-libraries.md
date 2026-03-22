@@ -11,7 +11,7 @@ You write a small JS adapter that receives data from your Go struct, and the fra
 | [Keep it local](#keep-it-local) | You're integrating a library for your own app | `examples/charts-without-plugin/` |
 | [Create a plugin package](#create-a-plugin-package) | You want a reusable package that others can import | `plugins/chartjs/` |
 
-Both use the same mechanism under the hood: `app.Plugin()` to register a JS adapter, and `g-plugin:name` in HTML to bind a Go struct field to it. The difference is just where the code lives.
+Both use the same mechanism under the hood: `eng.RegisterPlugin()` to register a JS adapter, and `g-plugin:name` in HTML to bind a Go struct field to it. The difference is just where the code lives.
 
 ---
 
@@ -40,7 +40,7 @@ This is the simpler approach. Everything lives in your application folder — no
 
 ```
 myapp/
-├── main.go              # app logic, calls app.Plugin()
+├── main.go              # app logic, calls eng.RegisterPlugin()
 ├── chart.go             # (optional) Go struct for the library's config
 ├── mylib-bridge.js      # JS adapter, embedded into the binary
 └── ui/
@@ -72,17 +72,17 @@ godom.register("apexcharts", {
 
 ### Step 2: Embed and register
 
-In `main.go`, embed the adapter file and register it with `app.Plugin()`:
+In `main.go`, embed the adapter file and register it with `eng.RegisterPlugin()`:
 
 ```go
 //go:embed apexcharts-bridge.js
 var apexBridgeJS string
 
 func main() {
-    app := godom.New()
-    app.Plugin("apexcharts", apexBridgeJS)
-    app.Mount(&App{}, ui)
-    log.Fatal(app.Start())
+    eng := godom.NewEngine()
+    eng.RegisterPlugin("apexcharts", apexBridgeJS)
+    eng.Mount(&App{}, ui, "ui/index.html")
+    log.Fatal(eng.Start())
 }
 ```
 
@@ -183,8 +183,8 @@ import (
 //go:embed mylib.js
 var bridgeJS string
 
-func Register(app *godom.App) {
-    app.Plugin("mylib", bridgeJS)
+func Register(eng *godom.Engine) {
+    eng.RegisterPlugin("mylib", bridgeJS)
 }
 ```
 
@@ -199,12 +199,12 @@ var libJS string
 //go:embed mylib.js
 var bridgeJS string
 
-func Register(app *godom.App) {
-    app.Plugin("mylib", libJS, bridgeJS)
+func Register(eng *godom.Engine) {
+    eng.RegisterPlugin("mylib", libJS, bridgeJS)
 }
 ```
 
-`Plugin()` accepts variadic scripts — they're injected in order. Library first, then adapter.
+`RegisterPlugin()` accepts variadic scripts — they're injected in order. Library first, then adapter.
 
 ### Step 4: (Optional) Add Go types
 
@@ -225,10 +225,10 @@ type Chart struct {
 import "github.com/anupshinde/godom/plugins/mylib"
 
 func main() {
-    app := godom.New()
-    mylib.Register(app)
-    app.Mount(&App{}, ui)
-    log.Fatal(app.Start())
+    eng := godom.NewEngine()
+    mylib.Register(eng)
+    eng.Mount(&App{}, ui, "ui/index.html")
+    log.Fatal(eng.Start())
 }
 ```
 

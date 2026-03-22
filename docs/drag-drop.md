@@ -39,8 +39,10 @@ Three directives cover the common patterns:
 | Directive | Role | Analogy |
 |-----------|------|---------|
 | `g-draggable="value"` | Make an element draggable, attach data | Like `g-bind` — declares what data this element carries |
-| `g-dropzone="'name'"` | Mark a drop target with a name | Like `data-gid` — identifies this element for drop resolution |
+| `g-draggable:group="value"` | Draggable within a named group | Group isolation via MIME types |
+| `g-dropzone="'name'"` | Mark a drop target with a name | Identifies this element for drop resolution |
 | `g-drop="Method"` | Handle drops, call a Go method | Like `g-click` — an event handler |
+| `g-drop:group="Method"` | Drop handler filtered by group | Only fires for matching `g-draggable:group` |
 
 ### Groups
 
@@ -48,16 +50,16 @@ Groups solve a real problem: in a form builder, you don't want palette items to 
 
 ```html
 <!-- Palette items: only droppable on palette drop handlers -->
-<div g-draggable.palette="'text'">Text Input</div>
+<div g-draggable:palette="'text'">Text Input</div>
 
 <!-- Canvas items: only droppable on canvas drop handlers -->
-<div g-draggable.canvas="i" g-drop.canvas="Reorder">...</div>
+<div g-draggable:canvas="i" g-drop:canvas="Reorder">...</div>
 
 <!-- Canvas accepts palette drops AND canvas drops (separate handlers) -->
-<div g-drop.palette="AddField" g-drop.canvas="Reorder">...</div>
+<div g-drop:palette="AddField" g-drop:canvas="Reorder">...</div>
 ```
 
-The group name is encoded as a MIME type suffix in `dataTransfer`: `application/x-godom-palette`, `application/x-godom-canvas`. This uses the browser's native MIME-type filtering — `dragover` only fires if the MIME type matches, so incompatible drags don't trigger visual feedback.
+The group name (after the colon in `g-draggable:palette`) is encoded as a MIME type suffix in `dataTransfer`: `application/x-godom-palette`, `application/x-godom-canvas`. This uses the browser's native MIME-type filtering — `dragover` only fires if the MIME type matches, so incompatible drags don't trigger visual feedback.
 
 **Why MIME types, not a JS-side group map?** Because the browser already has a filtering mechanism for drag data types. Using it means zero JS-side state for group tracking. The bridge sets the MIME type on `dragstart` and checks it on `dragover`/`drop` — no group registry, no lookup tables.
 
@@ -68,8 +70,8 @@ When a drop occurs:
 1. Bridge reads `from` (the draggable's value from `dataTransfer`)
 2. Bridge reads `to` (the drop target's `g-dropzone` value, or its own `g-draggable` value for sortable lists)
 3. Bridge computes `position` (`"above"` or `"below"` based on cursor Y relative to the element's midpoint)
-4. Bridge sends `[from, to, position]` as JSON in `Envelope.value`
-5. Go unpacks the array and calls the method with these arguments
+4. Bridge sends `from`, `to`, and `position` as JSON-encoded `MethodCall` args
+5. Go unpacks the arguments and calls the method
 
 The Go method signature is flexible:
 - `Reorder(from, to float64)` — position is ignored (extra args are discarded)
@@ -127,9 +129,9 @@ The `g-draggable` binding is re-evaluated on each render, so indices stay correc
 
 The `basic-form-builder` example exercises all of this:
 
-- **Palette → canvas** (`g-draggable.palette` / `g-drop.palette`): Drag field types from a palette, drop onto the canvas to add them. Different groups prevent palette items from being sortable within the palette.
-- **Canvas reordering** (`g-draggable.canvas` / `g-drop.canvas`): Drag canvas fields to reorder them within the form.
-- **Canvas → trash** (`g-drop.canvas` on a trash zone): Drag a canvas field to the trash to remove it.
+- **Palette → canvas** (`g-draggable:palette` / `g-drop:palette`): Drag field types from a palette, drop onto the canvas to add them. Different groups prevent palette items from being sortable within the palette.
+- **Canvas reordering** (`g-draggable:canvas` / `g-drop:canvas`): Drag canvas fields to reorder them within the form.
+- **Canvas → trash** (`g-drop:canvas` on a trash zone): Drag a canvas field to the trash to remove it.
 - **CSS feedback**: `.g-dragging` dims the source, `.g-drag-over` highlights the canvas, `.g-drag-over-above`/`.g-drag-over-below` show insertion lines on sortable items.
 
 Three groups (`palette`, `canvas`, and ungrouped), three drop handlers (`AddField`, `Reorder`, `RemoveField`), zero JavaScript.

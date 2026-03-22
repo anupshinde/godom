@@ -22,19 +22,65 @@ The WebSocket wire format uses **Protocol Buffers** for all communication betwee
 
 **How it works internally:**
 
-- `protocol.proto` — schema defining all message types (ServerMessage, Command with oneof val, EventCommand, Envelope, WSMessage)
-- `protocol.pb.go` — generated Go types via `protoc`
-- `protocol.js` — JS type definitions via protobuf.js reflection API (no CLI codegen needed)
-- `protobuf.min.js` — protobuf.js light build (~68KB), embedded into the binary
-- `godom.go` — binary WebSocket read/write with `proto.Marshal`/`Unmarshal`
-- `render.go` — builds protobuf Command/EventCommand types directly
-- `bridge.js` — decodes `ServerMessage`, encodes `Envelope` (wraps pre-built bytes without inspecting them)
+The protocol has two message flows:
+
+### Go → Browser: VDomMessage
+
+`VDomMessage` is the top-level message sent from Go to the browser. It has two modes:
+
+- **init** (`type: "init"`): carries a `tree` field — the entire VDOM tree encoded as JSON bytes. The bridge builds the DOM from this description on first connect or reconnect.
+- **patch** (`type: "patch"`): carries a list of `DomPatch` messages — minimal mutations computed by diffing the old and new VDOM trees.
+
+Each `DomPatch` targets a node by its stable numeric `node_id` (assigned by Go during tree resolution, maps to `nodeMap` on the bridge) and carries an `op` field indicating the patch type:
+
+| Op | Payload | Description |
+|----|---------|-------------|
+| `redraw` | `tree_content` (JSON) | Replace the entire node with a new tree |
+| `text` | `text` (string) | Update text node content |
+| `facts` | `facts` (JSON) | Apply a FactsDiff — changed properties, attributes, styles, events |
+| `append` | `tree_content` (JSON) | Append new children to the node |
+| `remove-last` | `count` (int) | Remove N children from the end |
+| `reorder` | `reorder` (JSON) | Keyed child insert/remove/move operations |
+| `plugin` | `plugin_data` (JSON) | Updated data for a plugin node |
+| `lazy` | `sub_patches` (nested) | Patches inside a lazy node's subtree |
+
+### Browser → Go: Tagged binary messages
+
+The browser sends binary messages with a one-byte tag prefix:
+
+**Tag 0x01 — NodeEvent (Layer 1: input sync)**
+
+Sent automatically on every `input` event for elements with `g-bind`. Contains:
+- `node_id` (int32) — stable node ID of the input element
+- `value` (string) — current DOM value (e.g., `input.value`)
+
+**Tag 0x02 — MethodCall (Layer 2: event dispatch)**
+
+Sent when the user triggers an event (click, keydown, mousedown, drop, etc.). Contains:
+- `node_id` (int32) — stable node ID of the element that fired
+- `method` (string) — Go method name (e.g., `"AddTodo"`, `"Toggle"`)
+- `args` (repeated bytes) — JSON-encoded arguments
+
+The bridge constructs these messages directly from event data and the event handler information embedded in the VDOM tree's facts.
+
+**Key files:**
+
+- `internal/proto/protocol.proto` — schema defining all message types
+- `internal/proto/protocol.pb.go` — generated Go types via `protoc`
+- `internal/proto/protocol.js` — JS type definitions via protobuf.js reflection API (no CLI codegen needed)
+- `internal/proto/protobuf.min.js` — protobuf.js light build (~68KB), embedded into the binary
+- `internal/server/server.go` — binary WebSocket read/write with `proto.Marshal`/`Unmarshal`
+- `internal/render/encode.go` — builds protobuf `DomPatch` types from VDOM patches
+- `internal/render/tree_encode.go` — encodes VDOM trees to JSON wire format
+- `internal/bridge/bridge.js` — decodes `VDomMessage`, builds DOM from tree, applies patches, encodes `NodeEvent`/`MethodCall`
 
 **Design decisions:**
 
-- **Envelope pattern** — the bridge never opens the inner WSMessage. It wraps the pre-built bytes with optional browser-side data (mouse coordinates in `args`, input value in `value`). The bridge stays thin
-- **Command oneof val** — `str_val`, `bool_val`, `num_val`, `raw_val` for type-safe command values
-- **Plugin data stays JSON** — plugin data is JSON-encoded inside a `bytes` field (`raw_val`). Plugin developers never see protobuf
+- **Tree-based init** — on connect, the bridge receives the entire tree as a JSON description and builds the DOM from scratch. This is simpler and more reliable than sending a sequence of individual commands
+- **Patch-based updates** — after init, only minimal diffs are sent. The VDOM differ produces patches that map directly to DOM mutations
+- **Stable node IDs** — every node gets a unique numeric ID from a monotonic counter that never resets. Patches reference the old tree's IDs because those are what the bridge has in `nodeMap`. New nodes in appends/redraws get fresh IDs
+- **Facts as JSON** — the `FactsDiff` is JSON-encoded inside a protobuf `bytes` field. This keeps the protobuf schema simple while allowing arbitrary property/attribute/style changes
+- **Plugin data stays JSON** — plugin data is JSON-encoded inside a `bytes` field (`plugin_data`). Plugin developers never see protobuf
 
 ## Transport: WebSocket today, WebTransport parked for future
 
@@ -126,6 +172,7 @@ For a godom video editor, Canvas 2D with JPEG frames over a binary WebSocket is 
 | Layer | Status | Future |
 |-------|--------|--------|
 | Wire format | **Protocol Buffers** (done) | — |
+| VDOM pipeline | **Tree init + patch updates** (done) | — |
 | Control transport | WebSocket | WebSocket |
 | Media transport | — | Binary WebSocket (`app.Stream`), then WebTransport datagrams |
 | Inter-app messaging | — | External broker (NATS etc.), not godom's job |

@@ -51,9 +51,9 @@ func (a *App) Decrement() {
 }
 
 func main() {
-    app := godom.New()
-    app.Mount(&App{Step: 1}, ui)
-    log.Fatal(app.Start())
+    eng := godom.NewEngine()
+    eng.Mount(&App{Step: 1}, ui, "ui/index.html")
+    log.Fatal(eng.Start())
 }
 ```
 
@@ -73,9 +73,9 @@ Run `go build` and you get a single binary that opens the browser and shows a li
 
 - Your Go struct holds all application state
 - HTML templates use `g-*` directives to bind to struct fields and methods
-- A binary WebSocket bridge (Protocol Buffers) keeps the browser in sync — no page reloads
+- A virtual DOM in Go diffs state changes and sends minimal patches via binary WebSocket (Protocol Buffers) — no page reloads
 - State lives in the Go process and survives browser close/reopen — close the tab, reopen it, and you're back where you left off
-- Open the same app in multiple browser tabs and they stay in sync — type in one, see the update in the other. This falls out naturally from the architecture: Go owns the state and pushes DOM commands to every connected tab
+- Open the same app in multiple browser tabs and they stay in sync — type in one, see the update in the other. This falls out naturally from the architecture: Go owns the state and pushes DOM patches to every connected tab
 - All directives are validated at startup — typos in field/method names cause `log.Fatal`, not silent runtime bugs
 
 ## Install
@@ -104,11 +104,14 @@ Requires Go 1.25+ and a web browser.
 |-----------|---------|-------------|
 | `g-text` | `g-text="Name"` | Set element's text content from a field |
 | `g-bind` | `g-bind="InputText"` | Two-way bind an input's value to a field |
+| `g-value` | `g-value="Name"` | One-way bind an input's value (no sync back to Go) |
 | `g-checked` | `g-checked="todo.Done"` | Bind checkbox checked state |
-| `g-show` | `g-show="IsVisible"` | Toggle `display: none` based on truthiness |
-| `g-if` | `g-if="HasItems"` | Same as `g-show` (conditional display) |
+| `g-show` | `g-show="IsVisible"` | Toggle `display: none` when falsy |
+| `g-hide` | `g-hide="IsHidden"` | Toggle `display: none` when truthy |
+| `g-if` | `g-if="HasItems"` | Exclude element from tree when falsy |
 | `g-class:name` | `g-class:done="todo.Done"` | Add/remove a CSS class conditionally |
 | `g-attr:name` | `g-attr:transform="Rotation"` | Set any HTML/SVG attribute from a field |
+| `g-style:prop` | `g-style:width="BarWidth"` | Set an inline CSS property from a field |
 | `g-plugin:name` | `g-plugin:chartjs="MyChart"` | Send field data to a registered JS plugin |
 
 ### Events
@@ -129,12 +132,12 @@ Requires Go 1.25+ and a web browser.
 | Directive | Example | Description |
 |-----------|---------|-------------|
 | `g-draggable` | `g-draggable="i"` | Make element draggable, with the given value as drag data |
-| `g-draggable.group` | `g-draggable.palette="'red'"` | Draggable with a named group — only matching dropzones accept the drop |
+| `g-draggable:group` | `g-draggable:palette="'red'"` | Draggable with a named group — only matching dropzones accept the drop |
 | `g-dropzone` | `g-dropzone="'canvas'"` | Mark element as a drop zone with a named value (used as `to` in drop handler) |
 | `g-drop` | `g-drop="Reorder"` | Call method on drop — receives `(from, to)` or `(from, to, position)` |
-| `g-drop.group` | `g-drop.palette="Add"` | Drop handler filtered by group — only fires for matching `g-draggable.group` |
+| `g-drop:group` | `g-drop:palette="Add"` | Drop handler filtered by group — only fires for matching `g-draggable:group` |
 
-**Groups** isolate drag interactions. A `g-draggable.palette` element can only be dropped on a `g-drop.palette` handler. Without a group, all draggables and drop handlers interact freely.
+**Groups** isolate drag interactions. A `g-draggable:palette` element can only be dropped on a `g-drop:palette` handler. Without a group, all draggables and drop handlers interact freely.
 
 **Drop data** is passed as method arguments: `from` (the draggable's value), `to` (the dropzone's value or the target's drag data), and optionally `position` (`"above"` or `"below"` based on cursor position). String and numeric values are preserved automatically.
 
@@ -157,7 +160,19 @@ See [docs/drag-drop.md](docs/drag-drop.md) for the full design rationale — why
 
 `g-for="item, index in ListField"` repeats the element for each item in a slice field. The index variable is optional (`g-for="item in Items"` works too).
 
-List rendering uses per-item diffing — only changed items get DOM updates, new items are appended, removed items are truncated.
+List rendering uses VDOM diffing — only changed items get DOM updates, new items are appended, removed items are truncated.
+
+#### Keyed lists
+
+Add `g-key` to give list items a stable identity for efficient reordering:
+
+```html
+<li g-for="todo, i in Todos" g-key="todo.ID">
+    <span g-text="todo.Text"></span>
+</li>
+```
+
+Without `g-key`, children are matched positionally. With it, the differ detects inserts, deletes, and moves, producing minimal DOM operations instead of redrawing.
 
 #### Nested lists
 
@@ -181,6 +196,7 @@ Directives support:
 - Dotted paths: `todo.Text`, `item.Address.City`
 - Loop variables: `todo`, `i` from `g-for`
 - Literals: `true`, `false`, integers, quoted strings
+- Text interpolation: `{{Name}}` in HTML text content (e.g., `<p>Hello, {{Name}}!</p>`)
 
 All expressions are resolved in Go (the browser-side bridge is a pure command executor).
 
@@ -208,51 +224,21 @@ Split HTML into reusable files. Any HTML file in your embedded filesystem can be
 
 Props are passed with `:propName="expr"` and become template variables in the child HTML. The child's directives resolve against the parent's state.
 
-### Stateful components
-
-Register a Go struct as a component for scoped state and methods:
-
-```go
-type TodoItem struct {
-    godom.Component
-    Text  string `godom:"prop"`
-    Done  bool   `godom:"prop"`
-    Index int    `godom:"prop"`
-}
-
-func (t *TodoItem) Toggle() {
-    t.Emit("ToggleTodo", t.Index)
-}
-
-func main() {
-    app := godom.New()
-    app.Component("todo-item", &TodoItem{})
-    app.Mount(&TodoApp{}, ui)
-    log.Fatal(app.Start())
-}
-```
-
-Key differences from presentational components:
-- **Own struct**: fields tagged `godom:"prop"` are set by the parent
-- **Scoped methods**: `g-click="Toggle"` calls the child's `Toggle()`, not the parent's
-- **Emit**: `t.Emit("MethodName", args...)` sends events up the component tree — each ancestor with a matching method gets called, bottom-up
-
 ## API
 
 ### App
 
 ```go
-app := godom.New()                       // Create a new app
-app.Port = 8081                          // Set port (0 = random)
-app.Host = "0.0.0.0"                    // Bind to all interfaces (default "localhost")
-app.NoAuth = true                       // Disable token auth (default false = auth enabled)
-app.Token = "my-secret"                 // Fixed token (default: random per startup)
-app.NoBrowser = true                    // Don't auto-open browser
-app.Quiet = true                        // Suppress startup output
-app.Component("tag", &T{})              // Register a stateful component (tag must contain a hyphen)
-app.Plugin("chartjs", libJS, bridgeJS)   // Register a plugin with one or more JS scripts
-app.Mount(&MyApp{}, fsys)               // Mount root component with embedded filesystem
-app.Start()                             // Start server, open browser, block forever
+eng := godom.NewEngine()                 // Create a new Engine
+eng.Port = 8081                          // Set port (0 = random)
+eng.Host = "0.0.0.0"                    // Bind to all interfaces (default "localhost")
+eng.NoAuth = true                       // Disable token auth (default false = auth enabled)
+eng.Token = "my-secret"                 // Fixed token (default: random per startup)
+eng.NoBrowser = true                    // Don't auto-open browser
+eng.Quiet = true                        // Suppress startup output
+eng.RegisterPlugin("chartjs", libJS, bridgeJS)   // Register a plugin with one or more JS scripts
+eng.Mount(&MyApp{}, fsys, "ui/index.html")  // Mount root component with embedded filesystem and entry path
+eng.Start()                                 // Start server, open browser, block forever
 ```
 
 Every godom app also supports CLI flags:
@@ -296,15 +282,19 @@ func (a *App) monitor() {
 
 Call `Refresh()` after mutating fields outside of user-triggered events (clicks, input). This is how you build dashboards, monitors, and live-updating UIs.
 
-### Emit
+### MarkRefresh (surgical updates)
 
-For stateful components, send events to parent components:
+For large UIs where only a few fields changed, mark specific fields for surgical refresh:
 
 ```go
-func (t *TodoItem) Remove() {
-    t.Emit("RemoveTodo", t.Index)  // calls parent's RemoveTodo(index)
+func (a *App) UpdatePrice(i int) {
+    a.Stocks[i].Price = fetchPrice()
+    a.MarkRefresh("Stocks")  // only rebuild nodes bound to Stocks
+    a.Refresh()
 }
 ```
+
+This avoids a full tree diff — only the nodes bound to the marked fields are rebuilt and patched.
 
 ### Plugins
 
@@ -315,7 +305,7 @@ Integrate JS libraries (charts, maps, editors) without authoring JS yourself. A 
 ```
 
 ```go
-app.Plugin("chartjs", libraryJS, bridgeJS)  // register with one or more JS scripts
+eng.RegisterPlugin("chartjs", libraryJS, bridgeJS)  // register with one or more JS scripts
 ```
 
 The plugin JS calls `godom.register(name, {init, update})` to handle data from Go. Scripts are injected in order — typically the library first, then the bridge. See `plugins/chartjs/` for a complete example.
@@ -327,7 +317,7 @@ godom ships a Chart.js plugin (`github.com/anupshinde/godom/plugins/chartjs`) th
 ```go
 import "github.com/anupshinde/godom/plugins/chartjs"
 
-chartjs.Register(app)  // registers plugin + embeds Chart.js library
+chartjs.Register(eng)  // registers plugin + embeds Chart.js library
 ```
 
 ## Examples
@@ -336,7 +326,7 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 - [examples/progress-bar/](examples/progress-bar/) — animated progress bar with `Refresh()` and `g-style:width` from a goroutine
 - [examples/clock/](examples/clock/) — analog clock with `Refresh()` and `g-attr` (server-pushed updates)
 - [examples/todolist/](examples/todolist/) — presentational components with prop passing
-- [examples/todolist-stateful/](examples/todolist-stateful/) — stateful components with props and emit
+- [examples/sync-demo/](examples/sync-demo/) — multi-tab state sync demonstration
 - [examples/system-monitor/](examples/system-monitor/) — live system monitor dashboard with `Refresh()`, `g-attr`, and presentational components
 - [examples/system-monitor-chartjs/](examples/system-monitor-chartjs/) — system monitor with Chart.js plugin (CPU, memory, disk, swap, load charts)
 - [examples/charts-without-plugin/](examples/charts-without-plugin/) — ApexCharts with inline bridge adapter (no plugin package)
@@ -346,6 +336,7 @@ chartjs.Register(app)  // registers plugin + embeds Chart.js library
 - [examples/stock-ticker/](examples/stock-ticker/) — live stock ticker dashboard with 30 simulated stocks, per-stock tick intervals, table with color-coded gainers/losers, and external CSS via static file serving
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
+- [examples/video-player/](examples/video-player/) — video player with Go decoding frames via ffmpeg and rendering on canvas
 
 After cloning the repo (see [Install](#install)), run any example with:
 
@@ -371,7 +362,7 @@ go build -o counter ./examples/counter
 ## Design principles
 
 - **Minimal JavaScript** — the JS bridge is injected automatically. For most apps, you write zero JS. When you need a JS library (charts, maps, editors), the plugin system bridges Go data to it with a thin adapter
-- **Thin bridge** — the JS bridge is a command executor. It does not evaluate expressions, resolve data, diff state, or make decisions. Go computes everything and sends concrete DOM commands (`setText`, `setAttr`, `appendHTML`, etc.) as binary Protocol Buffers over WebSocket. This means all logic is testable in Go, the bridge stays in sync with framework semantics, and debugging stays in one language. Plugins extend the bridge to delegate rendering to JS libraries when needed. `g-bind` fires on every keystroke with no debounce, keeping two-way binding instant (see [docs/transport.md](docs/transport.md) for why this matters)
+- **Thin bridge** — the JS bridge builds the DOM from a tree description on init and applies minimal patches on updates. It does not evaluate expressions, resolve data, diff state, or make decisions. Go builds a virtual DOM tree, diffs it, and sends patches as binary Protocol Buffers over WebSocket. This means all logic is testable in Go, the bridge stays in sync with framework semantics, and debugging stays in one language. Plugins extend the bridge to delegate rendering to JS libraries when needed. `g-bind` fires on every keystroke with no debounce, keeping two-way binding instant (see [docs/transport.md](docs/transport.md) for why this matters)
 - **State in Go** — the browser is a rendering engine, not the source of truth
 - **Fail fast** — all directives validated at startup against your struct
 - **Single binary** — `go build` produces one executable, no node_modules

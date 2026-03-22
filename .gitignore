@@ -13,6 +13,17 @@
 /examples/charts-without-plugin/charts-without-plugin
 /examples/system-monitor-chartjs/system-monitor-chartjs
 /examples/solar-system/solar-system
+/examples/color-picker/color-picker
+/examples/progress-bar/progress-bar
+/examples/drag-demo/drag-demo
+/examples/drag-tiles/drag-tiles
+/examples/stock-ticker/stock-ticker
+/examples/terminal/terminal
+/examples/basic-form-builder/basic-form-builder
+/examples/sync-demo/sync-demo
+
+# Stray binaries in root
+/color-picker
 
 # Test binary
 *.test

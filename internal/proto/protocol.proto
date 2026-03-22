@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package godom;
+
+option go_package = "./proto";
+
+// --- Go → Browser messages ---
+
+// ServerMessage is the top-level message sent from Go to the browser.
+message ServerMessage {
+  string type = 1;                    // "init" or "update"
+  repeated Command commands = 2;
+  repeated EventCommand events = 3;
+}
+
+// Command is a single DOM operation.
+message Command {
+  string op = 1;                      // "text","value","checked","display","class","attr","style","plugin","list","list-append","list-truncate","re-event"
+  string id = 2;                      // data-gid of target element
+  string name = 3;                    // class name (for "class" op), attr name, style property name, plugin name
+  oneof val {
+    string str_val = 4;
+    bool bool_val = 5;
+    double num_val = 6;
+    bytes raw_val = 7;                // JSON bytes for plugin data, re-event, etc.
+  }
+  repeated ListItem items = 8;       // for "list" and "list-append" ops
+}
+
+// ListItem is a single item in a g-for list render.
+message ListItem {
+  string html = 1;
+  repeated Command cmds = 2;
+  repeated EventCommand evts = 3;
+}
+
+// EventCommand describes an event listener the bridge should register.
+message EventCommand {
+  string id = 1;                      // data-gid
+  string on = 2;                      // "click","keydown","mousedown","mousemove","mouseup","wheel","input"
+  string key = 3;                     // key filter for keydown
+  bytes msg = 4;                      // pre-built message bytes — bridge sends back untouched
+}
+
+// --- VDOM: Go → Browser patch messages ---
+
+// VDomMessage is the top-level message for the VDOM pipeline.
+message VDomMessage {
+  string type = 1;                    // "init" or "patch"
+  repeated DomPatch patches = 3;      // incremental patches (patch only)
+  bytes tree = 5;                     // JSON-encoded tree description (init only)
+}
+
+// DomPatch describes a single DOM mutation produced by the diff algorithm.
+message DomPatch {
+  int32 node_id = 1;                  // stable node ID (assigned by Go, maps to nodeMap on bridge)
+  string op = 2;                      // patch operation type
+
+  // Type-specific payloads:
+  string text = 10;                   // patchText: new text content
+  bytes facts = 11;                   // patchFacts: JSON-encoded FactsDiff
+  bytes tree_content = 12;            // patchRedraw/patchAppend: JSON-encoded tree description
+  int32 count = 13;                   // patchRemoveLast: number of children to remove
+  bytes reorder = 14;                 // patchReorder: JSON-encoded reorder ops with tree descriptions
+  bytes plugin_data = 15;             // patchPlugin: JSON-encoded plugin data
+  repeated DomPatch sub_patches = 16; // patchLazy: patches inside lazy node
+}
+
+// --- Browser → Go messages ---
+
+// NodeEvent is sent from the browser when a node's value changes (Layer 1).
+// Tag byte: 0x01.
+message NodeEvent {
+  int32 node_id = 1;                  // stable node ID (matches nodeMap on bridge)
+  string value = 2;                   // current DOM value (e.g. input.value)
+}
+
+// MethodCall is sent from the browser when a user event triggers a Go method (Layer 2).
+// Tag byte: 0x02.
+message MethodCall {
+  int32 node_id = 1;                  // stable node ID of the element that fired
+  string method = 2;                  // Go method name (e.g. "AddTodo", "Toggle")
+  repeated bytes args = 3;            // JSON-encoded arguments
+}

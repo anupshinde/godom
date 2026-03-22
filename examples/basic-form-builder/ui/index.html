@@ -372,61 +372,37 @@
     </div>
 
     <!-- Builder mode -->
-    <div class="layout" g-show="Editing" style="display:none">
+    <div class="layout" g-if="!Preview">
         <!-- Palette -->
         <div class="palette">
             <h3>Fields</h3>
-            <div class="palette-item" g-draggable.palette="'text'">
-                <div class="icon" style="background:#4a90d9">T</div>
-                Text Input
-            </div>
-            <div class="palette-item" g-draggable.palette="'textarea'">
-                <div class="icon" style="background:#27ae60">&#182;</div>
-                Text Area
-            </div>
-            <div class="palette-item" g-draggable.palette="'select'">
-                <div class="icon" style="background:#8e44ad">&#9662;</div>
-                Dropdown
-            </div>
-            <div class="palette-item" g-draggable.palette="'checkbox'">
-                <div class="icon" style="background:#e67e22">&#10003;</div>
-                Checkbox
-            </div>
-            <div class="palette-item" g-draggable.palette="'number'">
-                <div class="icon" style="background:#e74c3c">#</div>
-                Number
-            </div>
-            <div class="palette-item" g-draggable.palette="'date'">
-                <div class="icon" style="background:#16a085">&#128197;</div>
-                Date
-            </div>
-            <div class="palette-item" g-draggable.palette="'section'">
-                <div class="icon" style="background:#7f8c8d">&#8212;</div>
-                Section
+            <div g-for="item, i in Palette" class="palette-item" g-draggable:palette="i">
+                <div class="icon" g-style:background="item.Color" g-text="item.Icon"></div>
+                <span g-text="item.Label"></span>
             </div>
         </div>
 
         <!-- Canvas -->
         <div class="canvas-area">
-            <div class="canvas" g-dropzone="'canvas'" g-drop.palette="AddField">
-                <div g-show="HasFields" style="display:none">
+            <div class="canvas" g-drop:palette="AddField">
+                <div g-if="Fields">
                     <div g-for="field, i in Fields" class="field-card"
                          g-class:selected="field.Selected"
-                         g-draggable.canvas="i"
-                         g-drop.canvas="Reorder"
+                         g-draggable:canvas="i"
+                         g-drop:canvas="Reorder"
                          g-click="SelectField(i)">
                         <span class="type-badge" g-text="field.Type"></span>
                         <span class="field-label" g-text="field.Label"></span>
-                        <span class="required-dot" g-show="field.Required" style="display:none">*</span>
+                        <span class="required-dot" g-if="field.Required">*</span>
                         <span class="remove" g-click="DeleteField(i)">&times;</span>
                     </div>
                 </div>
-                <div class="canvas-empty" g-show="ShowEmpty" style="display:none">
+                <div class="canvas-empty" g-hide="Fields">
                     Drag fields from the palette to start building your form
                 </div>
             </div>
 
-            <div class="trash" g-dropzone="'trash'" g-drop.canvas="RemoveField">
+            <div class="trash" g-drop:canvas="RemoveField">
                 Drop here to remove
             </div>
         </div>
@@ -435,7 +411,7 @@
         <div class="config-panel">
             <h3>Properties</h3>
 
-            <div g-show="HasSelection" style="display:none">
+            <div g-if="HasSelection">
                 <div class="config-type" g-text="CfgType"></div>
 
                 <div class="config-field">
@@ -443,7 +419,7 @@
                     <input type="text" g-bind="CfgLabel" />
                 </div>
 
-                <div class="config-field" g-show="CfgHasPlaceholder" style="display:none">
+                <div class="config-field" g-if="CfgHasPlaceholder">
                     <label>Placeholder</label>
                     <input type="text" g-bind="CfgPlaceholder" />
                 </div>
@@ -458,98 +434,98 @@
                     <input type="text" g-bind="CfgHelpText" />
                 </div>
 
-                <div class="config-field" g-show="CfgHasOptions" style="display:none">
+                <div class="config-field" g-if="CfgHasOptions">
                     <label>Options (comma-separated)</label>
                     <textarea g-bind="CfgOptions"></textarea>
                 </div>
             </div>
 
-            <div class="config-empty" g-show="NoSelection" style="display:none">
+            <div class="config-empty" g-hide="HasSelection">
                 Click a field on the canvas to edit its properties
             </div>
         </div>
     </div>
 
     <!-- Preview mode -->
-    <div class="layout" g-show="Preview" style="display:none">
+    <div class="layout" g-if="Preview">
         <div class="canvas-area">
             <div class="preview-form">
                 <h2 g-text="Title"></h2>
-                <div g-show="HasFields" style="display:none">
+                <div g-if="Fields">
                     <div g-for="field, i in Fields">
                         <!-- Section header -->
-                        <div class="preview-section" g-show="field.IsSection" style="display:none">
+                        <div class="preview-section" g-if="field.IsSection">
                             <span g-text="field.Label"></span>
                         </div>
 
                         <!-- Text input -->
-                        <div class="preview-field" g-show="field.IsText" style="display:none">
+                        <div class="preview-field" g-if="field.IsText">
                             <label>
                                 <span g-text="field.Label"></span>
-                                <span class="req" g-show="field.Required" style="display:none">*</span>
+                                <span class="req" g-if="field.Required">*</span>
                             </label>
                             <input type="text" g-attr:placeholder="field.Placeholder" />
-                            <div class="help" g-show="field.HelpText" style="display:none" g-text="field.HelpText"></div>
+                            <div class="help" g-if="field.HelpText" g-text="field.HelpText"></div>
                         </div>
 
                         <!-- Textarea -->
-                        <div class="preview-field" g-show="field.IsTextarea" style="display:none">
+                        <div class="preview-field" g-if="field.IsTextarea">
                             <label>
                                 <span g-text="field.Label"></span>
-                                <span class="req" g-show="field.Required" style="display:none">*</span>
+                                <span class="req" g-if="field.Required">*</span>
                             </label>
                             <textarea g-attr:placeholder="field.Placeholder"></textarea>
-                            <div class="help" g-show="field.HelpText" style="display:none" g-text="field.HelpText"></div>
+                            <div class="help" g-if="field.HelpText" g-text="field.HelpText"></div>
                         </div>
 
                         <!-- Select -->
-                        <div class="preview-field" g-show="field.IsSelect" style="display:none">
+                        <div class="preview-field" g-if="field.IsSelect">
                             <label>
                                 <span g-text="field.Label"></span>
-                                <span class="req" g-show="field.Required" style="display:none">*</span>
+                                <span class="req" g-if="field.Required">*</span>
                             </label>
                             <select>
                                 <option value="">Select an option...</option>
                                 <option g-for="opt in field.Options" g-text="opt"></option>
                             </select>
-                            <div class="help" g-show="field.HelpText" style="display:none" g-text="field.HelpText"></div>
+                            <div class="help" g-if="field.HelpText" g-text="field.HelpText"></div>
                         </div>
 
                         <!-- Checkbox group -->
-                        <div class="preview-field" g-show="field.IsCheckbox" style="display:none">
+                        <div class="preview-field" g-if="field.IsCheckbox">
                             <label>
                                 <span g-text="field.Label"></span>
-                                <span class="req" g-show="field.Required" style="display:none">*</span>
+                                <span class="req" g-if="field.Required">*</span>
                             </label>
                             <div class="check-option" g-for="opt in field.Options">
                                 <input type="checkbox" />
                                 <span g-text="opt"></span>
                             </div>
-                            <div class="help" g-show="field.HelpText" style="display:none" g-text="field.HelpText"></div>
+                            <div class="help" g-if="field.HelpText" g-text="field.HelpText"></div>
                         </div>
 
                         <!-- Number -->
-                        <div class="preview-field" g-show="field.IsNumber" style="display:none">
+                        <div class="preview-field" g-if="field.IsNumber">
                             <label>
                                 <span g-text="field.Label"></span>
-                                <span class="req" g-show="field.Required" style="display:none">*</span>
+                                <span class="req" g-if="field.Required">*</span>
                             </label>
                             <input type="number" g-attr:placeholder="field.Placeholder" />
-                            <div class="help" g-show="field.HelpText" style="display:none" g-text="field.HelpText"></div>
+                            <div class="help" g-if="field.HelpText" g-text="field.HelpText"></div>
                         </div>
 
                         <!-- Date -->
-                        <div class="preview-field" g-show="field.IsDate" style="display:none">
+                        <div class="preview-field" g-if="field.IsDate">
                             <label>
                                 <span g-text="field.Label"></span>
-                                <span class="req" g-show="field.Required" style="display:none">*</span>
+                                <span class="req" g-if="field.Required">*</span>
                             </label>
                             <input type="date" />
-                            <div class="help" g-show="field.HelpText" style="display:none" g-text="field.HelpText"></div>
+                            <div class="help" g-if="field.HelpText" g-text="field.HelpText"></div>
                         </div>
                     </div>
                 </div>
-                <div class="canvas-empty" g-show="ShowEmpty" style="display:none">
+                <div class="canvas-empty" g-hide="Fields">
                     No fields added yet. Switch to Edit mode to add fields.
                 </div>
             </div>
@@ -557,7 +533,7 @@
     </div>
 
     <!-- Export modal -->
-    <div class="modal-overlay" g-show="ShowExport" style="display:none">
+    <div class="modal-overlay" g-if="ShowExport">
         <div class="modal">
             <h3>Form JSON</h3>
             <pre g-text="ExportJSON"></pre>
