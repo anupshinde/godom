@@ -102,7 +102,7 @@ func htmlToTemplate(n *html.Node, componentTags map[string]bool) *TemplateNode {
 	case html.TextNode:
 		text := n.Data
 		if strings.TrimSpace(text) == "" {
-			return &TemplateNode{IsText: true, TextParts: []TextPart{{Static: true, Value: text}}}
+			return nil
 		}
 		return &TemplateNode{IsText: true, TextParts: ParseTextInterpolations(text)}
 
