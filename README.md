@@ -376,6 +376,17 @@ This project was **coded with the help of [Claude](https://claude.ai)** (Anthrop
 
 See [docs/AI_USAGE.md](docs/AI_USAGE.md) for the full philosophy on how AI was used, what has and hasn't been reviewed, and what that means if you use this project.
 
+## Documentation
+
+- [**Getting Started Guide**](docs/guide.md) — build your first godom app step by step
+- [docs/why.md](docs/why.md) — project rationale, comparison with Electron/Tauri/Wails
+- [docs/architecture.md](docs/architecture.md) — system design, VDOM pipeline, wire protocol
+- [docs/configuration.md](docs/configuration.md) — settings, CLI flags, authentication
+- [docs/plugins.md](docs/plugins.md) — plugin system overview
+- [docs/javascript-libraries.md](docs/javascript-libraries.md) — using JS libraries with godom
+- [docs/drag-drop.md](docs/drag-drop.md) — drag and drop design and implementation
+- [docs/known-issues.md](docs/known-issues.md) — known issues and workarounds
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
