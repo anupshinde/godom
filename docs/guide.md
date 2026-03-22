@@ -1,0 +1,428 @@
+# godom Guide
+
+Build local GUI apps in Go using the browser as the rendering engine. Write HTML for the UI, Go for the logic. Single binary, no JavaScript required.
+
+---
+
+## Quick Start
+
+**1. Create a project:**
+
+```
+mkdir myapp && cd myapp
+go mod init myapp
+go get github.com/anupshinde/godom
+mkdir ui
+```
+
+**2. Write your HTML** (`ui/index.html`):
+
+```html
+<!DOCTYPE html>
+<html>
+<body>
+    <h1>Count: <span g-text="Count"></span></h1>
+    <button g-click="Increment">+</button>
+    <button g-click="Decrement">-</button>
+</body>
+</html>
+```
+
+**3. Write your Go** (`main.go`):
+
+```go
+package main
+
+import (
+    "embed"
+    "log"
+
+    "github.com/anupshinde/godom"
+)
+
+//go:embed ui
+var ui embed.FS
+
+type App struct {
+    godom.Component
+    Count int
+}
+
+func (a *App) Increment() { a.Count++ }
+func (a *App) Decrement() { a.Count-- }
+
+func main() {
+    eng := godom.NewEngine()
+    eng.Mount(&App{}, ui, "ui/index.html")
+    log.Fatal(eng.Start())
+}
+```
+
+**4. Run:**
+
+```
+go run .
+```
+
+Your default browser opens. Click the buttons. Close the tab, reopen it — the count is still there. State lives in Go.
+
+---
+
+## How It Works
+
+Your Go struct is the single source of truth. The HTML template declares how state maps to UI. godom:
+
+1. Parses HTML once at `Mount()`
+2. Resolves the template against your struct on every render
+3. Diffs the old and new virtual DOM trees
+4. Sends minimal patches to the browser over WebSocket
+
+You never touch the DOM. You change struct fields, and the UI updates.
+
+---
+
+## Components
+
+A component is a Go struct that embeds `godom.Component`:
+
+```go
+type App struct {
+    godom.Component
+    Name     string
+    Items    []Item
+    Selected int
+}
+```
+
+**Rules:**
+- Exported fields become template state — `Name` is accessible as `Name` in HTML
+- Exported methods become event handlers — `func (a *App) Save()` is callable via `g-click="Save"`
+- Unexported fields and methods are private — invisible to templates
+
+---
+
+## Directives
+
+Directives are `g-*` attributes on HTML elements that bind them to your Go state.
+
+### Text
+
+```html
+<!-- Set element text content -->
+<span g-text="Name"></span>
+
+<!-- Inline interpolation -->
+<p>Hello, {{Name}}!</p>
+```
+
+### Two-Way Binding
+
+```html
+<!-- Input syncs with Go field on every keystroke -->
+<input type="text" g-bind="Name" />
+
+<!-- Checkbox binding -->
+<input type="checkbox" g-checked="Active" />
+```
+
+### One-Way Binding
+
+```html
+<!-- Read-only value (Go → browser, no sync back) -->
+<input type="text" g-value="DisplayName" />
+```
+
+### Conditional Rendering
+
+```html
+<!-- Remove from DOM if falsy -->
+<div g-if="HasItems">...</div>
+
+<!-- Negation -->
+<div g-if="!HasItems">No items yet.</div>
+
+<!-- Hide with display:none (stays in DOM) -->
+<div g-show="IsVisible">...</div>
+<div g-hide="IsVisible">...</div>
+```
+
+**Truthiness:** `nil`, `false`, `0`, `""`, empty slice/map are falsy. Everything else is truthy.
+
+### Loops
+
+```html
+<!-- Basic loop -->
+<li g-for="item in Items">
+    <span g-text="item.Name"></span>
+</li>
+
+<!-- With index -->
+<li g-for="item, i in Items">
+    <span>{{i}}: {{item.Name}}</span>
+</li>
+
+<!-- Keyed loop (stable identity for reordering) -->
+<li g-for="item in Items" g-key="item.ID">
+    <span g-text="item.Name"></span>
+</li>
+```
+
+Nested loops work — inner loops access outer variables:
+
+```html
+<div g-for="group in Groups">
+    <h2 g-text="group.Name"></h2>
+    <span g-for="item in group.Items" g-text="item.Label"></span>
+</div>
+```
+
+### Attributes and Styling
+
+```html
+<!-- Set any HTML attribute -->
+<img g-attr:src="ImageURL" />
+<svg><rect g-attr:transform="Rotation"></rect></svg>
+
+<!-- Conditional CSS class -->
+<li g-class:selected="item.Active">...</li>
+<li g-class:done="todo.Done">...</li>
+
+<!-- Inline style property -->
+<div g-style:background-color="BgColor"></div>
+<div g-style:top="Box.Top" g-style:left="Box.Left"></div>
+```
+
+### Events
+
+```html
+<!-- Click -->
+<button g-click="Save">Save</button>
+
+<!-- With arguments -->
+<button g-click="Remove(i)">Delete</button>
+<button g-click="Move(i, todo.ID)">Move</button>
+
+<!-- Keyboard (key filter before colon) -->
+<input g-keydown="Enter:Submit" />
+<input g-keydown="Escape:Cancel" />
+
+<!-- Mouse (handler receives x, y as float64) -->
+<div g-mousedown="DragStart" g-mousemove="DragMove" g-mouseup="DragEnd"></div>
+
+<!-- Wheel (handler receives deltaY as float64) -->
+<div g-wheel="Zoom"></div>
+```
+
+### Drag and Drop
+
+```html
+<!-- Make draggable (value is the payload) -->
+<div g-draggable="i">Drag me</div>
+
+<!-- Drop target (method receives from, to as float64) -->
+<div g-drop="HandleDrop">Drop here</div>
+
+<!-- Groups isolate drag sources from unrelated drop targets -->
+<div g-draggable:palette="i">Color</div>
+<div g-drop:palette="AddColor">Canvas</div>
+
+<div g-draggable:list="i">Item</div>
+<div g-drop:list="Reorder">List</div>
+```
+
+CSS classes `.g-dragging` and `.g-drag-over` are applied automatically during drag operations.
+
+### Plugins
+
+```html
+<!-- Delegate rendering to a JS plugin -->
+<canvas g-plugin:chartjs="ChartData"></canvas>
+```
+
+---
+
+## Expressions
+
+Directives accept expressions that reference your struct:
+
+| Expression | Meaning |
+|---|---|
+| `Count` | Top-level field |
+| `Address.City` | Nested struct field |
+| `todo.Name` | Loop variable field |
+| `i` | Loop index |
+| `Inputs[key]` | Map value by key |
+| `!Active` | Negation |
+| `"literal"` | String literal |
+| `42` | Number literal |
+| `true` / `false` | Boolean literals |
+
+---
+
+## Methods
+
+Exported methods on your struct are event handlers. The framework calls them via reflection when events fire.
+
+```go
+// No arguments
+func (a *App) Save() { ... }
+
+// Loop index
+func (a *App) Remove(i int) { ... }
+
+// Mouse coordinates (float64)
+func (a *App) DragMove(x, y float64) { ... }
+
+// Drag and drop (from value, to value)
+func (a *App) Reorder(from, to float64) { ... }
+
+// Wheel
+func (a *App) Zoom(deltaY float64) { ... }
+```
+
+After a method runs, godom automatically re-renders and pushes patches to all connected browsers. Do **not** call `Refresh()` inside event handlers.
+
+---
+
+## Background Updates
+
+Use goroutines for live data (clocks, tickers, monitors). Call `Refresh()` to push state to browsers:
+
+```go
+type App struct {
+    godom.Component
+    Time string
+}
+
+func (a *App) startClock() {
+    for range time.Tick(time.Second) {
+        a.Time = time.Now().Format("15:04:05")
+        a.Refresh()
+    }
+}
+
+func main() {
+    root := &App{}
+    go root.startClock()
+
+    eng := godom.NewEngine()
+    eng.Mount(root, ui, "ui/index.html")
+    log.Fatal(eng.Start())
+}
+```
+
+For high-frequency updates, use `MarkRefresh` for surgical patches that only update specific fields:
+
+```go
+func (a *App) onMouseMove(x, y float64) {
+    a.PosX = x
+    a.PosY = y
+    a.MarkRefresh("Box") // only re-render nodes bound to Box
+}
+```
+
+---
+
+## Custom Elements
+
+Split large templates by creating HTML files for sub-components:
+
+**`ui/todo-item.html`:**
+```html
+<li>
+    <input type="checkbox" g-checked="todo.Done" g-click="Toggle(index)" />
+    <span g-text="todo.Text" g-class:done="todo.Done"></span>
+    <button g-click="Remove(index)">x</button>
+</li>
+```
+
+**`ui/index.html`:**
+```html
+<ul>
+    <todo-item g-for="todo, i in Todos" :todo="todo" :index="i"></todo-item>
+</ul>
+```
+
+Props are passed via `:prop="expr"` and become variables inside the child template. Methods still resolve on the parent component.
+
+---
+
+## Configuration
+
+```go
+eng := godom.NewEngine()
+eng.Port = 8081          // default: random available port
+eng.Host = "0.0.0.0"     // default: "localhost"
+eng.NoAuth = true         // default: false (token auth enabled)
+eng.Token = "my-secret"   // default: random 32-char hex
+eng.NoBrowser = true      // default: false
+eng.Quiet = true          // default: false
+```
+
+CLI flags also work — `go run . --port=8081 --no-browser`. Code values take priority over CLI flags.
+
+### Headless mode
+
+Run on a server or Raspberry Pi without a local browser:
+
+```
+./myapp --no-browser --host=0.0.0.0 --port=8081 --token=my-secret
+```
+
+---
+
+## Plugins
+
+Plugins bridge JavaScript libraries for things Go can't render (charts, maps, rich editors).
+
+**Built-in: Chart.js**
+
+```go
+import "github.com/anupshinde/godom/plugins/chartjs"
+
+func main() {
+    eng := godom.NewEngine()
+    chartjs.Register(eng)
+    eng.Mount(&App{}, ui, "ui/index.html")
+    log.Fatal(eng.Start())
+}
+```
+
+```html
+<canvas g-plugin:chartjs="ChartData"></canvas>
+```
+
+The `ChartData` field is any struct or map that serializes to a valid Chart.js config. When the field changes, the plugin updates the chart.
+
+See [plugins.md](plugins.md) for writing your own plugins, and [javascript-libraries.md](javascript-libraries.md) for using JS libraries without creating a reusable plugin.
+
+---
+
+## Multi-Tab Sync
+
+Open your app in two browser tabs. Type in one — both update instantly. godom broadcasts patches to all connected clients. State is always consistent because it lives in one place: your Go struct.
+
+---
+
+## Examples
+
+| Example | What it demonstrates |
+|---|---|
+| `counter` | Minimal app, click events, two-way binding |
+| `todolist` | Lists, loops, custom elements, keyboard events |
+| `clock` | Background goroutine, SVG, `Refresh()` |
+| `stock-ticker` | Fast updates, conditional classes |
+| `drag-demo` | Drag and drop with groups |
+| `sync-demo` | Mouse tracking, `MarkRefresh`, surgical updates |
+| `basic-form-builder` | Complex state, conditionals, JSON export |
+| `solar-system` | SVG animation, parameterless methods |
+| `system-monitor` | System stats, charts plugin |
+| `video-player` | Canvas rendering, ffmpeg integration |
+| `terminal` | Terminal emulation in the browser |
+
+Run any example:
+
+```
+cd examples/counter
+go run .
+```
