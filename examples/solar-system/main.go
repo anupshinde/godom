@@ -46,24 +46,17 @@ func (a *App) PanDown()     { a.cam.Tilt = math.Max(0.1, a.cam.Tilt-0.1) }
 func (a *App) RotateLeft()  { a.cam.Rotation -= 0.1 }
 func (a *App) RotateRight() { a.cam.Rotation += 0.1 }
 
-func (a *App) follow(name string) {
+func (a *App) Follow(name string) {
+	if name == "Free" {
+		a.followBody = ""
+		a.cam.Distance = 800
+		a.cam.Tilt = 0.5
+		return
+	}
 	a.followBody = name
 	a.cam.Distance = 40
 	a.cam.Tilt = 0.3
 }
-
-func (a *App) FollowFree()    { a.followBody = ""; a.cam.Distance = 800; a.cam.Tilt = 0.5 }
-func (a *App) FollowSun()     { a.follow("Sun") }
-func (a *App) FollowMercury() { a.follow("Mercury") }
-func (a *App) FollowVenus()   { a.follow("Venus") }
-func (a *App) FollowEarth()   { a.follow("Earth") }
-func (a *App) FollowMoon()    { a.follow("Moon") }
-func (a *App) FollowMars()    { a.follow("Mars") }
-func (a *App) FollowJupiter() { a.follow("Jupiter") }
-func (a *App) FollowIo()      { a.follow("Io") }
-func (a *App) FollowEuropa()  { a.follow("Europa") }
-func (a *App) FollowSaturn()  { a.follow("Saturn") }
-func (a *App) FollowTitan()   { a.follow("Titan") }
 
 // Mouse controls
 func (a *App) MouseDown(x, y float64) {

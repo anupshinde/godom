@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -851,11 +852,26 @@ func ResolveExpr(expr string, ctx *ResolveContext) any {
 		return !IsTruthy(val)
 	}
 
+	// String literal: 'hello' → "hello"
+	if len(expr) >= 2 && expr[0] == '\'' && expr[len(expr)-1] == '\'' {
+		return expr[1 : len(expr)-1]
+	}
+
 	if expr == "true" {
 		return true
 	}
 	if expr == "false" {
 		return false
+	}
+
+	// Numeric literal: 42, 3.14
+	if len(expr) > 0 && (expr[0] >= '0' && expr[0] <= '9' || expr[0] == '-') {
+		if i, err := strconv.ParseInt(expr, 10, 64); err == nil {
+			return i
+		}
+		if f, err := strconv.ParseFloat(expr, 64); err == nil {
+			return f
+		}
 	}
 
 	// Method call with args: Method(arg1, arg2)

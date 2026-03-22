@@ -1520,6 +1520,95 @@ func TestResolveExpr_BooleanLiterals(t *testing.T) {
 	}
 }
 
+func TestResolveExpr_StringLiterals(t *testing.T) {
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+
+	tests := []struct {
+		expr string
+		want any
+	}{
+		{"'hello'", "hello"},
+		{"'Sun'", "Sun"},
+		{"'two words'", "two words"},
+		{"''", ""},
+	}
+	for _, tt := range tests {
+		v := ResolveExpr(tt.expr, ctx)
+		if v != tt.want {
+			t.Errorf("ResolveExpr(%q) = %v (%T), want %v (%T)", tt.expr, v, v, tt.want, tt.want)
+		}
+	}
+
+	// Negative: unterminated or malformed quotes must NOT resolve as strings.
+	negatives := []string{
+		"'hello",  // missing closing quote
+		"hello'",  // missing opening quote
+		"'",       // single quote alone
+	}
+	for _, expr := range negatives {
+		v := ResolveExpr(expr, ctx)
+		if s, ok := v.(string); ok && s != "" {
+			t.Errorf("ResolveExpr(%q) = %q, should not resolve as string literal", expr, s)
+		}
+	}
+}
+
+func TestResolveExpr_NumericLiterals(t *testing.T) {
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+
+	tests := []struct {
+		expr string
+		want any
+	}{
+		{"42", int64(42)},
+		{"0", int64(0)},
+		{"-7", int64(-7)},
+		{"3.14", float64(3.14)},
+		{"-0.5", float64(-0.5)},
+	}
+	for _, tt := range tests {
+		v := ResolveExpr(tt.expr, ctx)
+		if v != tt.want {
+			t.Errorf("ResolveExpr(%q) = %v (%T), want %v (%T)", tt.expr, v, v, tt.want, tt.want)
+		}
+	}
+
+	// Negative: things that look numeric but aren't must not resolve as numbers.
+	negatives := []string{
+		"42abc",  // trailing letters
+		"-",      // just a minus sign
+		"--5",    // double minus
+	}
+	for _, expr := range negatives {
+		v := ResolveExpr(expr, ctx)
+		switch v.(type) {
+		case int64, float64:
+			t.Errorf("ResolveExpr(%q) = %v (%T), should not resolve as numeric literal", expr, v, v)
+		}
+	}
+}
+
+func TestResolveExpr_LiteralPrecedence(t *testing.T) {
+	// A string literal must resolve even when a struct field exists with
+	// the same name (impossible in Go, but verifies ordering).
+	state := &testDirectiveState{Name: "Alice"}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+
+	// 'Name' is a string literal, not a field lookup
+	v := ResolveExpr("'Name'", ctx)
+	if v != "Name" {
+		t.Errorf("ResolveExpr(\"'Name'\") = %v, want \"Name\" (literal), not \"Alice\" (field)", v)
+	}
+
+	// Without quotes, Name resolves to the field value
+	v2 := ResolveExpr("Name", ctx)
+	if v2 != "Alice" {
+		t.Errorf("ResolveExpr(\"Name\") = %v, want \"Alice\" (field value)", v2)
+	}
+}
+
 func TestResolveExpr_Negation(t *testing.T) {
 	state := &testDirectiveState{Done: true}
 	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
