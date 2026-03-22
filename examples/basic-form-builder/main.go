@@ -48,10 +48,6 @@ type FormBuilder struct {
 	// Selection
 	Selected     int
 	HasSelection bool
-	NoSelection  bool // inverse of HasSelection
-	HasFields    bool // true when Fields is non-empty
-	ShowEmpty    bool // true when Fields is empty (inverse of HasFields)
-	Editing      bool // true when not in preview mode
 
 	// Preview
 	Preview        bool
@@ -147,8 +143,6 @@ func (f *FormBuilder) AddField(from, to float64) {
 	}
 	f.applyConfig()
 	f.Fields = append(f.Fields, newField(f.Palette[i].Type))
-	f.HasFields = true
-	f.ShowEmpty = false
 }
 
 // Reorder is called when a canvas field is dropped on another canvas field.
@@ -192,7 +186,6 @@ func (f *FormBuilder) SelectField(i int) {
 	f.Selected = i
 	f.Fields[i].Selected = true
 	f.HasSelection = true
-	f.NoSelection = false
 	// Load config
 	fld := f.Fields[i]
 	f.CfgType = fld.Type
@@ -217,7 +210,6 @@ func (f *FormBuilder) Deselect() {
 	}
 	f.Selected = -1
 	f.HasSelection = false
-	f.NoSelection = true
 }
 
 // DeleteField removes a field by index.
@@ -229,14 +221,11 @@ func (f *FormBuilder) DeleteField(i int) {
 	f.Fields = append(f.Fields[:i], f.Fields[i+1:]...)
 	if len(f.Fields) == 0 {
 		f.Fields = nil
-		f.HasFields = false
-		f.ShowEmpty = true
 	}
 	// Update selection
 	if f.Selected == i {
 		f.Selected = -1
 		f.HasSelection = false
-	f.NoSelection = true
 	} else if f.Selected > i {
 		f.Selected--
 	}
@@ -252,7 +241,6 @@ func (f *FormBuilder) RemoveField(from, to float64) {
 func (f *FormBuilder) TogglePreview() {
 	f.applyConfig()
 	f.Preview = !f.Preview
-	f.Editing = !f.Preview
 	if f.Preview {
 		f.PreviewBtnText = "Edit"
 	} else {
@@ -309,10 +297,8 @@ func (f *FormBuilder) updateSelectionFlags() {
 	if f.Selected >= 0 && f.Selected < len(f.Fields) {
 		f.Fields[f.Selected].Selected = true
 		f.HasSelection = true
-	f.NoSelection = false
 	} else {
 		f.HasSelection = false
-	f.NoSelection = true
 	}
 }
 
@@ -331,9 +317,6 @@ func main() {
 			{Type: "section", Label: "Section", Icon: "\u2014", Color: "#7f8c8d"},
 		},
 		Selected:       -1,
-		Editing:        true,
-		ShowEmpty:      true,
-		NoSelection:    true,
 		PreviewBtnText: "Preview",
 	}, ui, "ui/index.html")
 	log.Fatal(eng.Start())

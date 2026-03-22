@@ -282,11 +282,9 @@
     // --- Redraw: replace entire node with new tree ---
     function execRedraw(node, patch) {
         var tree = JSON.parse(textDecoder.decode(patch.treeContent));
-        // Clean old nodeMap entries BEFORE buildDOM so that when old and new
-        // nodes share the same ID (IDCounter resets each render), buildDOM's
-        // registration isn't immediately deleted by the cleanup.
-        cleanNodeMap(node);
+        // Order is safe: IDCounter only increments, so new IDs never collide with old IDs.
         var newNode = buildDOM(tree);
+        cleanNodeMap(node);
         if (newNode && node.parentNode) {
             node.parentNode.replaceChild(newNode, node);
         }

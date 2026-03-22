@@ -248,10 +248,13 @@ func BuildInit(ci *component.Info) *gproto.VDomMessage {
 // BuildUpdate rebuilds the tree from templates, diffs against Tree, and
 // returns a patch message. Returns nil if no changes.
 func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
-	// Reset the ID counter so the new tree gets the same IDs as the old tree.
-	// MergeTree preserves old node IDs, and bindings reference new tree IDs,
-	// so they must match.
-	ci.IDCounter = &vdom.IDCounter{}
+	// Keep the IDCounter alive across renders so IDs only increase.
+	// Resetting to zero would cause new subtrees (from g-if transitions)
+	// to get IDs that collide with existing nodes elsewhere in the tree,
+	// corrupting the bridge's nodeMap.
+	if ci.IDCounter == nil {
+		ci.IDCounter = &vdom.IDCounter{}
+	}
 	newTree := buildTree(ci)
 
 	if ci.Tree == nil {
@@ -264,7 +267,33 @@ func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
 	}
 
 	patches := vdom.Diff(ci.Tree, newTree)
-	vdom.MergeTree(ci.Tree, newTree)
+
+	// MergeTree keeps dst's node IDs at structurally matching positions.
+	// It returns a map from src (new) IDs → dst (old) IDs so we can remap
+	// bindings and NodeStableIDs that reference new-tree IDs.
+	remap := vdom.MergeTree(ci.Tree, newTree)
+
+	// Remap bindings: replace new-tree IDs with merged-tree IDs.
+	if len(remap) > 0 {
+		for field, bindings := range ci.Bindings {
+			for i, b := range bindings {
+				if mergedID, ok := remap[b.NodeID]; ok {
+					ci.Bindings[field][i].NodeID = mergedID
+				}
+			}
+		}
+		if ci.NodeStableIDs != nil {
+			remapped := make(map[int]string, len(ci.NodeStableIDs))
+			for nodeID, key := range ci.NodeStableIDs {
+				if mergedID, ok := remap[nodeID]; ok {
+					remapped[mergedID] = key
+				} else {
+					remapped[nodeID] = key
+				}
+			}
+			ci.NodeStableIDs = remapped
+		}
+	}
 
 	if len(patches) == 0 {
 		return nil

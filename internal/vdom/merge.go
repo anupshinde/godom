@@ -4,15 +4,32 @@ package vdom
 // Structurally matching nodes (same type, same tag) get their data updated.
 // Non-matching nodes at the same position are replaced with src nodes.
 //
+// Returns a map from src node IDs → dst node IDs for every position where
+// dst's ID was kept (canMerge=true and IDs differ). Callers use this to
+// remap bindings that reference src IDs to the IDs the merged tree has.
+//
 // Call this after Diff(dst, src) to bring dst in sync with what the browser
 // will have after patches are applied. dst is never replaced — it is the
 // long-lived tree that persists across renders.
-func MergeTree(dst, src Node) {
+func MergeTree(dst, src Node) map[int]int {
+	remap := make(map[int]int)
+	mergeTree(dst, src, remap)
+	return remap
+}
+
+func mergeTree(dst, src Node, remap map[int]int) {
 	if dst == nil || src == nil {
 		return
 	}
-	if dst.NodeType() != src.NodeType() {
+	if !canMerge(dst, src) {
 		return
+	}
+
+	// Record the ID mapping before mutating dst.
+	// MergeTree never changes NodeBase.ID, so this is safe at any point,
+	// but we do it up front for clarity.
+	if dst.NodeID() != src.NodeID() {
+		remap[src.NodeID()] = dst.NodeID()
 	}
 
 	switch d := dst.(type) {
@@ -26,7 +43,7 @@ func MergeTree(dst, src Node) {
 			return
 		}
 		d.Facts = s.Facts
-		mergeChildren(d, s.Children)
+		mergeChildren(d, s.Children, remap)
 
 	case *KeyedElementNode:
 		s := src.(*KeyedElementNode)
@@ -34,7 +51,7 @@ func MergeTree(dst, src Node) {
 			return
 		}
 		d.Facts = s.Facts
-		mergeKeyedChildren(d, s.Children)
+		mergeKeyedChildren(d, s.Children, remap)
 
 	case *ComponentNode:
 		s := src.(*ComponentNode)
@@ -43,7 +60,7 @@ func MergeTree(dst, src Node) {
 		}
 		d.Props = s.Props
 		if d.SubTree != nil && s.SubTree != nil {
-			MergeTree(d.SubTree, s.SubTree)
+			mergeTree(d.SubTree, s.SubTree, remap)
 		} else if s.SubTree != nil {
 			d.SubTree = s.SubTree
 		}
@@ -61,14 +78,14 @@ func MergeTree(dst, src Node) {
 		d.Func = s.Func
 		d.Args = s.Args
 		if d.Cached != nil && s.Cached != nil {
-			MergeTree(d.Cached, s.Cached)
+			mergeTree(d.Cached, s.Cached, remap)
 		} else {
 			d.Cached = s.Cached
 		}
 	}
 }
 
-func mergeChildren(dst *ElementNode, srcKids []Node) {
+func mergeChildren(dst *ElementNode, srcKids []Node, remap map[int]int) {
 	minLen := len(dst.Children)
 	if len(srcKids) < minLen {
 		minLen = len(srcKids)
@@ -76,7 +93,7 @@ func mergeChildren(dst *ElementNode, srcKids []Node) {
 
 	for i := 0; i < minLen; i++ {
 		if canMerge(dst.Children[i], srcKids[i]) {
-			MergeTree(dst.Children[i], srcKids[i])
+			mergeTree(dst.Children[i], srcKids[i], remap)
 		} else {
 			dst.Children[i] = srcKids[i]
 		}
@@ -93,7 +110,7 @@ func mergeChildren(dst *ElementNode, srcKids []Node) {
 	}
 }
 
-func mergeKeyedChildren(dst *KeyedElementNode, srcKids []KeyedChild) {
+func mergeKeyedChildren(dst *KeyedElementNode, srcKids []KeyedChild, remap map[int]int) {
 	// Build old key → index map.
 	oldByKey := make(map[string]int, len(dst.Children))
 	for i, kc := range dst.Children {
@@ -107,7 +124,7 @@ func mergeKeyedChildren(dst *KeyedElementNode, srcKids []KeyedChild) {
 			// Key exists in old — merge data into old node, keep old ID.
 			oldNode := dst.Children[oi].Node
 			if canMerge(oldNode, sk.Node) {
-				MergeTree(oldNode, sk.Node)
+				mergeTree(oldNode, sk.Node, remap)
 				merged[i] = KeyedChild{Key: sk.Key, Node: oldNode}
 			} else {
 				merged[i] = sk

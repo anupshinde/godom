@@ -2215,6 +2215,157 @@ func TestPrintQR_EmptyURL(t *testing.T) {
 	printQR("")
 }
 
+// --- g-if transition ID collision test ---
+
+// gifApp simulates a g-if transition: Items goes from nil to non-empty,
+// which inserts new nodes and shifts IDs of subsequent nodes.
+type gifApp struct {
+	Component struct{}
+	Items     []string
+}
+
+func (a *gifApp) AddItem() {
+	a.Items = append(a.Items, "item1")
+}
+
+const gifHTML = `<!DOCTYPE html><html><head></head><body>
+<div class="container">
+  <div g-if="Items"><div g-for="item in Items"><span g-text="item"></span></div></div>
+  <div class="empty" g-hide="Items">No items</div>
+</div>
+<div class="footer"><span g-text="'done'">done</span></div>
+</body></html>`
+
+func makeGifCI(app *gifApp) *component.Info {
+	v := reflect.ValueOf(app)
+	t := v.Elem().Type()
+	templates, err := vdom.ParseTemplate(gifHTML, nil)
+	if err != nil {
+		panic(err)
+	}
+	return &component.Info{
+		Value:         v,
+		Typ:           t,
+		VDOMTemplates: templates,
+	}
+}
+
+func TestBuildUpdate_GifTransition_NoIDCollision(t *testing.T) {
+	app := &gifApp{}
+	ci := makeGifCI(app)
+
+	// Initial render: Items is nil, g-if="Items" produces no nodes
+	_ = BuildInit(ci)
+
+	// Collect all IDs in the tree after init
+	initIDs := collectAllIDs(ci.Tree)
+	for id, count := range initIDs {
+		if count > 1 {
+			t.Fatalf("duplicate ID %d after init (count=%d)", id, count)
+		}
+	}
+
+	// Add an item: Items goes from nil to ["item1"]
+	// g-if="Items" now produces nodes, shifting IDs of subsequent nodes
+	app.AddItem()
+	msg := BuildUpdate(ci)
+	if msg == nil {
+		t.Fatal("expected patch message after AddItem")
+	}
+
+	// Verify: no duplicate IDs in the merged tree
+	afterIDs := collectAllIDs(ci.Tree)
+	for id, count := range afterIDs {
+		if count > 1 {
+			t.Fatalf("duplicate ID %d in merged tree after AddItem (count=%d)", id, count)
+		}
+	}
+
+	// Verify that bindings reference IDs actually present in the merged tree
+	for field, bindings := range ci.Bindings {
+		for _, b := range bindings {
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			if node == nil {
+				t.Errorf("binding for %q references nodeID=%d not in merged tree", field, b.NodeID)
+			}
+		}
+	}
+
+	// Second update: add another item to verify IDs stay unique
+	app.Items = append(app.Items, "item2")
+	msg2 := BuildUpdate(ci)
+	if msg2 == nil {
+		t.Fatal("expected patch message after second AddItem")
+	}
+	afterIDs2 := collectAllIDs(ci.Tree)
+	for id, count := range afterIDs2 {
+		if count > 1 {
+			t.Fatalf("duplicate ID %d in merged tree after second AddItem (count=%d)", id, count)
+		}
+	}
+}
+
+// --- IDCounter monotonic invariant ---
+//
+// IDCounter MUST only increment, never reset or go backwards.
+// The bridge maintains nodeMap[id] → DOM node. If IDs are reused across
+// renders, PatchRedraw registers new nodes under IDs that already belong
+// to unrelated DOM nodes elsewhere in the tree. The bridge silently
+// overwrites those entries, causing subsequent patches to target the
+// wrong DOM nodes — leading to HierarchyRequestErrors, visual corruption,
+// and lost interactivity. All silent, all hard to debug.
+//
+// This invariant is load-bearing. Do not reset IDCounter to zero.
+
+func TestIDCounter_MustOnlyIncrement(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+
+	_ = BuildInit(ci)
+	prevSeq := ci.IDCounter.Seq
+
+	for i := 0; i < 5; i++ {
+		app.Count++
+		BuildUpdate(ci)
+
+		if ci.IDCounter.Seq <= prevSeq {
+			t.Fatalf("render %d: IDCounter went from %d to %d — IDs must only increase", i, prevSeq, ci.IDCounter.Seq)
+		}
+		prevSeq = ci.IDCounter.Seq
+	}
+}
+
+func collectAllIDs(node vdom.Node) map[int]int {
+	ids := make(map[int]int)
+	walkTreeIDs(node, ids)
+	return ids
+}
+
+func walkTreeIDs(node vdom.Node, ids map[int]int) {
+	if node == nil {
+		return
+	}
+	ids[node.NodeID()]++
+	switch n := node.(type) {
+	case *vdom.ElementNode:
+		for _, c := range n.Children {
+			walkTreeIDs(c, ids)
+		}
+	case *vdom.KeyedElementNode:
+		for _, kc := range n.Children {
+			walkTreeIDs(kc.Node, ids)
+		}
+	case *vdom.ComponentNode:
+		if n.SubTree != nil {
+			walkTreeIDs(n.SubTree, ids)
+		}
+	case *vdom.LazyNode:
+		if n.Cached != nil {
+			walkTreeIDs(n.Cached, ids)
+		}
+	}
+}
+
 // --- Helpers ---
 
 func findTextInTree(node *render.WireNode, text string) bool {
