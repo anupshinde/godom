@@ -79,12 +79,12 @@ type TextPart struct {
 // componentTags is the set of registered custom element names.
 func ParseTemplate(htmlStr string, componentTags map[string]bool) ([]*TemplateNode, error) {
 	doc, err := html.Parse(strings.NewReader(htmlStr))
-	if err != nil {
+	if err != nil { // unreachable: html.Parse never errors, but kept as defensive check
 		return nil, fmt.Errorf("parse HTML: %w", err)
 	}
 
 	body := findBody(doc)
-	if body == nil {
+	if body == nil { // unreachable: html.Parse always synthesizes <body>, but kept as defensive check
 		return nil, fmt.Errorf("no <body> found in HTML")
 	}
 

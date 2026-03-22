@@ -3162,19 +3162,20 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 
 type stableRemapApp struct {
 	Component struct{}
-	ShowExtra bool
+	Label     string
 }
 
 const stableRemapHTML = `<!DOCTYPE html><html><head></head><body>
-	<div g-if="ShowExtra"><span>extra</span></div>
+	<span g-text="Label">x</span>
 	<input type="text" placeholder="unbound"/>
 </body></html>`
 
 func TestBuildUpdate_RemapsNodeStableIDs(t *testing.T) {
-	// When g-if toggles, new nodes shift IDs of subsequent nodes.
-	// MergeTree produces a remap. NodeStableIDs (from unbound inputs)
-	// must be remapped so handleNodeEvent can still find the right stable key.
-	app := &stableRemapApp{ShowExtra: false}
+	// The unbound input gets a new node ID on each rebuild (IDCounter is
+	// monotonic). MergeTree matches it by position and records
+	// remap[newID]=oldID. The NodeStableIDs remap code must follow that
+	// mapping so handleNodeEvent can still find the right stable key.
+	app := &stableRemapApp{Label: "hello"}
 	v := reflect.ValueOf(app)
 	templates, err := vdom.ParseTemplate(stableRemapHTML, nil)
 	if err != nil {
@@ -3186,15 +3187,14 @@ func TestBuildUpdate_RemapsNodeStableIDs(t *testing.T) {
 		VDOMTemplates: templates,
 	}
 
-	// First render: ShowExtra=false, g-if produces no nodes
+	// First render
 	_ = BuildInit(ci)
 
-	// The unbound input should have a NodeStableIDs entry
 	if len(ci.NodeStableIDs) == 0 {
 		t.Fatal("expected NodeStableIDs to be populated for unbound input")
 	}
 
-	// Record the stable key before toggle
+	// Record the original node ID and stable key
 	var origNodeID int
 	var stableKey string
 	for id, key := range ci.NodeStableIDs {
@@ -3202,11 +3202,13 @@ func TestBuildUpdate_RemapsNodeStableIDs(t *testing.T) {
 		stableKey = key
 	}
 
-	// Toggle g-if: ShowExtra=true → structural change, IDs shift
-	app.ShowExtra = true
+	// Change label → same structure, different content. The rebuilt tree
+	// gives the input a new ID (IDCounter advanced), but MergeTree keeps
+	// the old ID. remap[newID]=oldID should be produced.
+	app.Label = "world"
 	msg := BuildUpdate(ci)
 	if msg == nil {
-		t.Fatal("expected patch message after toggling ShowExtra")
+		t.Fatal("expected patch message after changing Label")
 	}
 
 	// NodeStableIDs should still have exactly one entry with the same stable key
@@ -3214,19 +3216,23 @@ func TestBuildUpdate_RemapsNodeStableIDs(t *testing.T) {
 		t.Fatalf("expected 1 NodeStableIDs entry, got %d", len(ci.NodeStableIDs))
 	}
 
-	var newNodeID int
+	var remappedNodeID int
 	for id, key := range ci.NodeStableIDs {
-		newNodeID = id
+		remappedNodeID = id
 		if key != stableKey {
 			t.Errorf("stable key changed: was %q, now %q", stableKey, key)
 		}
 	}
 
-	// The node ID should have been remapped (may or may not differ,
-	// but the key must resolve to a valid node in the merged tree)
-	node := vdom.FindNodeByID(ci.Tree, newNodeID)
+	// The remapped ID should equal the original (MergeTree preserved it)
+	if remappedNodeID != origNodeID {
+		t.Errorf("expected remapped ID=%d (original), got %d", origNodeID, remappedNodeID)
+	}
+
+	// The ID must resolve to the input node in the merged tree
+	node := vdom.FindNodeByID(ci.Tree, remappedNodeID)
 	if node == nil {
-		t.Errorf("remapped NodeStableIDs[%d] does not exist in merged tree (was %d)", newNodeID, origNodeID)
+		t.Fatalf("NodeStableIDs[%d] does not exist in merged tree", remappedNodeID)
 	}
 	if el, ok := node.(*vdom.ElementNode); ok {
 		if el.Tag != "input" {
@@ -3234,5 +3240,62 @@ func TestBuildUpdate_RemapsNodeStableIDs(t *testing.T) {
 		}
 	} else {
 		t.Error("expected ElementNode for remapped stable ID")
+	}
+}
+
+func TestBuildUpdate_RemapsNodeStableIDs_ElseBranch(t *testing.T) {
+	// When a g-if toggle changes the child list structure, the unbound input
+	// moves to a different position. MergeTree can't match it positionally,
+	// so its new ID is NOT in the remap. The else branch keeps the original
+	// new-tree ID in NodeStableIDs.
+	type gifRemapApp struct {
+		Component struct{}
+		ShowExtra bool
+	}
+	app := &gifRemapApp{ShowExtra: false}
+	v := reflect.ValueOf(app)
+	templates, err := vdom.ParseTemplate(`<!DOCTYPE html><html><head></head><body>
+	<div g-if="ShowExtra"><span>extra</span></div>
+	<input type="text" placeholder="unbound"/>
+</body></html>`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci := &component.Info{
+		Value:         v,
+		Typ:           v.Elem().Type(),
+		VDOMTemplates: templates,
+	}
+
+	_ = BuildInit(ci)
+
+	if len(ci.NodeStableIDs) == 0 {
+		t.Fatal("expected NodeStableIDs for unbound input")
+	}
+
+	var stableKey string
+	for _, key := range ci.NodeStableIDs {
+		stableKey = key
+	}
+
+	// Toggle g-if: structural change shifts input position
+	app.ShowExtra = true
+	msg := BuildUpdate(ci)
+	if msg == nil {
+		t.Fatal("expected patch message")
+	}
+
+	// Stable key should be preserved
+	if len(ci.NodeStableIDs) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(ci.NodeStableIDs))
+	}
+	for id, key := range ci.NodeStableIDs {
+		if key != stableKey {
+			t.Errorf("stable key changed: was %q, now %q", stableKey, key)
+		}
+		node := vdom.FindNodeByID(ci.Tree, id)
+		if node == nil {
+			t.Fatalf("NodeStableIDs[%d] not in merged tree", id)
+		}
 	}
 }

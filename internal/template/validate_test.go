@@ -15,6 +15,7 @@ type valTestComp struct {
 	Visible   bool
 	InputText string
 	Todos     []valTestTodo
+	Inputs    map[string]string
 }
 
 type valTestTodo struct {
@@ -372,6 +373,15 @@ func TestValidateDirectives_BindDottedPathInLoop(t *testing.T) {
 	}
 }
 
+func TestValidateDirectives_BindBracketSyntax(t *testing.T) {
+	// g-bind="Inputs[first]" should validate — bracket syntax extracts root "Inputs"
+	html := `<input g-bind="Inputs[first]" />`
+	ci := newValTestCI()
+	if err := ValidateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error for bracket bind: %v", err)
+	}
+}
+
 func TestValidateDirectives_BindUnknownField(t *testing.T) {
 	html := `<input g-bind="Missing" />`
 	ci := newValTestCI()
@@ -380,7 +390,16 @@ func TestValidateDirectives_BindUnknownField(t *testing.T) {
 	}
 }
 
-// --- validateFieldExpr: negation, computed method, empty expr ---
+// --- validateFieldExpr: bracket syntax, negation, computed method, empty expr ---
+
+func TestValidateDirectives_FieldBracketSyntax(t *testing.T) {
+	// g-text="Inputs[first]" — bracket syntax extracts root "Inputs" for field lookup
+	html := `<span g-text="Inputs[first]"></span>`
+	ci := newValTestCI()
+	if err := ValidateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error for bracket field expr: %v", err)
+	}
+}
 
 func TestValidateDirectives_Negation(t *testing.T) {
 	// g-show with negated expression "!Visible"
