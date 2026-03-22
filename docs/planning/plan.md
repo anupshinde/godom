@@ -26,7 +26,7 @@ Everything is a component. A component is a Go struct.
 - Handler dispatch: browser sends `MethodCall`, Go calls via reflection
 - `Refresh()` — push state from background goroutines to all connected browsers
 - `MarkRefresh(fields...)` — surgical refresh of only the bound nodes for specific fields
-- Stateful components: `eng.RegisterComponent("tag", &T{})` with props (`godom:"prop"` tags)
+- Stateful components: `eng.RegisterComponent("tag", &T{})` (validation and template expansion work; runtime instantiation not yet implemented)
 - Presentational components: HTML includes with `:prop="expr"` template variables
 
 ---

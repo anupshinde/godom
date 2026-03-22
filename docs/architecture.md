@@ -58,7 +58,7 @@ log.Fatal(eng.Start())                                 // serve, open browser, b
 |---------|----------------|
 | `godom.go` | Engine, Mount, Start — the public API surface |
 | `internal/vdom/` | Virtual DOM: node types, template parsing, tree resolution, diffing, merging, patch types |
-| `internal/component/` | Component struct, Info, Reg, props, method dispatch, field access, state management |
+| `internal/component/` | Component struct, Info, Reg, method dispatch, field access |
 | `internal/server/` | HTTP server, WebSocket handling, connection pool, init/update pipeline, surgical refresh |
 | `internal/render/` | Encode patches to protobuf `DomPatch`, encode VDOM trees to JSON wire format |
 | `internal/template/` | HTML parsing, component expansion, directive validation |
@@ -201,7 +201,7 @@ Parent struct         ───props───►    Child struct
 
 ### Child instances in g-for
 
-When a `g-for` iterates over a list with a stateful component, godom creates one `component.Info` per list item. These are stored in `parent.Children[forGID]` and indexed by position.
+When a `g-for` iterates over a list with a stateful component, godom will create one `component.Info` per list item. (Runtime instantiation of child components is not yet implemented — currently only validation and template expansion work.)
 
 ## The bridge (bridge.js)
 

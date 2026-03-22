@@ -19,7 +19,7 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 ## Internal packages
 - `godom.go` — public API: Engine, Mount, Start, Component, Refresh, MarkRefresh
 - `internal/vdom/` — VDOM node types, template parsing, tree resolution, diffing, merging
-- `internal/component/` — component struct, Info, Reg, props, method dispatch, field access
+- `internal/component/` — component struct, Info, Reg, method dispatch, field access
 - `internal/server/` — HTTP server, WebSocket handling, connection pool, init/update pipeline
 - `internal/render/` — encode patches to protobuf DomPatch, encode trees to JSON wire format
 - `internal/template/` — HTML parsing, component expansion, directive validation
