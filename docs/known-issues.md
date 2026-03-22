@@ -9,7 +9,3 @@ When clicking a button very fast (10+ clicks per second), occasional click event
 **Impact:** Low for typical UI interactions (form submissions, toggles, navigation). Only noticeable with very rapid repeated clicks on the same element.
 
 **Workaround:** None — this is browser behavior below the application layer.
-
-## ~~bridge.js g-for innerHTML parsing is context-sensitive~~ ✅
-
-**No longer applicable.** The VDOM rewrite replaced innerHTML-based list rendering with tree-based DOM construction. The bridge now builds elements directly from JSON tree descriptions, so context-sensitive parsing is not needed.

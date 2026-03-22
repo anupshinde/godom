@@ -21,18 +21,3 @@ The server currently hardcodes gorilla/websocket. The goal is to make the transp
 
 See [transport.md](../transport.md) for the WebSocket vs SSE+POST analysis and [protocol.md](../protocol.md) for the wire format details.
 
----
-
-## Previously completed
-
-These items were on the next list and have been implemented:
-
-- ~~Static File Serving~~ ✅ — Non-root HTTP paths served from embedded UI filesystem via `http.FileServer`
-- ~~Style Binding~~ ✅ — `g-style:prop="expr"` binds inline style properties to Go struct fields
-- ~~Disconnect Handling~~ ✅ — Bridge shows overlay on disconnect/crash with auto-reconnect or error message
-- ~~Publish module path~~ ✅ — Module path changed to `github.com/anupshinde/godom`
-- ~~Child-local state lost when scoped event also changes root state~~ ✅ — Fixed with dual-update approach
-- ~~bridge.js g-for innerHTML parsing is context-sensitive~~ ✅ — No longer applicable: VDOM rewrite builds DOM from tree descriptions, not innerHTML
-- ~~Keyed identity for g-for~~ ✅ — Implemented via `g-key="item.ID"` with `KeyedElementNode` and `PatchReorder`
-- ~~Virtual DOM~~ ✅ — Full VDOM pipeline: tree-based init, diff-based patches, stable node IDs
-- ~~Computed properties~~ ✅ — `ResolveExpr` tries field first, falls back to calling zero-arg methods with one return value
