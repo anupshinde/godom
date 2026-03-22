@@ -234,7 +234,10 @@
         for (var i = 0; i < patches.length; i++) {
             var patch = patches[i];
             var node = nodeMap[patch.nodeId];
-            if (!node) continue;
+            if (!node) {
+                console.warn("[godom patch] skip: nodeMap[" + patch.nodeId + "] not found for op=" + patch.op);
+                continue;
+            }
             applyPatch(node, patch);
         }
 
@@ -279,10 +282,12 @@
     // --- Redraw: replace entire node with new tree ---
     function execRedraw(node, patch) {
         var tree = JSON.parse(textDecoder.decode(patch.treeContent));
+        // Clean old nodeMap entries BEFORE buildDOM so that when old and new
+        // nodes share the same ID (IDCounter resets each render), buildDOM's
+        // registration isn't immediately deleted by the cleanup.
+        cleanNodeMap(node);
         var newNode = buildDOM(tree);
         if (newNode && node.parentNode) {
-            // Clean old node from nodeMap
-            cleanNodeMap(node);
             node.parentNode.replaceChild(newNode, node);
         }
     }
@@ -317,8 +322,9 @@
         var count = patch.count;
         for (var i = 0; i < count; i++) {
             if (node.lastChild) {
-                cleanNodeMap(node.lastChild);
-                node.removeChild(node.lastChild);
+                var victim = node.lastChild;
+                cleanNodeMap(victim);
+                node.removeChild(victim);
             }
         }
     }
