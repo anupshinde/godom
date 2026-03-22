@@ -731,7 +731,7 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext, nodeID int) Facts {
 			f.Styles[d.Name] = fmt.Sprint(val)
 			ctx.addBinding(d.Expr, nodeID, "style", d.Name)
 
-		case "click", "mousedown", "mousemove", "mouseup", "wheel", "drop":
+		case "click", "mousedown", "mousemove", "mouseup", "wheel":
 			method, args := ParseMethodCall(d.Expr)
 			if f.Events == nil {
 				f.Events = make(map[string]EventHandler)
@@ -740,6 +740,23 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext, nodeID int) Facts {
 			f.Events[d.Type] = EventHandler{
 				Handler: method,
 				Args:    resolvedArgs,
+			}
+
+		case "drop":
+			method, args := ParseMethodCall(d.Expr)
+			if f.Events == nil {
+				f.Events = make(map[string]EventHandler)
+			}
+			resolvedArgs := resolveArgs(args, ctx)
+			f.Events["drop"] = EventHandler{
+				Handler: method,
+				Args:    resolvedArgs,
+			}
+			if d.Name != "" {
+				if f.Attrs == nil {
+					f.Attrs = make(map[string]string)
+				}
+				f.Attrs["data-drop-group"] = d.Name
 			}
 
 		case "keydown":
@@ -768,6 +785,9 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext, nodeID int) Facts {
 			}
 			val := ResolveExpr(d.Expr, ctx)
 			f.Attrs["data-drag-value"] = fmt.Sprint(val)
+			if d.Name != "" {
+				f.Attrs["data-drag-group"] = d.Name
+			}
 
 		case "dropzone":
 			if f.Events == nil {

@@ -503,7 +503,8 @@
     }
 
     // Any element with draggable="true" gets dataTransfer wiring.
-    // Reads data-drag-value attr and puts it into dataTransfer on dragstart.
+    // Reads data-drag-value and data-drag-group attrs on dragstart.
+    var _currentDragGroup = "";
     function autoRegisterDraggable(el) {
         if (el._godomDrag) return;
         if (!el.draggable) return;
@@ -511,12 +512,14 @@
 
         el.addEventListener("dragstart", function(domEvent) {
             var value = el.getAttribute("data-drag-value") || "";
+            _currentDragGroup = el.getAttribute("data-drag-group") || "";
             domEvent.dataTransfer.setData("text/plain", value);
             domEvent.dataTransfer.effectAllowed = "move";
             el.classList.add("g-dragging");
         });
         el.addEventListener("dragend", function() {
             el.classList.remove("g-dragging");
+            _currentDragGroup = "";
         });
     }
 
@@ -549,7 +552,9 @@
 
         // drop: read drag source value from dataTransfer, prepend to method args
         if (eventType === "drop") {
+            var dropGroup = el.getAttribute("data-drop-group") || "";
             el.addEventListener("dragover", function(domEvent) {
+                if (dropGroup && dropGroup !== _currentDragGroup) return;
                 domEvent.preventDefault();
                 el.classList.add("g-drag-over");
             });
@@ -559,6 +564,8 @@
             el.addEventListener("drop", function(domEvent) {
                 domEvent.preventDefault();
                 el.classList.remove("g-drag-over");
+                if (dropGroup && dropGroup !== _currentDragGroup) return;
+                domEvent.stopPropagation();
                 var sourceValue = domEvent.dataTransfer.getData("text/plain") || "null";
                 var targetValue = el.getAttribute("data-drag-value") || "null";
                 var args = [
