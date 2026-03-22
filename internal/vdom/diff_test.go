@@ -2199,6 +2199,146 @@ func TestDiffFacts_StringAttrsAddOnly(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Regression: g-if removal + g-hide sibling style update
+//
+// Simulates the drag-demo scenario:
+//   Old: div.canvas has 2 children — [g-if wrapper div, canvas-empty div(display:none)]
+//   New: div.canvas has 1 child — [canvas-empty div (no display:none)]
+//
+// The index-based diff compares old[0] (wrapper) with new[0] (canvas-empty)
+// and removes the last child. This test verifies the patches are correct.
+// ---------------------------------------------------------------------------
+
+func TestDiff_GIfRemovalWithSiblingStyleChange(t *testing.T) {
+	// Old tree: div.canvas with 2 children
+	gifWrapper := &ElementNode{
+		NodeBase: NodeBase{ID: 2},
+		Tag:      "div",
+		Children: []Node{
+			&ElementNode{
+				NodeBase: NodeBase{ID: 3},
+				Tag:      "div",
+				Facts: Facts{
+					Attrs:  map[string]string{"class": "canvas-card"},
+					Styles: map[string]string{"background-color": "#2980b9"},
+				},
+				Children: []Node{
+					&ElementNode{
+						NodeBase: NodeBase{ID: 4},
+						Tag:      "span",
+						Children: []Node{&TextNode{NodeBase: NodeBase{ID: 5}, Text: "Blue"}},
+					},
+					&ElementNode{
+						NodeBase: NodeBase{ID: 6},
+						Tag:      "span",
+						Facts:    Facts{Attrs: map[string]string{"class": "remove"}},
+					},
+				},
+			},
+		},
+	}
+	canvasEmptyOld := &ElementNode{
+		NodeBase: NodeBase{ID: 7},
+		Tag:      "div",
+		Facts: Facts{
+			Attrs:  map[string]string{"class": "canvas-empty"},
+			Styles: map[string]string{"display": "none"},
+		},
+		Children: []Node{
+			&TextNode{NodeBase: NodeBase{ID: 8}, Text: "Drag colors from the palette"},
+		},
+	}
+	oldRoot := &ElementNode{
+		NodeBase: NodeBase{ID: 1},
+		Tag:      "div",
+		Facts:    Facts{Attrs: map[string]string{"class": "canvas"}},
+		Children: []Node{gifWrapper, canvasEmptyOld},
+	}
+
+	// New tree: div.canvas with 1 child (canvas-empty, no display:none)
+	canvasEmptyNew := &ElementNode{
+		NodeBase: NodeBase{ID: 9},
+		Tag:      "div",
+		Facts: Facts{
+			Attrs: map[string]string{"class": "canvas-empty"},
+			// No display:none — g-hide is falsy
+		},
+		Children: []Node{
+			&TextNode{NodeBase: NodeBase{ID: 10}, Text: "Drag colors from the palette"},
+		},
+	}
+	newRoot := &ElementNode{
+		NodeBase: NodeBase{ID: 11},
+		Tag:      "div",
+		Facts:    Facts{Attrs: map[string]string{"class": "canvas"}},
+		Children: []Node{canvasEmptyNew},
+	}
+
+	ComputeDescendants(oldRoot)
+	ComputeDescendants(newRoot)
+
+	patches := Diff(oldRoot, newRoot)
+
+	// Log all patches for diagnosis
+	for i, p := range patches {
+		t.Logf("patch[%d]: Type=%d NodeID=%d Data=%+v", i, p.Type, p.NodeID, p.Data)
+	}
+
+	// Simulate bridge-side patch application to verify correctness.
+	// Track what the DOM would look like after applying patches.
+	//
+	// After patching, div.canvas should have 1 child that:
+	//   - has class="canvas-empty"
+	//   - does NOT have display:none
+	//   - contains text "Drag colors from the palette"
+	//
+	// Verify the patches make this possible:
+	// 1. PatchFacts on ID:2 should add class="canvas-empty"
+	// 2. Something should replace/update the children to show the text
+	// 3. PatchRemoveLast should remove the old canvas-empty (with display:none)
+
+	hasFacts2 := false
+	hasRedraw3 := false
+	hasRemoveLast1 := false
+
+	for _, p := range patches {
+		switch {
+		case p.Type == PatchFacts && p.NodeID == 2:
+			hasFacts2 = true
+			fd := p.Data.(PatchFactsData)
+			if fd.Diff.Attrs["class"] != "canvas-empty" {
+				t.Errorf("PatchFacts(2): expected class='canvas-empty', got attrs=%v", fd.Diff.Attrs)
+			}
+		case p.Type == PatchRedraw && p.NodeID == 3:
+			hasRedraw3 = true
+			rd := p.Data.(PatchRedrawData)
+			tn, ok := rd.Node.(*TextNode)
+			if !ok {
+				t.Errorf("PatchRedraw(3): expected TextNode replacement, got %T", rd.Node)
+			} else if tn.Text != "Drag colors from the palette" {
+				t.Errorf("PatchRedraw(3): expected text 'Drag colors from the palette', got %q", tn.Text)
+			}
+		case p.Type == PatchRemoveLast && p.NodeID == 1:
+			hasRemoveLast1 = true
+			rld := p.Data.(PatchRemoveLastData)
+			if rld.Count != 1 {
+				t.Errorf("PatchRemoveLast(1): expected count=1, got %d", rld.Count)
+			}
+		}
+	}
+
+	if !hasFacts2 {
+		t.Error("missing PatchFacts for node 2 (g-if wrapper → canvas-empty class)")
+	}
+	if !hasRedraw3 {
+		t.Error("missing PatchRedraw for node 3 (canvas-card → text node)")
+	}
+	if !hasRemoveLast1 {
+		t.Error("missing PatchRemoveLast for node 1 (remove old canvas-empty)")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
