@@ -2969,10 +2969,6 @@ func walkTreeIDs(node vdom.Node, ids map[int]int) {
 		for _, kc := range n.Children {
 			walkTreeIDs(kc.Node, ids)
 		}
-	case *vdom.ComponentNode:
-		if n.SubTree != nil {
-			walkTreeIDs(n.SubTree, ids)
-		}
 	case *vdom.LazyNode:
 		if n.Cached != nil {
 			walkTreeIDs(n.Cached, ids)

@@ -10,7 +10,7 @@ import (
 //
 // ComputeDescendants final return (node.go:249):
 //   The Node interface is a closed set in production (TextNode, ElementNode,
-//   KeyedElementNode, ComponentNode, PluginNode, LazyNode). Covered via
+//   KeyedElementNode, PluginNode, LazyNode). Covered via
 //   fakeNode test type since Node is an exported interface.
 //
 // lazyArgsEqual / valEqual — each have ~1 statement gap from branches
@@ -1293,7 +1293,6 @@ func TestNodeType_Constants(t *testing.T) {
 		{"TextNode", &TextNode{}, NodeText},
 		{"ElementNode", &ElementNode{}, NodeElement},
 		{"KeyedElementNode", &KeyedElementNode{}, NodeKeyed},
-		{"ComponentNode", &ComponentNode{}, NodeComponent},
 		{"PluginNode", &PluginNode{}, NodePlugin},
 		{"LazyNode", &LazyNode{}, NodeLazy},
 	}
@@ -1352,24 +1351,6 @@ func TestFindNodeByID(t *testing.T) {
 		}
 	})
 
-	t.Run("ComponentNode subtree", func(t *testing.T) {
-		inner := &TextNode{NodeBase: NodeBase{ID: 30}, Text: "comp"}
-		root := &ComponentNode{
-			NodeBase: NodeBase{ID: 1},
-			SubTree:  &ElementNode{NodeBase: NodeBase{ID: 2}, Tag: "div", Children: []Node{inner}},
-		}
-		if found := FindNodeByID(root, 30); found != inner {
-			t.Errorf("expected to find in component subtree, got %v", found)
-		}
-	})
-
-	t.Run("ComponentNode nil subtree", func(t *testing.T) {
-		root := &ComponentNode{NodeBase: NodeBase{ID: 1}, SubTree: nil}
-		if found := FindNodeByID(root, 99); found != nil {
-			t.Error("expected nil for nil subtree")
-		}
-	})
-
 	t.Run("LazyNode cached", func(t *testing.T) {
 		inner := &TextNode{NodeBase: NodeBase{ID: 40}, Text: "lazy"}
 		root := &LazyNode{
@@ -1424,30 +1405,6 @@ func TestComputeDescendants_AllNodeTypes(t *testing.T) {
 		}
 	})
 
-	t.Run("ComponentNode with subtree", func(t *testing.T) {
-		n := &ComponentNode{
-			SubTree: &ElementNode{
-				Tag:      "div",
-				Children: []Node{&TextNode{Text: "x"}},
-			},
-		}
-		count := ComputeDescendants(n)
-		// subtree is 1 node (div has 1 descendant), so component = 1 + 1(div) + ...
-		// div has 1 child text = 1 descendant. Component = 1 + (1 + 1) = ...
-		// Actually: ComputeDescendants(subtree=div) = 1 (text child). component = 1 + 1 = 2
-		if count != 2 {
-			t.Errorf("expected 2, got %d", count)
-		}
-	})
-
-	t.Run("ComponentNode nil subtree", func(t *testing.T) {
-		n := &ComponentNode{SubTree: nil}
-		count := ComputeDescendants(n)
-		if count != 0 {
-			t.Errorf("expected 0, got %d", count)
-		}
-	})
-
 	t.Run("PluginNode", func(t *testing.T) {
 		n := &PluginNode{Tag: "canvas", Name: "chart"}
 		count := ComputeDescendants(n)
@@ -1491,24 +1448,6 @@ type fakeNode struct{}
 func (f *fakeNode) NodeType() int         { return -1 }
 func (f *fakeNode) NodeID() int           { return 0 }
 func (f *fakeNode) DescendantsCount() int { return 0 }
-
-func TestComponentNode_DescendantsCount(t *testing.T) {
-	t.Run("with subtree", func(t *testing.T) {
-		sub := &ElementNode{Tag: "div", Children: []Node{&TextNode{Text: "x"}}}
-		ComputeDescendants(sub)
-		n := &ComponentNode{SubTree: sub}
-		if n.DescendantsCount() != 1+sub.DescendantsCount() {
-			t.Errorf("expected %d, got %d", 1+sub.DescendantsCount(), n.DescendantsCount())
-		}
-	})
-
-	t.Run("nil subtree", func(t *testing.T) {
-		n := &ComponentNode{SubTree: nil}
-		if n.DescendantsCount() != 0 {
-			t.Errorf("expected 0, got %d", n.DescendantsCount())
-		}
-	})
-}
 
 func TestLazyNode_DescendantsCount(t *testing.T) {
 	t.Run("with cached", func(t *testing.T) {
@@ -1578,74 +1517,6 @@ func TestDiffFacts_NSAttr(t *testing.T) {
 		d := DiffFacts(&Facts{}, &Facts{})
 		if d.AttrsNS != nil {
 			t.Error("expected nil for both empty")
-		}
-	})
-}
-
-func TestDiff_Component(t *testing.T) {
-	t.Run("same tag both subtrees diff", func(t *testing.T) {
-		old := &ComponentNode{
-			NodeBase: NodeBase{ID: 1},
-			Tag:      "todo",
-			SubTree:  &TextNode{NodeBase: NodeBase{ID: 2}, Text: "old"},
-		}
-		new := &ComponentNode{
-			NodeBase: NodeBase{ID: 10},
-			Tag:      "todo",
-			SubTree:  &TextNode{NodeBase: NodeBase{ID: 11}, Text: "new"},
-		}
-		ComputeDescendants(old)
-		ComputeDescendants(new)
-		patches := Diff(old, new)
-		if len(patches) != 1 || patches[0].Type != PatchText {
-			t.Errorf("expected 1 PatchText, got %+v", patches)
-		}
-	})
-
-	t.Run("tag change redraws", func(t *testing.T) {
-		old := &ComponentNode{NodeBase: NodeBase{ID: 1}, Tag: "todo"}
-		new := &ComponentNode{NodeBase: NodeBase{ID: 2}, Tag: "note"}
-		patches := Diff(old, new)
-		if len(patches) != 1 || patches[0].Type != PatchRedraw {
-			t.Errorf("expected PatchRedraw for tag change, got %+v", patches)
-		}
-	})
-
-	t.Run("old nil subtree new has subtree redraws", func(t *testing.T) {
-		old := &ComponentNode{NodeBase: NodeBase{ID: 1}, Tag: "todo", SubTree: nil}
-		new := &ComponentNode{
-			NodeBase: NodeBase{ID: 2},
-			Tag:      "todo",
-			SubTree:  &TextNode{NodeBase: NodeBase{ID: 3}, Text: "new"},
-		}
-		ComputeDescendants(new)
-		patches := Diff(old, new)
-		if len(patches) != 1 || patches[0].Type != PatchRedraw {
-			t.Errorf("expected PatchRedraw when new has subtree, got %+v", patches)
-		}
-	})
-
-	t.Run("old has subtree new nil subtree no patch", func(t *testing.T) {
-		// COVERAGE GAP: this documents current behavior — no patch emitted.
-		old := &ComponentNode{
-			NodeBase: NodeBase{ID: 1},
-			Tag:      "todo",
-			SubTree:  &TextNode{NodeBase: NodeBase{ID: 2}, Text: "old"},
-		}
-		new := &ComponentNode{NodeBase: NodeBase{ID: 3}, Tag: "todo", SubTree: nil}
-		ComputeDescendants(old)
-		patches := Diff(old, new)
-		if len(patches) != 0 {
-			t.Errorf("expected 0 patches (current behavior: old subtree→nil produces no patch), got %+v", patches)
-		}
-	})
-
-	t.Run("both nil subtrees no patch", func(t *testing.T) {
-		old := &ComponentNode{NodeBase: NodeBase{ID: 1}, Tag: "todo", SubTree: nil}
-		new := &ComponentNode{NodeBase: NodeBase{ID: 2}, Tag: "todo", SubTree: nil}
-		patches := Diff(old, new)
-		if len(patches) != 0 {
-			t.Errorf("expected 0 patches, got %+v", patches)
 		}
 	})
 }

@@ -912,51 +912,6 @@ func TestEncodeTree_KeyedElementNode_WithNamespace(t *testing.T) {
 	}
 }
 
-func TestEncodeTree_ComponentNode(t *testing.T) {
-	// Components are transparent — we encode their subtree
-	n := &vdom.ComponentNode{
-		NodeBase: vdom.NodeBase{ID: 7},
-		SubTree:  &vdom.TextNode{NodeBase: vdom.NodeBase{ID: 8}, Text: "from component"},
-	}
-	wn := EncodeTree(n)
-	if wn.ID != 8 {
-		t.Errorf("expected subtree ID 8, got %d", wn.ID)
-	}
-	if wn.Text != "from component" {
-		t.Errorf("expected text 'from component', got %q", wn.Text)
-	}
-}
-
-func TestEncodeTree_ComponentNode_NilSubTree(t *testing.T) {
-	n := &vdom.ComponentNode{
-		NodeBase: vdom.NodeBase{ID: 9},
-		SubTree:  nil,
-	}
-	wn := EncodeTree(n)
-	if wn != nil {
-		t.Errorf("expected nil for component with nil subtree, got %+v", wn)
-	}
-}
-
-func TestEncodeTree_ComponentNode_NestedComponent(t *testing.T) {
-	// Component wrapping another component
-	inner := &vdom.ComponentNode{
-		NodeBase: vdom.NodeBase{ID: 20},
-		SubTree:  &vdom.TextNode{NodeBase: vdom.NodeBase{ID: 21}, Text: "innermost"},
-	}
-	outer := &vdom.ComponentNode{
-		NodeBase: vdom.NodeBase{ID: 19},
-		SubTree:  inner,
-	}
-	wn := EncodeTree(outer)
-	if wn.ID != 21 {
-		t.Errorf("expected innermost ID 21, got %d", wn.ID)
-	}
-	if wn.Text != "innermost" {
-		t.Errorf("expected 'innermost', got %q", wn.Text)
-	}
-}
-
 func TestEncodeTree_PluginNode(t *testing.T) {
 	n := &vdom.PluginNode{
 		NodeBase: vdom.NodeBase{ID: 9},
@@ -1254,42 +1209,6 @@ func TestEncodeTreeJSON_RoundTrip(t *testing.T) {
 	}
 	if wn.Tag != "div" {
 		t.Errorf("expected tag 'div', got %q", wn.Tag)
-	}
-}
-
-func TestEncodeTreeJSON_ComponentTransparency(t *testing.T) {
-	// Component should be transparent in JSON output
-	n := &vdom.ComponentNode{
-		NodeBase: vdom.NodeBase{ID: 1},
-		SubTree: &vdom.ElementNode{
-			NodeBase: vdom.NodeBase{ID: 2},
-			Tag:      "span",
-		},
-	}
-	data, err := EncodeTreeJSON(n)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var wn WireNode
-	if err := json.Unmarshal(data, &wn); err != nil {
-		t.Fatal(err)
-	}
-	if wn.Tag != "span" {
-		t.Errorf("expected tag 'span' (from subtree), got %q", wn.Tag)
-	}
-}
-
-func TestEncodeTreeJSON_ComponentNilSubTree(t *testing.T) {
-	n := &vdom.ComponentNode{
-		NodeBase: vdom.NodeBase{ID: 1},
-		SubTree:  nil,
-	}
-	data, err := EncodeTreeJSON(n)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != "null" {
-		t.Errorf("expected 'null' for nil subtree component, got %q", string(data))
 	}
 }
 

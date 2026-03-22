@@ -41,10 +41,6 @@ func diffHelp(old, new Node, patches *[]Patch) {
 		newN := new.(*KeyedElementNode)
 		diffKeyedElement(oldN, newN, patches)
 
-	case *ComponentNode:
-		newN := new.(*ComponentNode)
-		diffComponent(oldN, newN, patches)
-
 	case *PluginNode:
 		newN := new.(*PluginNode)
 		diffPlugin(oldN, newN, patches)
@@ -269,31 +265,6 @@ func diffKeyedChildren(oldKids, newKids []KeyedChild, patches *[]Patch, parentNo
 			Patches: subPatches,
 		},
 	})
-}
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
-func diffComponent(old, new *ComponentNode, patches *[]Patch) {
-	if old.Tag != new.Tag {
-		*patches = append(*patches, Patch{
-			Type:   PatchRedraw,
-			NodeID: old.ID,
-			Data:   PatchRedrawData{Node: new},
-		})
-		return
-	}
-
-	if old.SubTree != nil && new.SubTree != nil {
-		diffHelp(old.SubTree, new.SubTree, patches)
-	} else if new.SubTree != nil {
-		*patches = append(*patches, Patch{
-			Type:   PatchRedraw,
-			NodeID: old.ID,
-			Data:   PatchRedrawData{Node: new},
-		})
-	}
 }
 
 // ---------------------------------------------------------------------------

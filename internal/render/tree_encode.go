@@ -79,13 +79,6 @@ func EncodeTree(n vdom.Node) *WireNode {
 		}
 		return wn
 
-	case *vdom.ComponentNode:
-		// Components are transparent — encode the subtree
-		if n.SubTree != nil {
-			return EncodeTree(n.SubTree)
-		}
-		return nil
-
 	case *vdom.PluginNode:
 		wn := &WireNode{
 			ID:     n.ID,

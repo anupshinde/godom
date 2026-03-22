@@ -41,11 +41,6 @@ type TemplateNode struct {
 	ForKey   string // key expression, e.g. "todo.ID" (empty = positional)
 	ForBody  []*TemplateNode // template for each item
 
-	// For component nodes
-	IsComponent  bool
-	ComponentTag string            // custom element name
-	PropExprs    map[string]string // prop name → expression (from :prop="expr")
-
 	// For plugin nodes
 	IsPlugin   bool
 	PluginName string // plugin name from g-plugin:name
@@ -280,19 +275,6 @@ func extractAttrsAndDirectives(n *html.Node) ([]html.Attribute, []Directive) {
 	return attrs, dirs
 }
 
-func extractPropExprs(n *html.Node) map[string]string {
-	props := make(map[string]string)
-	for _, a := range n.Attr {
-		if strings.HasPrefix(a.Key, ":") {
-			props[a.Key[1:]] = a.Val
-		}
-	}
-	if len(props) == 0 {
-		return nil
-	}
-	return props
-}
-
 func extractPluginDirective(n *html.Node) (name, expr string) {
 	for _, a := range n.Attr {
 		if strings.HasPrefix(a.Key, "g-plugin:") {
@@ -480,9 +462,6 @@ func ResolveTemplateNode(t *TemplateNode, ctx *ResolveContext) []Node {
 	if t.IsPlugin {
 		return []Node{resolvePluginNode(t, ctx)}
 	}
-	if t.IsComponent {
-		return []Node{resolveComponentNode(t, ctx)}
-	}
 
 	return []Node{resolveElementNode(t, ctx)}
 }
@@ -581,18 +560,6 @@ func resolvePluginNode(t *TemplateNode, ctx *ResolveContext) Node {
 		Name:     t.PluginName,
 		Facts:    resolveFacts(t, ctx, id),
 		Data:     data,
-	}
-}
-
-func resolveComponentNode(t *TemplateNode, ctx *ResolveContext) Node {
-	props := make(map[string]any)
-	for name, expr := range t.PropExprs {
-		props[name] = ResolveExpr(expr, ctx)
-	}
-	return &ComponentNode{
-		NodeBase: NodeBase{ID: nextID(ctx)},
-		Tag:      t.ComponentTag,
-		Props:    props,
 	}
 }
 

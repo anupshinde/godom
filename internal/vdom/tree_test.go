@@ -2805,21 +2805,6 @@ func TestResolveStructField_NilPtrInPath(t *testing.T) {
 	}
 }
 
-func TestParse_ExtractPropExprsNone(t *testing.T) {
-	// Test component with no :prop attrs → PropExprs is nil
-	html := `<my-comp></my-comp>`
-	nodes, err := ParseTemplate(html)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(nodes) == 0 {
-		t.Fatal("no nodes")
-	}
-	comp := nodes[0]
-	if comp.PropExprs != nil {
-		t.Errorf("expected nil PropExprs when no :props, got %v", comp.PropExprs)
-	}
-}
 
 func findNodeText(nodes []Node, text string) bool {
 	for _, n := range nodes {

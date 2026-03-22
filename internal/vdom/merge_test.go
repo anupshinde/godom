@@ -536,32 +536,6 @@ func TestMergeTree_KeyedChildTagMismatch(t *testing.T) {
 	}
 }
 
-// Component with nil old subtree, non-nil new subtree.
-func TestMergeTree_ComponentNilToSubTree(t *testing.T) {
-	dst := &ComponentNode{
-		NodeBase: NodeBase{ID: 10},
-		Tag:      "my-comp",
-		SubTree:  nil,
-	}
-	src := &ComponentNode{
-		NodeBase: NodeBase{ID: 100},
-		Tag:      "my-comp",
-		SubTree:  &TextNode{NodeBase: NodeBase{ID: 101}, Text: "appeared"},
-	}
-
-	MergeTree(dst, src)
-
-	if dst.ID != 10 {
-		t.Errorf("expected ID 10, got %d", dst.ID)
-	}
-	if dst.SubTree == nil {
-		t.Fatal("expected subtree to be set")
-	}
-	if dst.SubTree.NodeID() != 101 {
-		t.Errorf("subtree: expected new ID 101, got %d", dst.SubTree.NodeID())
-	}
-}
-
 // Plugin node merge: data and facts updated, ID preserved.
 func TestMergeTree_PluginNode(t *testing.T) {
 	dst := &PluginNode{
@@ -675,81 +649,6 @@ func TestMergeTree_Idempotent(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Component subtree tests
-// ---------------------------------------------------------------------------
-
-func TestMergeTree_ComponentSubTree(t *testing.T) {
-	dst := &ComponentNode{
-		NodeBase: NodeBase{ID: 10},
-		Tag:      "my-comp",
-		SubTree:  &TextNode{NodeBase: NodeBase{ID: 11}, Text: "old"},
-	}
-	src := &ComponentNode{
-		NodeBase: NodeBase{ID: 100},
-		Tag:      "my-comp",
-		SubTree:  &TextNode{NodeBase: NodeBase{ID: 101}, Text: "new"},
-	}
-
-	MergeTree(dst, src)
-
-	if dst.ID != 10 {
-		t.Errorf("expected ID 10, got %d", dst.ID)
-	}
-	if dst.SubTree.NodeID() != 11 {
-		t.Errorf("subtree: expected ID 11, got %d", dst.SubTree.NodeID())
-	}
-	if dst.SubTree.(*TextNode).Text != "new" {
-		t.Errorf("subtree: expected 'new', got %q", dst.SubTree.(*TextNode).Text)
-	}
-}
-
-// ComponentNode tag mismatch → no merge (dst untouched).
-func TestMergeTree_ComponentTagMismatch(t *testing.T) {
-	dst := &ComponentNode{
-		NodeBase: NodeBase{ID: 10},
-		Tag:      "comp-a",
-		Props:    map[string]any{"x": 1},
-	}
-	src := &ComponentNode{
-		NodeBase: NodeBase{ID: 100},
-		Tag:      "comp-b",
-		Props:    map[string]any{"x": 2},
-	}
-
-	MergeTree(dst, src)
-
-	if dst.ID != 10 {
-		t.Errorf("expected ID unchanged at 10, got %d", dst.ID)
-	}
-	if dst.Props["x"] != 1 {
-		t.Errorf("expected props unchanged, got %v", dst.Props)
-	}
-}
-
-// ComponentNode: dst has subtree, src has nil subtree → dst subtree preserved.
-func TestMergeTree_ComponentSubTreeToNil(t *testing.T) {
-	dst := &ComponentNode{
-		NodeBase: NodeBase{ID: 10},
-		Tag:      "my-comp",
-		SubTree:  &TextNode{NodeBase: NodeBase{ID: 11}, Text: "existing"},
-	}
-	src := &ComponentNode{
-		NodeBase: NodeBase{ID: 100},
-		Tag:      "my-comp",
-		SubTree:  nil,
-	}
-
-	MergeTree(dst, src)
-
-	if dst.SubTree == nil {
-		t.Fatal("expected subtree preserved, got nil")
-	}
-	if dst.SubTree.(*TextNode).Text != "existing" {
-		t.Errorf("expected text 'existing', got %q", dst.SubTree.(*TextNode).Text)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // LazyNode tests
 // ---------------------------------------------------------------------------
 
@@ -842,55 +741,6 @@ func TestMergeTree_LazyNodeCacheToNil(t *testing.T) {
 // ---------------------------------------------------------------------------
 // canMerge coverage via child replacement
 // ---------------------------------------------------------------------------
-
-// canMerge for ComponentNode children (same tag → merge, different tag → replace).
-func TestMergeTree_CanMerge_ComponentChild(t *testing.T) {
-	dst := &ElementNode{
-		NodeBase: NodeBase{ID: 1}, Tag: "div",
-		Children: []Node{
-			&ComponentNode{NodeBase: NodeBase{ID: 10}, Tag: "comp-a", Props: map[string]any{"v": "old"}},
-		},
-	}
-	src := &ElementNode{
-		NodeBase: NodeBase{ID: 100}, Tag: "div",
-		Children: []Node{
-			&ComponentNode{NodeBase: NodeBase{ID: 101}, Tag: "comp-a", Props: map[string]any{"v": "new"}},
-		},
-	}
-
-	MergeTree(dst, src)
-
-	// Same tag → merged, old ID preserved.
-	if dst.Children[0].NodeID() != 10 {
-		t.Errorf("expected ID 10, got %d", dst.Children[0].NodeID())
-	}
-	if dst.Children[0].(*ComponentNode).Props["v"] != "new" {
-		t.Errorf("expected props updated to 'new'")
-	}
-}
-
-// canMerge for ComponentNode children with different tags → replace.
-func TestMergeTree_CanMerge_ComponentChildMismatch(t *testing.T) {
-	dst := &ElementNode{
-		NodeBase: NodeBase{ID: 1}, Tag: "div",
-		Children: []Node{
-			&ComponentNode{NodeBase: NodeBase{ID: 10}, Tag: "comp-a"},
-		},
-	}
-	src := &ElementNode{
-		NodeBase: NodeBase{ID: 100}, Tag: "div",
-		Children: []Node{
-			&ComponentNode{NodeBase: NodeBase{ID: 101}, Tag: "comp-b"},
-		},
-	}
-
-	MergeTree(dst, src)
-
-	// Different tag → replaced with src node.
-	if dst.Children[0].NodeID() != 101 {
-		t.Errorf("expected new ID 101, got %d", dst.Children[0].NodeID())
-	}
-}
 
 // canMerge for PluginNode children (same tag+name → merge, mismatch → replace).
 func TestMergeTree_CanMerge_PluginChild(t *testing.T) {
@@ -1039,32 +889,6 @@ func TestMergeTree_KeyedChildTypeMismatch(t *testing.T) {
 	}
 	if dst.Children[0].Node.NodeID() != 101 {
 		t.Errorf("expected new ID 101, got %d", dst.Children[0].Node.NodeID())
-	}
-}
-
-// ComponentNode: both subtrees nil → no panic, SubTree stays nil.
-func TestMergeTree_ComponentBothSubTreesNil(t *testing.T) {
-	dst := &ComponentNode{
-		NodeBase: NodeBase{ID: 10},
-		Tag:      "my-comp",
-		Props:    map[string]any{"x": 1},
-		SubTree:  nil,
-	}
-	src := &ComponentNode{
-		NodeBase: NodeBase{ID: 100},
-		Tag:      "my-comp",
-		Props:    map[string]any{"x": 2},
-		SubTree:  nil,
-	}
-
-	MergeTree(dst, src)
-
-	if dst.SubTree != nil {
-		t.Errorf("expected SubTree to remain nil")
-	}
-	// Props should still be updated.
-	if dst.Props["x"] != 2 {
-		t.Errorf("expected props updated to 2, got %v", dst.Props["x"])
 	}
 }
 

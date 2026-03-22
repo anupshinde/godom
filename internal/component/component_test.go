@@ -631,6 +631,7 @@ type testInnerComp struct {
 type testNestedComp struct {
 	Component struct{}
 	Inner     testInnerComp
+	PtrInner  *testInnerComp
 }
 
 func TestSetField_DottedPath(t *testing.T) {
@@ -666,6 +667,29 @@ func TestSetField_DottedPath_MissingField(t *testing.T) {
 	err := ci.SetField("Inner.Missing", json.RawMessage(`"x"`))
 	if err == nil {
 		t.Error("expected error for missing nested field")
+	}
+}
+
+func TestSetField_DottedPath_Pointer(t *testing.T) {
+	comp := &testNestedComp{PtrInner: &testInnerComp{}}
+	ci := newTestCI(comp)
+
+	err := ci.SetField("PtrInner.Value", json.RawMessage(`"through pointer"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comp.PtrInner.Value != "through pointer" {
+		t.Errorf("PtrInner.Value = %q, want 'through pointer'", comp.PtrInner.Value)
+	}
+}
+
+func TestSetField_DottedPath_NilPointer(t *testing.T) {
+	comp := &testNestedComp{} // PtrInner is nil
+	ci := newTestCI(comp)
+
+	err := ci.SetField("PtrInner.Value", json.RawMessage(`"x"`))
+	if err == nil {
+		t.Error("expected error for nil pointer in path")
 	}
 }
 

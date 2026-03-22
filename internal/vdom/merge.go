@@ -53,18 +53,6 @@ func mergeTree(dst, src Node, remap map[int]int) {
 		d.Facts = s.Facts
 		mergeKeyedChildren(d, s.Children, remap)
 
-	case *ComponentNode:
-		s := src.(*ComponentNode)
-		if d.Tag != s.Tag {
-			return
-		}
-		d.Props = s.Props
-		if d.SubTree != nil && s.SubTree != nil {
-			mergeTree(d.SubTree, s.SubTree, remap)
-		} else if s.SubTree != nil {
-			d.SubTree = s.SubTree
-		}
-
 	case *PluginNode:
 		s := src.(*PluginNode)
 		if d.Tag != s.Tag || d.Name != s.Name {
@@ -150,9 +138,6 @@ func canMerge(dst, src Node) bool {
 	case *KeyedElementNode:
 		s := src.(*KeyedElementNode)
 		return d.Tag == s.Tag && d.Namespace == s.Namespace
-	case *ComponentNode:
-		s := src.(*ComponentNode)
-		return d.Tag == s.Tag
 	case *PluginNode:
 		s := src.(*PluginNode)
 		return d.Tag == s.Tag && d.Name == s.Name

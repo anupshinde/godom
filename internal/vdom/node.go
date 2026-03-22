@@ -5,12 +5,11 @@ package vdom
 
 // Node type constants identify each Node variant.
 const (
-	NodeText      = iota // plain text content
-	NodeElement          // HTML/SVG element with tag, facts, children
-	NodeKeyed            // element with keyed children (for efficient list diffing)
-	NodeComponent        // stateful child component
-	NodePlugin           // opaque JS-managed node (plugin escape hatch)
-	NodeLazy             // deferred computation, skipped if inputs unchanged
+	NodeText    = iota // plain text content
+	NodeElement        // HTML/SVG element with tag, facts, children
+	NodeKeyed          // element with keyed children (for efficient list diffing)
+	NodePlugin         // opaque JS-managed node (plugin escape hatch)
+	NodeLazy           // deferred computation, skipped if inputs unchanged
 )
 
 // Node is the interface implemented by all virtual DOM node types.
@@ -113,27 +112,6 @@ type KeyedElementNode struct {
 func (n *KeyedElementNode) NodeType() int { return NodeKeyed }
 
 // ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
-// ComponentNode represents a stateful child component.
-type ComponentNode struct {
-	NodeBase
-	Tag      string         // custom element name, e.g. "todo-item"
-	Props    map[string]any // prop values from parent
-	Instance any            // resolved at render time (runtime sets this to *componentInfo)
-	SubTree  Node           // rendered by component's own template
-}
-
-func (n *ComponentNode) NodeType() int { return NodeComponent }
-func (n *ComponentNode) DescendantsCount() int {
-	if n.SubTree == nil {
-		return 0
-	}
-	return 1 + n.SubTree.DescendantsCount()
-}
-
-// ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
 
@@ -227,10 +205,6 @@ func FindNodeByID(root Node, id int) Node {
 				return found
 			}
 		}
-	case *ComponentNode:
-		if n.SubTree != nil {
-			return FindNodeByID(n.SubTree, id)
-		}
 	case *LazyNode:
 		if n.Cached != nil {
 			return FindNodeByID(n.Cached, id)
@@ -260,14 +234,6 @@ func ComputeDescendants(n Node) int {
 		}
 		n.Descendants = count
 		return count
-	case *ComponentNode:
-		if n.SubTree != nil {
-			count := 1 + ComputeDescendants(n.SubTree)
-			n.Descendants = count
-			return count
-		}
-		n.Descendants = 0
-		return 0
 	case *PluginNode:
 		n.Descendants = 0
 		return 0
