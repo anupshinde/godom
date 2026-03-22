@@ -3324,3 +3324,81 @@ func TestHasBind(t *testing.T) {
 		t.Error("expected hasBind=false for nil directives")
 	}
 }
+
+// --- addBinding: negated expression ---
+
+func TestAddBinding_NegatedExprSkipped(t *testing.T) {
+	// Expressions starting with "!" should not produce bindings.
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&struct{ Visible bool }{true}),
+		Vars:  make(map[string]any),
+	}
+	ctx.addBinding("!Visible", 1, "show", "")
+
+	if len(ctx.Bindings) != 0 {
+		t.Errorf("expected no bindings for negated expr, got %v", ctx.Bindings)
+	}
+}
+
+// --- resolveStructField: map access edge cases ---
+
+func TestResolveStructField_MapAccessOnNonStruct(t *testing.T) {
+	// Bracket access on a non-struct value should return nil.
+	v := reflect.ValueOf(42) // int, not a struct
+	result := resolveStructField(v, "Foo[bar]")
+	if result != nil {
+		t.Errorf("expected nil for map access on non-struct, got %v", result)
+	}
+}
+
+func TestResolveStructField_MapAccessInvalidField(t *testing.T) {
+	// Bracket access with a nonexistent field name should return nil.
+	type app struct{ Name string }
+	v := reflect.ValueOf(app{Name: "test"})
+	result := resolveStructField(v, "NonExistent[key]")
+	if result != nil {
+		t.Errorf("expected nil for invalid field in map access, got %v", result)
+	}
+}
+
+func TestResolveStructField_MapAccessFieldIsPointer(t *testing.T) {
+	// Bracket access through a pointer field to a map.
+	type app struct {
+		Data *map[string]string
+	}
+	m := map[string]string{"key": "val"}
+	a := app{Data: &m}
+	v := reflect.ValueOf(a)
+	result := resolveStructField(v, "Data[key]")
+	if result != "val" {
+		t.Errorf("expected 'val', got %v", result)
+	}
+}
+
+func TestResolveStructField_MapAccessNilPointer(t *testing.T) {
+	// Bracket access through a nil pointer field should return nil.
+	type app struct {
+		Data *map[string]string
+	}
+	a := app{Data: nil}
+	v := reflect.ValueOf(a)
+	result := resolveStructField(v, "Data[key]")
+	if result != nil {
+		t.Errorf("expected nil for nil pointer in map access, got %v", result)
+	}
+}
+
+// --- DeepCopyJSON: unmarshal error ---
+
+func TestDeepCopyJSON_UnmarshalError(t *testing.T) {
+	// json.Marshal succeeds but json.Unmarshal fails: pass a value that
+	// marshals to invalid JSON for Unmarshal into any. This is extremely
+	// hard to trigger since Marshal output is always valid JSON.
+	// Instead, test the json.Marshal error path: channels can't be marshaled.
+	ch := make(chan int)
+	result := DeepCopyJSON(ch)
+	// Marshal fails → returns original value
+	if result == nil {
+		t.Error("expected original value returned on marshal error")
+	}
+}

@@ -1127,3 +1127,4 @@ func TestMergeTree_CanMerge_KeyedElementChild(t *testing.T) {
 		t.Errorf("expected text 'new'")
 	}
 }
+

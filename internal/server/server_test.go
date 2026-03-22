@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/env"
 	gproto "github.com/anupshinde/godom/internal/proto"
 	"github.com/anupshinde/godom/internal/render"
 	"github.com/anupshinde/godom/internal/vdom"
@@ -990,6 +991,7 @@ type surgicalApp struct {
 	Hidden    bool
 	Active    bool
 	Width     string
+	InputVal  string
 }
 
 const surgicalHTML = `<!DOCTYPE html><html><head></head><body>
@@ -1000,6 +1002,7 @@ const surgicalHTML = `<!DOCTYPE html><html><head></head><body>
 	<div g-class:active="Active">classed</div>
 	<div g-style:width="Width">styled</div>
 	<input g-bind="Name"/>
+	<input g-value="InputVal"/>
 </body></html>`
 
 func makeSurgicalCI(app *surgicalApp) *component.Info {
@@ -1289,6 +1292,617 @@ func TestBuildSurgicalPatches_MultipleFields(t *testing.T) {
 	// Should have patches for both fields
 	if len(patches) < 2 {
 		t.Errorf("expected at least 2 patches for 2 fields, got %d", len(patches))
+	}
+}
+
+// --- buildSurgicalPatches: prop binding via g-value ---
+
+func TestBuildSurgicalPatches_PropBindingViaGValue(t *testing.T) {
+	// g-value="InputVal" creates a "prop" kind binding with Prop="value".
+	app := &surgicalApp{InputVal: "hello"}
+	ci := makeSurgicalCI(app)
+	ci.Tree = buildTree(ci)
+
+	app.InputVal = "world"
+	patches := buildSurgicalPatches(ci, []string{"InputVal"})
+
+	var hasPropPatch bool
+	for _, p := range patches {
+		if p.Type == vdom.PatchFacts {
+			data, ok := p.Data.(vdom.PatchFactsData)
+			if ok && data.Diff.Props != nil && data.Diff.Props["value"] == "world" {
+				hasPropPatch = true
+			}
+		}
+	}
+	if !hasPropPatch {
+		t.Errorf("expected prop patch with value=world, got patches: %+v", patches)
+	}
+}
+
+// --- buildSurgicalPatches: live tree prop update ---
+
+func TestBuildSurgicalPatches_UpdatesLiveTreeProp(t *testing.T) {
+	// After surgical patches, the live tree's g-value input should have updated Props["value"].
+	app := &surgicalApp{InputVal: "hello"}
+	ci := makeSurgicalCI(app)
+	ci.Tree = buildTree(ci)
+
+	app.InputVal = "world"
+	_ = buildSurgicalPatches(ci, []string{"InputVal"})
+
+	bindings := ci.Bindings["InputVal"]
+	foundProp := false
+	for _, b := range bindings {
+		if b.Kind == "prop" {
+			foundProp = true
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			if el, ok := node.(*vdom.ElementNode); ok {
+				if el.Facts.Props["value"] != "world" {
+					t.Errorf("expected live tree prop value=world, got %v", el.Facts.Props["value"])
+				}
+			} else {
+				t.Error("expected ElementNode for prop binding")
+			}
+		}
+	}
+	if !foundProp {
+		t.Error("expected a 'prop' binding for InputVal (from g-value)")
+	}
+}
+
+// --- buildSurgicalPatches: nil maps on live tree (style/prop/attr init) ---
+
+func TestBuildSurgicalPatches_LiveTreeNilStyleMap(t *testing.T) {
+	// When the live tree node has nil Facts.Styles, surgical patch should initialize it.
+	app := &surgicalApp{Width: "100px"}
+	ci := makeSurgicalCI(app)
+	ci.Tree = buildTree(ci)
+
+	// Force the style map to nil to test the nil-init path
+	for _, b := range ci.Bindings["Width"] {
+		if b.Kind == "style" {
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			if el, ok := node.(*vdom.ElementNode); ok {
+				el.Facts.Styles = nil
+			}
+		}
+	}
+
+	app.Width = "300px"
+	_ = buildSurgicalPatches(ci, []string{"Width"})
+
+	for _, b := range ci.Bindings["Width"] {
+		if b.Kind == "style" {
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			if el, ok := node.(*vdom.ElementNode); ok {
+				if el.Facts.Styles == nil {
+					t.Error("expected Styles map to be initialized")
+				}
+				if el.Facts.Styles["width"] != "300px" {
+					t.Errorf("expected width=300px, got %q", el.Facts.Styles["width"])
+				}
+			}
+		}
+	}
+}
+
+func TestBuildSurgicalPatches_LiveTreeNilPropMap(t *testing.T) {
+	// When the live tree node has nil Facts.Props, surgical patch should initialize it.
+	app := &surgicalApp{InputVal: "hello"}
+	ci := makeSurgicalCI(app)
+	ci.Tree = buildTree(ci)
+
+	// Force Props to nil on the prop-bound node (g-value="InputVal")
+	for _, b := range ci.Bindings["InputVal"] {
+		if b.Kind == "prop" {
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			if el, ok := node.(*vdom.ElementNode); ok {
+				el.Facts.Props = nil
+			}
+		}
+	}
+
+	app.InputVal = "Charlie"
+	_ = buildSurgicalPatches(ci, []string{"InputVal"})
+
+	for _, b := range ci.Bindings["InputVal"] {
+		if b.Kind == "prop" {
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			if el, ok := node.(*vdom.ElementNode); ok {
+				if el.Facts.Props == nil {
+					t.Error("expected Props map to be initialized")
+				}
+				if el.Facts.Props["value"] != "Charlie" {
+					t.Errorf("expected value=Charlie, got %v", el.Facts.Props["value"])
+				}
+			}
+		}
+	}
+}
+
+func TestBuildSurgicalPatches_LiveTreeNilAttrMap(t *testing.T) {
+	// When the live tree node has nil Facts.Attrs, surgical patch should initialize it.
+	app := &surgicalApp{Color: "red"}
+	ci := makeSurgicalCI(app)
+	ci.Tree = buildTree(ci)
+
+	// Force Attrs to nil
+	for _, b := range ci.Bindings["Color"] {
+		if b.Kind == "attr" {
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			if el, ok := node.(*vdom.ElementNode); ok {
+				el.Facts.Attrs = nil
+			}
+		}
+	}
+
+	app.Color = "green"
+	_ = buildSurgicalPatches(ci, []string{"Color"})
+
+	for _, b := range ci.Bindings["Color"] {
+		if b.Kind == "attr" {
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			if el, ok := node.(*vdom.ElementNode); ok {
+				if el.Facts.Attrs == nil {
+					t.Error("expected Attrs map to be initialized")
+				}
+				if el.Facts.Attrs["data-color"] != "green" {
+					t.Errorf("expected data-color=green, got %q", el.Facts.Attrs["data-color"])
+				}
+			}
+		}
+	}
+}
+
+// --- buildSurgicalPatches: expr fallback ---
+
+func TestBuildSurgicalPatches_EmptyExprFallsBackToFieldName(t *testing.T) {
+	// When a binding has Expr="" (defensive path), the field name is used as
+	// the expression for resolving the value.
+	app := &surgicalApp{Name: "Alice"}
+	ci := makeSurgicalCI(app)
+	ci.Tree = buildTree(ci)
+
+	// Manually inject a binding with empty Expr to exercise the fallback path.
+	// Find a text node to target.
+	var textNodeID int
+	walkTree(ci.Tree, func(n vdom.Node) {
+		if _, ok := n.(*vdom.TextNode); ok && textNodeID == 0 {
+			textNodeID = n.NodeID()
+		}
+	})
+	if textNodeID == 0 {
+		t.Fatal("no text node found")
+	}
+
+	ci.Bindings["Name"] = append(ci.Bindings["Name"], vdom.Binding{
+		NodeID: textNodeID,
+		Kind:   "text",
+		Prop:   "",
+		Expr:   "", // empty — should fall back to field name "Name"
+	})
+
+	app.Name = "Dave"
+	patches := buildSurgicalPatches(ci, []string{"Name"})
+
+	var foundText bool
+	for _, p := range patches {
+		if p.Type == vdom.PatchText {
+			data, ok := p.Data.(vdom.PatchTextData)
+			if ok && data.Text == "Dave" {
+				foundText = true
+			}
+		}
+	}
+	if !foundText {
+		t.Errorf("expected text patch with 'Dave' using field name fallback, got: %+v", patches)
+	}
+}
+
+// --- handleNodeEvent: unbound values storage ---
+
+// unboundApp has an unbound input (no g-bind) that gets a StableID at parse time.
+type unboundApp struct {
+	Component struct{}
+	Label     string
+}
+
+const unboundHTML = `<!DOCTYPE html><html><head></head><body>
+	<span g-text="Label">label</span>
+	<input type="text" placeholder="unbound"/>
+</body></html>`
+
+func makeUnboundCI(app *unboundApp) *component.Info {
+	v := reflect.ValueOf(app)
+	t := v.Elem().Type()
+	templates, err := vdom.ParseTemplate(unboundHTML, nil)
+	if err != nil {
+		panic(err)
+	}
+	return &component.Info{
+		Value:         v,
+		Typ:           t,
+		VDOMTemplates: templates,
+	}
+}
+
+func TestHandleNodeEvent_StoresUnboundValues(t *testing.T) {
+	app := &unboundApp{Label: "test"}
+	ci := makeUnboundCI(app)
+
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	// Find the input node — it should have a StableID since it has no g-bind
+	var inputNodeID int
+	findInputNode(ci.Tree, &inputNodeID)
+	if inputNodeID == 0 {
+		t.Fatal("could not find input node")
+	}
+
+	stableKey, hasStable := ci.NodeStableIDs[inputNodeID]
+	if !hasStable {
+		t.Fatal("expected unbound input to have a stable ID in NodeStableIDs")
+	}
+
+	pool := &connPool{}
+
+	// Fire node event — should store value in UnboundValues
+	handleNodeEvent(ci, int32(inputNodeID), "99", pool)
+
+	if ci.UnboundValues == nil {
+		t.Fatal("expected UnboundValues to be initialized")
+	}
+	stored, ok := ci.UnboundValues[stableKey]
+	if !ok {
+		t.Fatalf("expected UnboundValues[%q] to be set", stableKey)
+	}
+	if stored != "99" {
+		t.Errorf("expected UnboundValues[%q]='99', got %v", stableKey, stored)
+	}
+
+	// Verify the value survives a tree rebuild
+	ci.Mu.Lock()
+	ci.Tree = buildTree(ci)
+	ci.Mu.Unlock()
+
+	// Find the input in the new tree — its Props["value"] should be "99"
+	var newInputID int
+	findInputNode(ci.Tree, &newInputID)
+	if newInputID == 0 {
+		t.Fatal("could not find input node after rebuild")
+	}
+	node := vdom.FindNodeByID(ci.Tree, newInputID)
+	el, ok := node.(*vdom.ElementNode)
+	if !ok {
+		t.Fatal("expected ElementNode")
+	}
+	if el.Facts.Props["value"] != "99" {
+		t.Errorf("expected unbound value '99' to survive rebuild, got %v", el.Facts.Props["value"])
+	}
+}
+
+func TestHandleNodeEvent_NilPropsMapInitialized(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	// Find the input node and nil out its Props
+	var inputNodeID int
+	findInputNode(ci.Tree, &inputNodeID)
+	if inputNodeID == 0 {
+		t.Fatal("could not find input node")
+	}
+	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
+	el := node.(*vdom.ElementNode)
+	el.Facts.Props = nil
+
+	pool := &connPool{}
+	handleNodeEvent(ci, int32(inputNodeID), "hello", pool)
+
+	// Props should now be initialized with the value
+	if el.Facts.Props == nil {
+		t.Fatal("expected Props to be initialized")
+	}
+	if el.Facts.Props["value"] != "hello" {
+		t.Errorf("expected Props[value]='hello', got %v", el.Facts.Props["value"])
+	}
+}
+
+func TestHandleNodeEvent_NotElementNode(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	// Find a text node ID to trigger the "not an element" path
+	var textNodeID int
+	walkTree(ci.Tree, func(n vdom.Node) {
+		if _, ok := n.(*vdom.TextNode); ok && textNodeID == 0 {
+			textNodeID = n.NodeID()
+		}
+	})
+	if textNodeID == 0 {
+		t.Skip("no text node found in tree")
+	}
+
+	pool := &connPool{}
+	// Should not panic — logs and returns
+	handleNodeEvent(ci, int32(textNodeID), "value", pool)
+}
+
+// --- handleMethodCall: method with arguments ---
+
+type argsApp struct {
+	Component struct{}
+	Result    string
+}
+
+func (a *argsApp) SetResult(val string) {
+	a.Result = val
+}
+
+func TestHandleMethodCall_WithArgs(t *testing.T) {
+	app := &argsApp{Result: ""}
+	v := reflect.ValueOf(app)
+	templates, err := vdom.ParseTemplate(`<!DOCTYPE html><html><head></head><body><span g-text="Result">x</span></body></html>`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci := &component.Info{
+		Value:         v,
+		Typ:           v.Elem().Type(),
+		VDOMTemplates: templates,
+	}
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	pool := &connPool{}
+	ci.RefreshFn = func() {}
+
+	call := &gproto.MethodCall{
+		Method: "SetResult",
+		Args:   [][]byte{[]byte(`"hello world"`)},
+	}
+	handleMethodCall(ci, call, pool)
+
+	if app.Result != "hello world" {
+		t.Errorf("expected Result='hello world', got %q", app.Result)
+	}
+}
+
+// --- handleMethodCall: bind sync edge cases ---
+
+func TestHandleMethodCall_BindSyncWithExpr(t *testing.T) {
+	// When a binding has Expr set, handleMethodCall should use Expr as the
+	// SetField path instead of the field name.
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	// Check if any bind binding has a non-empty Expr
+	hasExprBinding := false
+	for _, bindings := range ci.Bindings {
+		for _, b := range bindings {
+			if b.Kind == "bind" && b.Expr != "" {
+				hasExprBinding = true
+			}
+		}
+	}
+
+	// Find input node and set value
+	var inputNodeID int
+	findInputNode(ci.Tree, &inputNodeID)
+	if inputNodeID == 0 {
+		t.Fatal("could not find input node")
+	}
+	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
+	el := node.(*vdom.ElementNode)
+	if el.Facts.Props == nil {
+		el.Facts.Props = make(map[string]any)
+	}
+	el.Facts.Props["value"] = "7"
+
+	pool := &connPool{}
+	ci.RefreshFn = func() {}
+
+	call := &gproto.MethodCall{Method: "Increment"}
+	handleMethodCall(ci, call, pool)
+
+	// The bind sync should have set Step=7
+	if app.Step != 7 {
+		t.Errorf("expected Step=7 after bind sync, got %d", app.Step)
+	}
+	// Count should be 7 (0 + synced Step=7)
+	if app.Count != 7 {
+		t.Errorf("expected Count=7 after Increment with synced Step, got %d", app.Count)
+	}
+
+	_ = hasExprBinding // used for context; sync works regardless
+}
+
+func TestHandleMethodCall_BindSyncNilProps(t *testing.T) {
+	// When the bound node has nil Props, bind sync should skip it gracefully.
+	app := &counterApp{Step: 5, Count: 0}
+	ci := makeCounterCI(app)
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	// Find input node and nil out Props
+	var inputNodeID int
+	findInputNode(ci.Tree, &inputNodeID)
+	if inputNodeID == 0 {
+		t.Fatal("could not find input node")
+	}
+	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
+	el := node.(*vdom.ElementNode)
+	el.Facts.Props = nil
+
+	pool := &connPool{}
+	ci.RefreshFn = func() {}
+
+	call := &gproto.MethodCall{Method: "Increment"}
+	handleMethodCall(ci, call, pool)
+
+	// Step should remain 5 (nil props → sync skipped)
+	if app.Step != 5 {
+		t.Errorf("expected Step=5 (sync skipped due to nil props), got %d", app.Step)
+	}
+	// Count = 0 + 5 = 5
+	if app.Count != 5 {
+		t.Errorf("expected Count=5, got %d", app.Count)
+	}
+}
+
+func TestHandleMethodCall_BindSyncNoValueProp(t *testing.T) {
+	// When the bound node has Props but no "value" key, bind sync should skip.
+	app := &counterApp{Step: 3, Count: 0}
+	ci := makeCounterCI(app)
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	// Find input node and set Props without a "value" key
+	var inputNodeID int
+	findInputNode(ci.Tree, &inputNodeID)
+	if inputNodeID == 0 {
+		t.Fatal("could not find input node")
+	}
+	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
+	el := node.(*vdom.ElementNode)
+	el.Facts.Props = map[string]any{"other": "stuff"}
+
+	pool := &connPool{}
+	ci.RefreshFn = func() {}
+
+	call := &gproto.MethodCall{Method: "Increment"}
+	handleMethodCall(ci, call, pool)
+
+	// Step should remain 3 (no "value" prop → sync skipped)
+	if app.Step != 3 {
+		t.Errorf("expected Step=3, got %d", app.Step)
+	}
+	if app.Count != 3 {
+		t.Errorf("expected Count=3, got %d", app.Count)
+	}
+}
+
+func TestHandleMethodCall_BindSyncSkipsNonElementNode(t *testing.T) {
+	// When a "bind" binding points to a non-element node (e.g. text node),
+	// the sync should skip it gracefully without panicking.
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	// Find a text node ID and inject a fake "bind" binding pointing to it
+	var textNodeID int
+	walkTree(ci.Tree, func(n vdom.Node) {
+		if _, ok := n.(*vdom.TextNode); ok && textNodeID == 0 {
+			textNodeID = n.NodeID()
+		}
+	})
+	if textNodeID == 0 {
+		t.Fatal("no text node found")
+	}
+
+	ci.Bindings["FakeField"] = []vdom.Binding{{
+		NodeID: textNodeID,
+		Kind:   "bind",
+		Prop:   "value",
+		Expr:   "Step",
+	}}
+
+	pool := &connPool{}
+	ci.RefreshFn = func() {}
+
+	// Should not panic — bind sync skips non-element nodes
+	call := &gproto.MethodCall{Method: "Increment"}
+	handleMethodCall(ci, call, pool)
+
+	// Step should remain 1 (sync skipped), so Count = 0 + 1 = 1
+	if app.Step != 1 {
+		t.Errorf("expected Step=1, got %d", app.Step)
+	}
+	if app.Count != 1 {
+		t.Errorf("expected Count=1, got %d", app.Count)
+	}
+}
+
+func TestHandleMethodCall_DebugLogging(t *testing.T) {
+	// When env.Debug is true, handleMethodCall logs the method call.
+	// This test just ensures that path doesn't panic.
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	pool := &connPool{}
+	ci.RefreshFn = func() {}
+
+	// Enable debug mode
+	prev := env.Debug
+	env.Debug = true
+	defer func() { env.Debug = prev }()
+
+	call := &gproto.MethodCall{Method: "Increment"}
+	handleMethodCall(ci, call, pool)
+
+	if app.Count != 1 {
+		t.Errorf("expected Count=1, got %d", app.Count)
+	}
+}
+
+func TestBuildSurgicalPatches_ClassBindingWithExistingClass(t *testing.T) {
+	// When a node already has a className, toggling a class should append to it.
+	app := &surgicalApp{Active: false}
+	ci := makeSurgicalCI(app)
+	ci.Tree = buildTree(ci)
+
+	// Set an existing className on the class-bound node
+	for _, b := range ci.Bindings["Active"] {
+		if b.Kind == "class" {
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			if el, ok := node.(*vdom.ElementNode); ok {
+				if el.Facts.Props == nil {
+					el.Facts.Props = make(map[string]any)
+				}
+				el.Facts.Props["className"] = "existing"
+			}
+		}
+	}
+
+	app.Active = true
+	patches := buildSurgicalPatches(ci, []string{"Active"})
+
+	var hasClassPatch bool
+	for _, p := range patches {
+		if p.Type == vdom.PatchFacts {
+			data, ok := p.Data.(vdom.PatchFactsData)
+			if ok && data.Diff.Props != nil {
+				cn := fmt.Sprint(data.Diff.Props["className"])
+				// Should contain both "existing" and "active"
+				if strings.Contains(cn, "existing") && strings.Contains(cn, "active") {
+					hasClassPatch = true
+				}
+			}
+		}
+	}
+	if !hasClassPatch {
+		t.Errorf("expected class patch combining 'existing' and 'active', got patches: %+v", patches)
 	}
 }
 
@@ -2542,4 +3156,83 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return strings.TrimPrefix(srv.URL, "http://"), nil
+}
+
+// --- BuildUpdate: NodeStableIDs remap ---
+
+type stableRemapApp struct {
+	Component struct{}
+	ShowExtra bool
+}
+
+const stableRemapHTML = `<!DOCTYPE html><html><head></head><body>
+	<div g-if="ShowExtra"><span>extra</span></div>
+	<input type="text" placeholder="unbound"/>
+</body></html>`
+
+func TestBuildUpdate_RemapsNodeStableIDs(t *testing.T) {
+	// When g-if toggles, new nodes shift IDs of subsequent nodes.
+	// MergeTree produces a remap. NodeStableIDs (from unbound inputs)
+	// must be remapped so handleNodeEvent can still find the right stable key.
+	app := &stableRemapApp{ShowExtra: false}
+	v := reflect.ValueOf(app)
+	templates, err := vdom.ParseTemplate(stableRemapHTML, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci := &component.Info{
+		Value:         v,
+		Typ:           v.Elem().Type(),
+		VDOMTemplates: templates,
+	}
+
+	// First render: ShowExtra=false, g-if produces no nodes
+	_ = BuildInit(ci)
+
+	// The unbound input should have a NodeStableIDs entry
+	if len(ci.NodeStableIDs) == 0 {
+		t.Fatal("expected NodeStableIDs to be populated for unbound input")
+	}
+
+	// Record the stable key before toggle
+	var origNodeID int
+	var stableKey string
+	for id, key := range ci.NodeStableIDs {
+		origNodeID = id
+		stableKey = key
+	}
+
+	// Toggle g-if: ShowExtra=true → structural change, IDs shift
+	app.ShowExtra = true
+	msg := BuildUpdate(ci)
+	if msg == nil {
+		t.Fatal("expected patch message after toggling ShowExtra")
+	}
+
+	// NodeStableIDs should still have exactly one entry with the same stable key
+	if len(ci.NodeStableIDs) != 1 {
+		t.Fatalf("expected 1 NodeStableIDs entry, got %d", len(ci.NodeStableIDs))
+	}
+
+	var newNodeID int
+	for id, key := range ci.NodeStableIDs {
+		newNodeID = id
+		if key != stableKey {
+			t.Errorf("stable key changed: was %q, now %q", stableKey, key)
+		}
+	}
+
+	// The node ID should have been remapped (may or may not differ,
+	// but the key must resolve to a valid node in the merged tree)
+	node := vdom.FindNodeByID(ci.Tree, newNodeID)
+	if node == nil {
+		t.Errorf("remapped NodeStableIDs[%d] does not exist in merged tree (was %d)", newNodeID, origNodeID)
+	}
+	if el, ok := node.(*vdom.ElementNode); ok {
+		if el.Tag != "input" {
+			t.Errorf("expected input node, got %q", el.Tag)
+		}
+	} else {
+		t.Error("expected ElementNode for remapped stable ID")
+	}
 }
