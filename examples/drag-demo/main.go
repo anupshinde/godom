@@ -45,9 +45,6 @@ func (d *Demo) Reorder(from, to float64) {
 	}
 	item := d.Canvas[f]
 	d.Canvas = append(d.Canvas[:f], d.Canvas[f+1:]...)
-	if t > f {
-		t--
-	}
 	d.Canvas = append(d.Canvas[:t], append([]Card{item}, d.Canvas[t:]...)...)
 }
 
