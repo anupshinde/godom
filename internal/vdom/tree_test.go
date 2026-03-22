@@ -1350,6 +1350,23 @@ func TestResolve_GDraggable(t *testing.T) {
 		if el.Facts.Attrs["data-drag-value"] != "card-1" {
 			t.Errorf("expected data-drag-value='card-1', got %q", el.Facts.Attrs["data-drag-value"])
 		}
+		if el.Facts.Attrs["data-drag-group"] != "cards" {
+			t.Errorf("expected data-drag-group='cards', got %q", el.Facts.Attrs["data-drag-group"])
+		}
+	})
+
+	t.Run("no group no group attr", func(t *testing.T) {
+		tmpl := &TemplateNode{
+			Tag:        "div",
+			Directives: []Directive{{Type: "draggable", Expr: "Name"}},
+		}
+		state := &testDirectiveState{Name: "item-1"}
+		ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+		nodes := ResolveTemplateNode(tmpl, ctx)
+		el := nodes[0].(*ElementNode)
+		if _, ok := el.Facts.Attrs["data-drag-group"]; ok {
+			t.Error("expected no data-drag-group when no group specified")
+		}
 	})
 
 	t.Run("no event handler from draggable alone", func(t *testing.T) {
@@ -1390,6 +1407,54 @@ func TestResolve_GDropzone(t *testing.T) {
 			t.Error("g-dropzone should not set draggable prop")
 		}
 	}
+}
+
+func TestResolve_GDrop(t *testing.T) {
+	t.Run("no group", func(t *testing.T) {
+		tmpl := &TemplateNode{
+			Tag:        "div",
+			Directives: []Directive{{Type: "drop", Expr: "HandleDrop"}},
+		}
+		state := &testDirectiveState{}
+		ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+		nodes := ResolveTemplateNode(tmpl, ctx)
+		el := nodes[0].(*ElementNode)
+
+		ev, ok := el.Facts.Events["drop"]
+		if !ok {
+			t.Fatal("expected drop event from g-drop")
+		}
+		if ev.Handler != "HandleDrop" {
+			t.Errorf("expected handler 'HandleDrop', got %q", ev.Handler)
+		}
+		if el.Facts.Attrs != nil {
+			if _, ok := el.Facts.Attrs["data-drop-group"]; ok {
+				t.Error("expected no data-drop-group when no group specified")
+			}
+		}
+	})
+
+	t.Run("with group", func(t *testing.T) {
+		tmpl := &TemplateNode{
+			Tag:        "div",
+			Directives: []Directive{{Type: "drop", Name: "canvas", Expr: "HandleDrop"}},
+		}
+		state := &testDirectiveState{}
+		ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+		nodes := ResolveTemplateNode(tmpl, ctx)
+		el := nodes[0].(*ElementNode)
+
+		ev, ok := el.Facts.Events["drop"]
+		if !ok {
+			t.Fatal("expected drop event from g-drop:canvas")
+		}
+		if ev.Handler != "HandleDrop" {
+			t.Errorf("expected handler 'HandleDrop', got %q", ev.Handler)
+		}
+		if el.Facts.Attrs["data-drop-group"] != "canvas" {
+			t.Errorf("expected data-drop-group='canvas', got %q", el.Facts.Attrs["data-drop-group"])
+		}
+	})
 }
 
 func TestResolve_GPlugin(t *testing.T) {
