@@ -25,6 +25,7 @@
     var pluginState = {};   // node ID → true if plugin init called
     var pendingPluginInits = []; // deferred init calls (element not yet in DOM)
     var rootNode;           // the root DOM node (document.body)
+    var multiMode = false;  // true after first targeted init
 
     var Proto = godomProto;
     var textDecoder = new TextDecoder();
@@ -73,27 +74,57 @@
             if (msg.type === "init") {
                 hideDisconnectOverlay();
                 reconnectDelay = 1000;
-                nodeMap = {};
-                pluginState = {};
-                // Build DOM from tree description
-                var tree = JSON.parse(textDecoder.decode(msg.tree));
-                document.body.innerHTML = "";
-                rootNode = document.body;
-                if (tree) {
-                    var domNode = buildDOM(tree);
-                    if (domNode) {
-                        // If the tree root is <body>, use its children
-                        if (tree.tag === "body") {
-                            while (domNode.firstChild) {
-                                rootNode.appendChild(domNode.firstChild);
+
+                var targetId = msg.targetId || "";
+
+                if (targetId) {
+                    // Multi-component mode: render into target element
+                    multiMode = true;
+                    var target = document.getElementById(targetId);
+                    if (!target) {
+                        console.warn("[godom init] target element #" + targetId + " not found");
+                        return;
+                    }
+                    // Clean only this target's nodeMap entries
+                    cleanNodeMap(target);
+                    target.innerHTML = "";
+
+                    var tree = JSON.parse(textDecoder.decode(msg.tree));
+                    if (tree) {
+                        var domNode = buildDOM(tree);
+                        if (domNode) {
+                            if (tree.tag === "body") {
+                                while (domNode.firstChild) {
+                                    target.appendChild(domNode.firstChild);
+                                }
+                                nodeMap[tree.id] = target;
+                            } else {
+                                target.appendChild(domNode);
                             }
-                            // Map body's ID to rootNode
-                            nodeMap[tree.id] = rootNode;
-                        } else {
-                            rootNode.appendChild(domNode);
+                        }
+                    }
+                } else {
+                    // Legacy single-component mode: render into body
+                    nodeMap = {};
+                    pluginState = {};
+                    var tree = JSON.parse(textDecoder.decode(msg.tree));
+                    document.body.innerHTML = "";
+                    rootNode = document.body;
+                    if (tree) {
+                        var domNode = buildDOM(tree);
+                        if (domNode) {
+                            if (tree.tag === "body") {
+                                while (domNode.firstChild) {
+                                    rootNode.appendChild(domNode.firstChild);
+                                }
+                                nodeMap[tree.id] = rootNode;
+                            } else {
+                                rootNode.appendChild(domNode);
+                            }
                         }
                     }
                 }
+
                 // Flush deferred plugin inits now that the tree is in the DOM.
                 for (var pi = 0; pi < pendingPluginInits.length; pi++) {
                     var p = pendingPluginInits[pi];
@@ -102,6 +133,7 @@
                 }
                 pendingPluginInits = [];
             } else if (msg.type === "patch") {
+                // Patches work the same in both modes — nodeMap IDs are globally unique
                 applyPatches(msg.patches);
             }
         };

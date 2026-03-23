@@ -25,9 +25,17 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// MountedComponent pairs a component with its target DOM element ID.
+type MountedComponent struct {
+	Info     *component.Info
+	TargetID string // DOM element ID to render into
+}
+
 // Config holds everything the server needs to run.
 type Config struct {
-	Comp      *component.Info
+	Comp      *component.Info          // legacy single-component mode
+	Comps     []*MountedComponent      // multi-component mode
+	ShellHTML string                   // shell HTML body (multi-component)
 	Plugins   map[string][]string
 	StaticFS  fs.FS
 	Port      int
@@ -49,7 +57,6 @@ var upgrader = websocket.Upgrader{
 
 // Run starts the HTTP server, opens the browser, and blocks forever.
 func Run(cfg Config) error {
-	ci := cfg.Comp
 	pool := &connPool{}
 	var token string
 	if !cfg.NoAuth {
@@ -60,30 +67,26 @@ func Run(cfg Config) error {
 		}
 	}
 
-	// Wire up Refresh:
-	// If fields were marked via MarkRefresh(), do a surgical update.
-	// Otherwise, full refresh — re-send the entire tree.
-	ci.RefreshFn = func() {
-		ci.Mu.Lock()
-		fields := ci.MarkedFields
-		ci.MarkedFields = nil
-		if len(fields) > 0 {
-			patches := buildSurgicalPatches(ci, fields)
-			if len(patches) > 0 {
-				ci.Mu.Unlock()
-				msg := render.EncodePatchMessage(patches)
-				data, _ := proto.Marshal(msg)
-				pool.broadcast(data)
-				return
-			}
-			// No patches produced (fields had no bindings) — fall through to full rebuild.
+	multiMode := len(cfg.Comps) > 0
+
+	// In multi-component mode, all components share a single IDCounter
+	// so node IDs are globally unique across the bridge's nodeMap.
+	var sharedIDCounter *vdom.IDCounter
+	if multiMode {
+		sharedIDCounter = &vdom.IDCounter{}
+		for _, mc := range cfg.Comps {
+			mc.Info.IDCounter = sharedIDCounter
 		}
-		msg := BuildUpdate(ci)
-		ci.Mu.Unlock()
-		if msg != nil {
-			data, _ := proto.Marshal(msg)
-			pool.broadcast(data)
+	}
+
+	// Wire up Refresh for each component.
+	if multiMode {
+		for _, mc := range cfg.Comps {
+			mc := mc // capture for closure
+			wireRefresh(mc.Info, mc.TargetID, pool)
 		}
+	} else {
+		wireRefresh(cfg.Comp, "", pool)
 	}
 
 	mux := http.NewServeMux()
@@ -102,7 +105,13 @@ func Run(cfg Config) error {
 		}
 	}
 	injectedJS += "<script>" + cfg.BridgeJS + "</script>\n"
-	pageHTML := strings.Replace(ci.HTMLBody, "</body>", injectedJS+"</body>", 1)
+
+	var pageHTML string
+	if multiMode {
+		pageHTML = strings.Replace(cfg.ShellHTML, "</body>", injectedJS+"</body>", 1)
+	} else {
+		pageHTML = strings.Replace(cfg.Comp.HTMLBody, "</body>", injectedJS+"</body>", 1)
+	}
 
 	// Serve static assets (CSS, images, etc.) from the embedded UI filesystem.
 	staticHandler := http.FileServer(http.FS(cfg.StaticFS))
@@ -139,11 +148,23 @@ func Run(cfg Config) error {
 
 		wc := pool.add(conn)
 
-		if err := handleInit(wc, ci); err != nil {
-			log.Printf("godom: failed to compute init: %v", err)
-			pool.remove(wc)
-			conn.Close()
-			return
+		// Send init for each component
+		if multiMode {
+			for _, mc := range cfg.Comps {
+				if err := handleInitMulti(wc, mc.Info, mc.TargetID); err != nil {
+					log.Printf("godom: failed to compute init for %s: %v", mc.TargetID, err)
+					pool.remove(wc)
+					conn.Close()
+					return
+				}
+			}
+		} else {
+			if err := handleInit(wc, cfg.Comp); err != nil {
+				log.Printf("godom: failed to compute init: %v", err)
+				pool.remove(wc)
+				conn.Close()
+				return
+			}
 		}
 
 		defer func() {
@@ -180,7 +201,13 @@ func Run(cfg Config) error {
 					log.Printf("godom: node event unmarshal error: %v", err)
 					continue
 				}
-				handleNodeEvent(ci, evt.NodeId, evt.Value, pool)
+				if multiMode {
+					if ci := findComponentByNodeID(cfg.Comps, int(evt.NodeId)); ci != nil {
+						handleNodeEvent(ci, evt.NodeId, evt.Value, pool)
+					}
+				} else {
+					handleNodeEvent(cfg.Comp, evt.NodeId, evt.Value, pool)
+				}
 
 			case 2: // MethodCall (Layer 2)
 				call := &gproto.MethodCall{}
@@ -188,7 +215,13 @@ func Run(cfg Config) error {
 					log.Printf("godom: method call unmarshal error: %v", err)
 					continue
 				}
-				handleMethodCall(ci, call, pool)
+				if multiMode {
+					if ci := findComponentByNodeID(cfg.Comps, int(call.NodeId)); ci != nil {
+						handleMethodCall(ci, call, pool)
+					}
+				} else {
+					handleMethodCall(cfg.Comp, call, pool)
+				}
 			}
 		}
 	})
@@ -226,6 +259,49 @@ func Run(cfg Config) error {
 	}
 
 	return http.Serve(ln, mux)
+}
+
+// wireRefresh sets up the RefreshFn for a component, tagging messages
+// with targetID for multi-component mode (empty for legacy mode).
+func wireRefresh(ci *component.Info, targetID string, pool *connPool) {
+	ci.RefreshFn = func() {
+		ci.Mu.Lock()
+		fields := ci.MarkedFields
+		ci.MarkedFields = nil
+		if len(fields) > 0 {
+			patches := buildSurgicalPatches(ci, fields)
+			if len(patches) > 0 {
+				ci.Mu.Unlock()
+				msg := render.EncodePatchMessage(patches)
+				msg.TargetId = targetID
+				data, _ := proto.Marshal(msg)
+				pool.broadcast(data)
+				return
+			}
+			// No patches produced (fields had no bindings) — fall through to full rebuild.
+		}
+		msg := BuildUpdate(ci)
+		ci.Mu.Unlock()
+		if msg != nil {
+			msg.TargetId = targetID
+			data, _ := proto.Marshal(msg)
+			pool.broadcast(data)
+		}
+	}
+}
+
+// findComponentByNodeID finds which component owns a given node ID
+// by searching each component's live tree.
+func findComponentByNodeID(comps []*MountedComponent, nodeID int) *component.Info {
+	for _, mc := range comps {
+		mc.Info.Mu.Lock()
+		node := vdom.FindNodeByID(mc.Info.Tree, nodeID)
+		mc.Info.Mu.Unlock()
+		if node != nil {
+			return mc.Info
+		}
+	}
+	return nil
 }
 
 // --- VDOM orchestration ---
@@ -537,6 +613,18 @@ func (p *connPool) broadcastClose(closeMsg []byte) {
 func handleInit(wc *wsConn, ci *component.Info) error {
 	ci.Mu.Lock()
 	msg := BuildInit(ci)
+	ci.Mu.Unlock()
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return wc.writeBinary(data)
+}
+
+func handleInitMulti(wc *wsConn, ci *component.Info, targetID string) error {
+	ci.Mu.Lock()
+	msg := BuildInit(ci)
+	msg.TargetId = targetID
 	ci.Mu.Unlock()
 	data, err := proto.Marshal(msg)
 	if err != nil {

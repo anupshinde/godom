@@ -34,9 +34,12 @@ type Engine struct {
 	Token      string // fixed auth token; empty = generate random token
 	NoBrowser  bool   // don't open browser on start
 	Quiet      bool   // suppress startup output
-	comp    *component.Info
-	plugins map[string][]string // plugin name → JS scripts
-	staticFS   fs.FS                     // embedded UI filesystem for static assets
+	comp       *component.Info            // legacy single-component mode
+	comps      []*server.MountedComponent // multi-component mode
+	shellHTML  string                     // shell HTML body (multi-component)
+	plugins    map[string][]string        // plugin name → JS scripts
+	staticFS   fs.FS                      // embedded UI filesystem for static assets
+	compIndex  map[interface{}]int        // comp pointer → index in comps slice
 }
 
 // Component is embedded in user structs to make them godom components.
@@ -76,13 +79,37 @@ func (c Component) Refresh() {
 // NewEngine creates a new godom Engine.
 func NewEngine() *Engine {
 	return &Engine{
-		plugins: make(map[string][]string),
+		plugins:   make(map[string][]string),
+		compIndex: make(map[interface{}]int),
 	}
 }
 
 // RegisterPlugin registers a named plugin with one or more JS scripts.
 func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts
+}
+
+// SetShell sets the static HTML shell for multi-component mode.
+// The shell contains the page layout with placeholder elements (by ID)
+// where components will be rendered via BindToID.
+func (a *Engine) SetShell(fsys fs.FS, entryPath string) {
+	// Derive the static FS root from the entry path's directory
+	dir := path.Dir(entryPath)
+	if dir == "." {
+		a.staticFS = fsys
+	} else {
+		sub, err := fs.Sub(fsys, dir)
+		if err != nil {
+			log.Fatalf("godom: invalid shell path %q: %v", entryPath, err)
+		}
+		a.staticFS = sub
+	}
+
+	indexHTML, err := fs.ReadFile(fsys, entryPath)
+	if err != nil {
+		log.Fatalf("godom: failed to read shell %s: %v", entryPath, err)
+	}
+	a.shellHTML = string(indexHTML)
 }
 
 // Mount registers a component struct with an embedded filesystem containing HTML templates.
@@ -99,16 +126,19 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 		log.Fatal("godom: mounted struct must embed godom.Component")
 	}
 
-	// Derive the static FS root from the entry path's directory
-	dir := path.Dir(entryPath)
-	if dir == "." {
-		a.staticFS = fsys
-	} else {
-		sub, err := fs.Sub(fsys, dir)
-		if err != nil {
-			log.Fatalf("godom: invalid entry path %q: %v", entryPath, err)
+	// If no shell is set, use legacy single-component mode:
+	// derive static FS from this component's entry path.
+	if a.shellHTML == "" {
+		dir := path.Dir(entryPath)
+		if dir == "." {
+			a.staticFS = fsys
+		} else {
+			sub, err := fs.Sub(fsys, dir)
+			if err != nil {
+				log.Fatalf("godom: invalid entry path %q: %v", entryPath, err)
+			}
+			a.staticFS = sub
 		}
-		a.staticFS = sub
 	}
 
 	indexHTML, err := fs.ReadFile(fsys, entryPath)
@@ -139,12 +169,30 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 
 	ci.Value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
 
-	a.comp = ci
+	if a.shellHTML == "" {
+		// Legacy single-component mode
+		a.comp = ci
+	} else {
+		// Multi-component mode
+		idx := len(a.comps)
+		a.comps = append(a.comps, &server.MountedComponent{Info: ci})
+		a.compIndex[comp] = idx
+	}
+}
+
+// BindToID associates a mounted component with a DOM element ID in the shell.
+// The component will render its content inside the element with this ID.
+func (a *Engine) BindToID(comp interface{}, elementID string) {
+	idx, ok := a.compIndex[comp]
+	if !ok {
+		log.Fatal("godom: BindToID called with unmounted component")
+	}
+	a.comps[idx].TargetID = elementID
 }
 
 // Start starts the HTTP server, opens the default browser, and blocks forever.
 func (a *Engine) Start() error {
-	if a.comp == nil {
+	if a.comp == nil && len(a.comps) == 0 {
 		return fmt.Errorf("godom: no component mounted, call Mount() before Start()")
 	}
 
@@ -179,6 +227,8 @@ func (a *Engine) Start() error {
 
 	return server.Run(server.Config{
 		Comp:          a.comp,
+		Comps:         a.comps,
+		ShellHTML:     a.shellHTML,
 		Plugins:       a.plugins,
 		StaticFS:      a.staticFS,
 		Port:          a.Port,

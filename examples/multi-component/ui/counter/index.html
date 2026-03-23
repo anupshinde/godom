@@ -1,0 +1,11 @@
+<div style="text-align: center;">
+    <div style="font-size: 48px; margin-bottom: 20px;">{{Count}}</div>
+    <div style="display: flex; gap: 12px; justify-content: center; margin-bottom: 20px;">
+        <button g-click="Decrement" style="padding: 10px 24px; font-size: 20px; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; background: #f5f5f5;">−</button>
+        <button g-click="Increment" style="padding: 10px 24px; font-size: 20px; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; background: #f5f5f5;">+</button>
+    </div>
+    <div style="font-size: 14px; color: #666;">
+        <label style="margin-right: 8px;">Step size:</label>
+        <input type="number" min="1" max="100" g-bind="Step" style="width: 60px; padding: 4px 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;"/>
+    </div>
+</div>
