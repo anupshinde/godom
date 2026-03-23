@@ -125,7 +125,7 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 		log.Fatalf("godom: failed to read %s: %v", entryPath, err)
 	}
 
-	composed, err := template.ExpandComponents(string(indexHTML), a.staticFS)
+	composed, err := template.ExpandComponents(string(indexHTML), fsys, path.Dir(entryPath))
 	if err != nil {
 		log.Fatalf("godom: failed to expand components: %v", err)
 	}

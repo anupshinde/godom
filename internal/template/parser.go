@@ -3,6 +3,7 @@ package template
 import (
 	"fmt"
 	"io/fs"
+	"path"
 	"regexp"
 	"strings"
 )
@@ -20,7 +21,7 @@ var gAttrRe = regexp.MustCompile(`(g-[a-z]+(?::[a-z-]+)?)\s*=\s*"([^"]*)"`)
 
 // ExpandComponents takes HTML and recursively replaces custom element tags
 // with the contents of their corresponding HTML files from the filesystem.
-func ExpandComponents(htmlStr string, fsys fs.FS) (string, error) {
+func ExpandComponents(htmlStr string, fsys fs.FS, baseDir string) (string, error) {
 	maxDepth := 10
 	searchFrom := 0
 	for depth := 0; depth < maxDepth; depth++ {
@@ -67,7 +68,7 @@ func ExpandComponents(htmlStr string, fsys fs.FS) (string, error) {
 		}
 
 		// Load component HTML
-		compHTML, err := fs.ReadFile(fsys, tagName+".html")
+		compHTML, err := fs.ReadFile(fsys, path.Join(baseDir, tagName+".html"))
 		if err != nil {
 			return "", fmt.Errorf("component %q: %w", tagName, err)
 		}

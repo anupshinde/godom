@@ -155,7 +155,7 @@ func TestExpandComponents(t *testing.T) {
 		"my-comp.html": {Data: []byte(`<span>hello</span>`)},
 	}
 
-	result, err := ExpandComponents(`<div><my-comp></my-comp></div>`, fsys)
+	result, err := ExpandComponents(`<div><my-comp></my-comp></div>`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestExpandComponents_WithGAttrs(t *testing.T) {
 		"my-item.html": {Data: []byte(`<li>item</li>`)},
 	}
 
-	result, err := ExpandComponents(`<my-item g-for="x in Items"></my-item>`, fsys)
+	result, err := ExpandComponents(`<my-item g-for="x in Items"></my-item>`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestExpandComponents_WithProps(t *testing.T) {
 		"my-item.html": {Data: []byte(`<li>item</li>`)},
 	}
 
-	result, err := ExpandComponents(`<my-item :name="item.Name" :index="i"></my-item>`, fsys)
+	result, err := ExpandComponents(`<my-item :name="item.Name" :index="i"></my-item>`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestExpandComponents_SelfClosing(t *testing.T) {
 		"my-tag.html": {Data: []byte(`<div>content</div>`)},
 	}
 
-	result, err := ExpandComponents(`<my-tag />`, fsys)
+	result, err := ExpandComponents(`<my-tag />`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestExpandComponents_SelfClosing(t *testing.T) {
 func TestExpandComponents_MissingFile(t *testing.T) {
 	fsys := fstest.MapFS{}
 
-	_, err := ExpandComponents(`<my-tag></my-tag>`, fsys)
+	_, err := ExpandComponents(`<my-tag></my-tag>`, fsys, ".")
 	if err == nil {
 		t.Error("expected error for missing component file")
 	}
@@ -236,7 +236,7 @@ func TestExpandComponents_MissingClosingTag(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-comp.html": {Data: []byte(`<span>hello</span>`)},
 	}
-	_, err := ExpandComponents(`<div><my-comp>content</div>`, fsys)
+	_, err := ExpandComponents(`<div><my-comp>content</div>`, fsys, ".")
 	if err == nil {
 		t.Error("expected error for missing closing tag")
 	}
@@ -250,7 +250,7 @@ func TestExpandComponents_Recursive(t *testing.T) {
 		"outer-comp.html": {Data: []byte(`<div><inner-comp></inner-comp></div>`)},
 		"inner-comp.html": {Data: []byte(`<span>inner</span>`)},
 	}
-	result, err := ExpandComponents(`<outer-comp></outer-comp>`, fsys)
+	result, err := ExpandComponents(`<outer-comp></outer-comp>`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestExpandComponents_SelfClosingWithGAttrsAndProps(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-item.html": {Data: []byte(`<li>item</li>`)},
 	}
-	result, err := ExpandComponents(`<my-item g-text="Name" :val="x" />`, fsys)
+	result, err := ExpandComponents(`<my-item g-text="Name" :val="x" />`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestExpandComponents_NoCustomElements(t *testing.T) {
 	// Plain HTML with no custom elements should pass through unchanged
 	fsys := fstest.MapFS{}
 	input := `<div><span>hello</span></div>`
-	result, err := ExpandComponents(input, fsys)
+	result, err := ExpandComponents(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +297,7 @@ func TestExpandComponents_AttrsNoGAttrsNoProps(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-tag.html": {Data: []byte(`<div>content</div>`)},
 	}
-	result, err := ExpandComponents(`<my-tag class="foo" id="bar"></my-tag>`, fsys)
+	result, err := ExpandComponents(`<my-tag class="foo" id="bar"></my-tag>`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +325,7 @@ func TestExpandComponents_MaxDepthExhaustion(t *testing.T) {
 	// The last level just has content
 	fsys["level-12.html"] = &fstest.MapFile{Data: []byte(`<span>bottom</span>`)}
 
-	result, err := ExpandComponents(`<level-0></level-0>`, fsys)
+	result, err := ExpandComponents(`<level-0></level-0>`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
