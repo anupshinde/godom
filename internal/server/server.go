@@ -25,18 +25,18 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// MountedComponent pairs a component with its target DOM element ID.
+// MountedComponent pairs a component with its slot in a parent component.
 type MountedComponent struct {
-	Info     *component.Info
-	TargetID string // DOM element ID to render into
+	Info      *component.Info
+	ParentIdx int    // index of parent component in Comps (-1 = no parent / root)
+	SlotName  string // slot name in parent's <g-slot> (empty = root, renders into body)
 }
 
 // Config holds everything the server needs to run.
 type Config struct {
-	Comp      *component.Info          // legacy single-component mode
-	Comps     []*MountedComponent      // multi-component mode
-	ShellHTML string                   // shell HTML body (multi-component)
-	Plugins   map[string][]string
+	Comp    *component.Info     // legacy single-component mode
+	Comps   []*MountedComponent // multi-component mode
+	Plugins map[string][]string
 	StaticFS  fs.FS
 	Port      int
 	Host      string
@@ -83,7 +83,8 @@ func Run(cfg Config) error {
 	if multiMode {
 		for _, mc := range cfg.Comps {
 			mc := mc // capture for closure
-			wireRefresh(mc.Info, mc.TargetID, pool)
+			targetID := slotTargetID(mc.SlotName)
+			wireRefresh(mc.Info, targetID, pool)
 		}
 	} else {
 		wireRefresh(cfg.Comp, "", pool)
@@ -108,7 +109,13 @@ func Run(cfg Config) error {
 
 	var pageHTML string
 	if multiMode {
-		pageHTML = strings.Replace(cfg.ShellHTML, "</body>", injectedJS+"</body>", 1)
+		// In multi-component mode, the root component (no parent) provides the page HTML.
+		for _, mc := range cfg.Comps {
+			if mc.ParentIdx < 0 {
+				pageHTML = strings.Replace(mc.Info.HTMLBody, "</body>", injectedJS+"</body>", 1)
+				break
+			}
+		}
 	} else {
 		pageHTML = strings.Replace(cfg.Comp.HTMLBody, "</body>", injectedJS+"</body>", 1)
 	}
@@ -148,11 +155,15 @@ func Run(cfg Config) error {
 
 		wc := pool.add(conn)
 
-		// Send init for each component
+		// Send init for each component.
+		// Components are sent in order: parents before children.
+		// initOrder ensures this by topological sort on ParentIdx.
 		if multiMode {
-			for _, mc := range cfg.Comps {
-				if err := handleInitMulti(wc, mc.Info, mc.TargetID); err != nil {
-					log.Printf("godom: failed to compute init for %s: %v", mc.TargetID, err)
+			for _, idx := range initOrder(cfg.Comps) {
+				mc := cfg.Comps[idx]
+				targetID := slotTargetID(mc.SlotName)
+				if err := handleInitMulti(wc, mc.Info, targetID); err != nil {
+					log.Printf("godom: failed to compute init for %s: %v", targetID, err)
 					pool.remove(wc)
 					conn.Close()
 					return
@@ -288,6 +299,40 @@ func wireRefresh(ci *component.Info, targetID string, pool *connPool) {
 			pool.broadcast(data)
 		}
 	}
+}
+
+// slotTargetID returns the DOM element ID for a slot name.
+// Root components (empty slot name) return "" which means render into body.
+func slotTargetID(slotName string) string {
+	if slotName == "" {
+		return ""
+	}
+	return "godom-slot-" + slotName
+}
+
+// initOrder returns indices into comps in topological order: parents before
+// children. Components with ParentIdx == -1 come first, then their children, etc.
+func initOrder(comps []*MountedComponent) []int {
+	n := len(comps)
+	order := make([]int, 0, n)
+	visited := make([]bool, n)
+
+	// Simple BFS-like: first add all roots, then their children, etc.
+	for changed := true; changed; {
+		changed = false
+		for i := 0; i < n; i++ {
+			if visited[i] {
+				continue
+			}
+			parent := comps[i].ParentIdx
+			if parent < 0 || visited[parent] {
+				order = append(order, i)
+				visited[i] = true
+				changed = true
+			}
+		}
+	}
+	return order
 }
 
 // findComponentByNodeID finds which component owns a given node ID

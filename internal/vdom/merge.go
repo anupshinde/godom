@@ -43,6 +43,11 @@ func mergeTree(dst, src Node, remap map[int]int) {
 			return
 		}
 		d.Facts = s.Facts
+		// Slot nodes are opaque boundaries — skip children merge.
+		// Children are owned by child components.
+		if IsSlotNode(d) && IsSlotNode(s) {
+			return
+		}
 		mergeChildren(d, s.Children, remap)
 
 	case *KeyedElementNode:

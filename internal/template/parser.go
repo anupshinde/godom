@@ -22,13 +22,29 @@ var gAttrRe = regexp.MustCompile(`(g-[a-z]+(?::[a-z-]+)?)\s*=\s*"([^"]*)"`)
 // with the contents of their corresponding HTML files from the filesystem.
 func ExpandComponents(htmlStr string, fsys fs.FS) (string, error) {
 	maxDepth := 10
+	searchFrom := 0
 	for depth := 0; depth < maxDepth; depth++ {
-		loc := openTagRe.FindStringSubmatchIndex(htmlStr)
+		loc := openTagRe.FindStringSubmatchIndex(htmlStr[searchFrom:])
 		if loc == nil {
 			break
 		}
+		// Adjust indices relative to full string
+		for i := range loc {
+			if loc[i] >= 0 {
+				loc[i] += searchFrom
+			}
+		}
 
 		tagName := htmlStr[loc[2]:loc[3]]
+
+		// Skip g-* tags — these are framework directives, not custom components.
+		if strings.HasPrefix(tagName, "g-") {
+			searchFrom = loc[1]
+			depth--
+			continue
+		}
+
+		searchFrom = 0
 		var attrs string
 		if loc[4] >= 0 {
 			attrs = strings.TrimSpace(htmlStr[loc[4]:loc[5]])

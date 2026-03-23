@@ -39,8 +39,8 @@ func TestNewEngine(t *testing.T) {
 	if e.plugins == nil {
 		t.Error("expected non-nil plugins map")
 	}
-	if e.comp != nil {
-		t.Error("expected nil comp before Mount")
+	if len(e.comps) != 0 {
+		t.Error("expected empty comps before Mount")
 	}
 }
 
@@ -173,16 +173,17 @@ func TestMount_Valid(t *testing.T) {
 	app := &testApp{Name: "Alice"}
 	e.Mount(app, makeTestFS(), "index.html")
 
-	if e.comp == nil {
-		t.Fatal("expected comp to be set after Mount")
+	if len(e.comps) != 1 {
+		t.Fatal("expected one component after Mount")
 	}
-	if e.comp.HTMLBody == "" {
+	ci := e.comps[0].Info
+	if ci.HTMLBody == "" {
 		t.Error("expected HTMLBody to be set")
 	}
-	if e.comp.VDOMTemplates == nil {
+	if ci.VDOMTemplates == nil {
 		t.Fatal("expected VDOMTemplates to be parsed")
 	}
-	if len(e.comp.VDOMTemplates) == 0 {
+	if len(ci.VDOMTemplates) == 0 {
 		t.Error("expected at least one parsed VDOM template")
 	}
 	if e.staticFS == nil {
@@ -195,8 +196,8 @@ func TestMount_NestedEntryPath(t *testing.T) {
 	app := &testApp{Name: "Alice"}
 	e.Mount(app, makeTestFSNested(), "ui/index.html")
 
-	if e.comp == nil {
-		t.Fatal("expected comp to be set")
+	if len(e.comps) != 1 {
+		t.Fatal("expected one component after Mount")
 	}
 	// staticFS should be the "ui/" subdirectory — verify by reading a file from it
 	if e.staticFS == nil {
@@ -216,12 +217,12 @@ func TestMount_WiresComponentField(t *testing.T) {
 	app := &testApp{Name: "Alice"}
 	e.Mount(app, makeTestFS(), "index.html")
 
-	// After Mount, app.Component.ci should be wired to the same Info as e.comp
+	// After Mount, app.Component.ci should be wired to the same Info as e.comps[0].Info
 	if app.Component.ci == nil {
 		t.Fatal("expected Component.ci to be wired after Mount")
 	}
-	if app.Component.ci != e.comp {
-		t.Error("expected Component.ci to point to the same Info as Engine.comp")
+	if app.Component.ci != e.comps[0].Info {
+		t.Error("expected Component.ci to point to the same Info as Engine.comps[0].Info")
 	}
 }
 
@@ -230,10 +231,11 @@ func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
 	app := &testApp{Name: "Alice"}
 	e.Mount(app, makeTestFS(), "index.html")
 
-	if !strings.Contains(e.comp.HTMLBody, "g-text") {
+	ci := e.comps[0].Info
+	if !strings.Contains(ci.HTMLBody, "g-text") {
 		t.Error("expected HTMLBody to contain template directives")
 	}
-	if !strings.Contains(e.comp.HTMLBody, "g-click") {
+	if !strings.Contains(ci.HTMLBody, "g-click") {
 		t.Error("expected HTMLBody to contain event directive")
 	}
 }
@@ -294,12 +296,13 @@ func TestMount_SetsValueAndType(t *testing.T) {
 	app := &testApp{Name: "Bob", Count: 42}
 	e.Mount(app, makeTestFS(), "index.html")
 
-	// comp.Value should point to the same app instance
-	if e.comp.Value.Pointer() != reflect.ValueOf(app).Pointer() {
-		t.Error("expected comp.Value to point to the original app")
+	ci := e.comps[0].Info
+	// ci.Value should point to the same app instance
+	if ci.Value.Pointer() != reflect.ValueOf(app).Pointer() {
+		t.Error("expected ci.Value to point to the original app")
 	}
-	if e.comp.Typ != reflect.TypeOf(testApp{}) {
-		t.Errorf("expected comp.Typ = testApp, got %v", e.comp.Typ)
+	if ci.Typ != reflect.TypeOf(testApp{}) {
+		t.Errorf("expected ci.Typ = testApp, got %v", ci.Typ)
 	}
 }
 

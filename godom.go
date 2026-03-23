@@ -28,18 +28,16 @@ var protocolJS string
 // Engine is the godom runtime. It registers components and plugins,
 // mounts the root component, and starts the server.
 type Engine struct {
-	Port       int    // 0 = random available port
-	Host       string // default "localhost"; set to "0.0.0.0" for network access
-	NoAuth     bool   // disable token auth (default false = auth enabled)
-	Token      string // fixed auth token; empty = generate random token
-	NoBrowser  bool   // don't open browser on start
-	Quiet      bool   // suppress startup output
-	comp       *component.Info            // legacy single-component mode
-	comps      []*server.MountedComponent // multi-component mode
-	shellHTML  string                     // shell HTML body (multi-component)
-	plugins    map[string][]string        // plugin name → JS scripts
-	staticFS   fs.FS                      // embedded UI filesystem for static assets
-	compIndex  map[interface{}]int        // comp pointer → index in comps slice
+	Port      int    // 0 = random available port
+	Host      string // default "localhost"; set to "0.0.0.0" for network access
+	NoAuth    bool   // disable token auth (default false = auth enabled)
+	Token     string // fixed auth token; empty = generate random token
+	NoBrowser bool   // don't open browser on start
+	Quiet     bool   // suppress startup output
+	comps     []*server.MountedComponent // mounted components
+	plugins   map[string][]string        // plugin name → JS scripts
+	staticFS  fs.FS                      // embedded UI filesystem for static assets
+	compIndex map[interface{}]int        // comp pointer → index in comps slice
 }
 
 // Component is embedded in user structs to make them godom components.
@@ -89,31 +87,13 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts
 }
 
-// SetShell sets the static HTML shell for multi-component mode.
-// The shell contains the page layout with placeholder elements (by ID)
-// where components will be rendered via BindToID.
-func (a *Engine) SetShell(fsys fs.FS, entryPath string) {
-	// Derive the static FS root from the entry path's directory
-	dir := path.Dir(entryPath)
-	if dir == "." {
-		a.staticFS = fsys
-	} else {
-		sub, err := fs.Sub(fsys, dir)
-		if err != nil {
-			log.Fatalf("godom: invalid shell path %q: %v", entryPath, err)
-		}
-		a.staticFS = sub
-	}
-
-	indexHTML, err := fs.ReadFile(fsys, entryPath)
-	if err != nil {
-		log.Fatalf("godom: failed to read shell %s: %v", entryPath, err)
-	}
-	a.shellHTML = string(indexHTML)
-}
-
 // Mount registers a component struct with an embedded filesystem containing HTML templates.
 // The entryPath is the path to the index.html file within fsys (e.g. "ui/index.html").
+//
+// For single-component apps, call Mount once. For multi-component apps, call
+// Mount for each component and use AddChild to establish parent-child relationships.
+// The root component (no parent) provides the full page HTML; child components
+// provide HTML fragments that render into the parent's <g-slot> placeholders.
 func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 	v := reflect.ValueOf(comp)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
@@ -126,9 +106,8 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 		log.Fatal("godom: mounted struct must embed godom.Component")
 	}
 
-	// If no shell is set, use legacy single-component mode:
-	// derive static FS from this component's entry path.
-	if a.shellHTML == "" {
+	// Derive static FS from the first mounted component's entry path.
+	if a.staticFS == nil {
 		dir := path.Dir(entryPath)
 		if dir == "." {
 			a.staticFS = fsys
@@ -169,30 +148,31 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 
 	ci.Value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
 
-	if a.shellHTML == "" {
-		// Legacy single-component mode
-		a.comp = ci
-	} else {
-		// Multi-component mode
-		idx := len(a.comps)
-		a.comps = append(a.comps, &server.MountedComponent{Info: ci})
-		a.compIndex[comp] = idx
-	}
+	idx := len(a.comps)
+	a.comps = append(a.comps, &server.MountedComponent{Info: ci, ParentIdx: -1})
+	a.compIndex[comp] = idx
 }
 
-// BindToID associates a mounted component with a DOM element ID in the shell.
-// The component will render its content inside the element with this ID.
-func (a *Engine) BindToID(comp interface{}, elementID string) {
-	idx, ok := a.compIndex[comp]
+// AddChild registers a child component to render into a named <g-slot> in the
+// parent component's template. The parent must already be mounted.
+// The child will automatically target the DOM element "godom-slot-{slotName}"
+// that the parent's <g-slot name="..."> resolves to.
+func (a *Engine) AddChild(parent, child interface{}, slotName string) {
+	parentIdx, ok := a.compIndex[parent]
 	if !ok {
-		log.Fatal("godom: BindToID called with unmounted component")
+		log.Fatal("godom: AddChild called with unmounted parent")
 	}
-	a.comps[idx].TargetID = elementID
+	childIdx, ok := a.compIndex[child]
+	if !ok {
+		log.Fatal("godom: AddChild called with unmounted child")
+	}
+	a.comps[childIdx].ParentIdx = parentIdx
+	a.comps[childIdx].SlotName = slotName
 }
 
 // Start starts the HTTP server, opens the default browser, and blocks forever.
 func (a *Engine) Start() error {
-	if a.comp == nil && len(a.comps) == 0 {
+	if len(a.comps) == 0 {
 		return fmt.Errorf("godom: no component mounted, call Mount() before Start()")
 	}
 
@@ -225,10 +205,8 @@ func (a *Engine) Start() error {
 		a.Quiet = true
 	}
 
-	return server.Run(server.Config{
-		Comp:          a.comp,
+	cfg := server.Config{
 		Comps:         a.comps,
-		ShellHTML:     a.shellHTML,
 		Plugins:       a.plugins,
 		StaticFS:      a.staticFS,
 		Port:          a.Port,
@@ -240,7 +218,15 @@ func (a *Engine) Start() error {
 		BridgeJS:      bridgeJS,
 		ProtobufMinJS: protobufMinJS,
 		ProtocolJS:    protocolJS,
-	})
+	}
+
+	// Single component = legacy mode (no parent-child relationships)
+	if len(a.comps) == 1 {
+		cfg.Comp = a.comps[0].Info
+		cfg.Comps = nil
+	}
+
+	return server.Run(cfg)
 }
 
 // embedsComponent checks if a struct type embeds godom.Component.
