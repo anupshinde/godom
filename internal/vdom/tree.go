@@ -928,7 +928,7 @@ func isFormInput(tag string) bool {
 // hasBind returns true if any directive is a "bind" directive.
 func hasBind(directives []Directive) bool {
 	for _, d := range directives {
-		if d.Type == "bind" {
+		if d.Type == "bind" || d.Type == "value" || d.Type == "checked" {
 			return true
 		}
 	}

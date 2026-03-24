@@ -468,10 +468,14 @@ func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
 					Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Styles: map[string]string{b.Prop: strVal}}},
 				})
 			case "prop":
+				var propVal any = strVal
+				if b.Prop == "checked" {
+					propVal = truthy
+				}
 				patches = append(patches, vdom.Patch{
 					NodeID: b.NodeID,
 					Type:   vdom.PatchFacts,
-					Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Props: map[string]any{b.Prop: strVal}}},
+					Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Props: map[string]any{b.Prop: propVal}}},
 				})
 			case "attr":
 				patches = append(patches, vdom.Patch{
@@ -543,7 +547,11 @@ func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
 					if el.Facts.Props == nil {
 						el.Facts.Props = make(map[string]any)
 					}
-					el.Facts.Props[b.Prop] = strVal
+					var pv any = strVal
+					if b.Prop == "checked" {
+						pv = truthy
+					}
+					el.Facts.Props[b.Prop] = pv
 				}
 			case "attr":
 				if el, ok := node.(*vdom.ElementNode); ok {
@@ -660,7 +668,8 @@ func handleInit(wc *wsConn, ci *component.Info, targetNodeID int32) error {
 }
 
 // handleNodeEvent processes a Layer 1 node event: find the node in the live
-// tree by ID, update its Props["value"], and broadcast a facts patch to all clients.
+// tree by ID, update its Props["value"] (or Props["checked"] for checkboxes),
+// and broadcast a facts patch to all clients.
 func handleNodeEvent(ci *component.Info, nodeID int32, value string, pool *connPool) {
 	ci.Mu.Lock()
 
@@ -682,21 +691,60 @@ func handleNodeEvent(ci *component.Info, nodeID int32, value string, pool *connP
 	if el.Facts.Props == nil {
 		el.Facts.Props = make(map[string]any)
 	}
-	el.Facts.Props["value"] = value
+
+	// Checkboxes send "true"/"false" and use Props["checked"] (bool)
+	isCheckbox := el.Tag == "input" && el.Facts.Attrs["type"] == "checkbox"
+	propKey := "value"
+	var propVal any = value
+	if isCheckbox {
+		propKey = "checked"
+		propVal = value == "true"
+	}
+	el.Facts.Props[propKey] = propVal
+
+	// Sync bound fields back to the struct so ci.Tree and the struct stay
+	// in sync. Without this, BuildInit would send the stale tree value
+	// instead of the struct value after a method changes the field.
+	boundFieldSynced := false
+	if ci.Bindings != nil {
+		for field, bindings := range ci.Bindings {
+			for _, b := range bindings {
+				if b.NodeID == int(nodeID) && (b.Kind == "prop" || b.Kind == "bind") {
+					raw, err := json.Marshal(propVal)
+					if err == nil {
+						setPath := field
+						if b.Expr != "" {
+							setPath = b.Expr
+						}
+						ci.SetField(setPath, json.RawMessage(raw))
+						boundFieldSynced = true
+					}
+				}
+			}
+		}
+	}
+
+	// If we synced a bound field, do a full refresh so all nodes referencing
+	// that field (e.g. g-text) get updated — not just the input node itself.
+	if boundFieldSynced && ci.RefreshFn != nil {
+		ci.Mu.Unlock()
+		ci.RefreshFn()
+		return
+	}
 
 	// Store unbound input value so it survives tree rebuilds
 	if stableKey, ok := ci.NodeStableIDs[int(nodeID)]; ok {
 		if ci.UnboundValues == nil {
 			ci.UnboundValues = make(map[string]any)
 		}
-		ci.UnboundValues[stableKey] = value
+		ci.UnboundValues[stableKey] = propVal
 	}
 
 	// Build a targeted facts patch — no need for a full diff
 	patch := vdom.Patch{
 		NodeID: int(nodeID),
 		Type:   vdom.PatchFacts,
-		Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Props: map[string]any{"value": value}}},
+		Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Props: map[string]any{propKey: propVal}}},
 	}
 	msg := render.EncodePatchMessage([]vdom.Patch{patch})
 	ci.Mu.Unlock()
@@ -716,13 +764,13 @@ func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPoo
 		args[i] = json.RawMessage(a)
 	}
 
-	// Sync g-bind values from the live tree back to the struct.
+	// Sync g-bind and g-value/g-checked values from the live tree back to the struct.
 	// Layer 1 keeps Tree props in sync with browser input values,
 	// so we read from Tree and write to the struct before the method runs.
 	if ci.Tree != nil && ci.Bindings != nil {
 		for field, bindings := range ci.Bindings {
 			for _, b := range bindings {
-				if b.Kind != "bind" {
+				if b.Kind != "bind" && b.Kind != "prop" {
 					continue
 				}
 				node := vdom.FindNodeByID(ci.Tree, b.NodeID)
@@ -736,7 +784,11 @@ func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPoo
 				if el.Facts.Props == nil {
 					continue
 				}
-				val, exists := el.Facts.Props["value"]
+				propKey := "value"
+				if b.Kind == "prop" && b.Prop != "" {
+					propKey = b.Prop
+				}
+				val, exists := el.Facts.Props[propKey]
 				if !exists {
 					continue
 				}
