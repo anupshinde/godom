@@ -24,7 +24,6 @@
     var nodeMap = {};       // node ID (int) → DOM node
     var pluginState = {};   // node ID → true if plugin init called
     var pendingPluginInits = []; // deferred init calls (element not yet in DOM)
-    var rootNode;           // the root DOM node (document.body)
 
     var Proto = godomProto;
     var textDecoder = new TextDecoder();
@@ -75,50 +74,31 @@
                 reconnectDelay = 1000;
 
                 var targetNodeId = msg.targetNodeId || 0;
+                var target = targetNodeId ? nodeMap[targetNodeId] : document.body;
+                if (!target) {
+                    console.warn("[godom init] slot node " + targetNodeId + " not found in nodeMap");
+                    return;
+                }
 
                 if (targetNodeId) {
-                    // Slot mode: render into slot element via nodeMap
-                    var target = nodeMap[targetNodeId];
-                    if (!target) {
-                        console.warn("[godom init] slot node " + targetNodeId + " not found in nodeMap");
-                        return;
-                    }
-                    // Clean only this target's nodeMap entries
                     cleanNodeMap(target);
-                    target.innerHTML = "";
-
-                    var tree = JSON.parse(textDecoder.decode(msg.tree));
-                    if (tree) {
-                        var domNode = buildDOM(tree);
-                        if (domNode) {
-                            if (tree.tag === "body") {
-                                while (domNode.firstChild) {
-                                    target.appendChild(domNode.firstChild);
-                                }
-                                nodeMap[tree.id] = target;
-                            } else {
-                                target.appendChild(domNode);
-                            }
-                        }
-                    }
                 } else {
-                    // Single-component mode: render into body
                     nodeMap = {};
                     pluginState = {};
-                    var tree = JSON.parse(textDecoder.decode(msg.tree));
-                    document.body.innerHTML = "";
-                    rootNode = document.body;
-                    if (tree) {
-                        var domNode = buildDOM(tree);
-                        if (domNode) {
-                            if (tree.tag === "body") {
-                                while (domNode.firstChild) {
-                                    rootNode.appendChild(domNode.firstChild);
-                                }
-                                nodeMap[tree.id] = rootNode;
-                            } else {
-                                rootNode.appendChild(domNode);
+                }
+                target.innerHTML = "";
+
+                var tree = JSON.parse(textDecoder.decode(msg.tree));
+                if (tree) {
+                    var domNode = buildDOM(tree);
+                    if (domNode) {
+                        if (tree.tag === "body") {
+                            while (domNode.firstChild) {
+                                target.appendChild(domNode.firstChild);
                             }
+                            nodeMap[tree.id] = target;
+                        } else {
+                            target.appendChild(domNode);
                         }
                     }
                 }
