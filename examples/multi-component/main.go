@@ -28,12 +28,12 @@ func main() {
 	// Navbar
 	navbar := &Navbar{ComponentCount: 7, Status: "Connected"}
 	eng.Mount(navbar, ui, "ui/navbar/index.html")
-	eng.AddChild(layout, navbar, "navbar")
+	eng.AddToSlot(layout, "navbar", navbar)
 
 	// Toast
 	toast := &Toast{}
 	eng.Mount(toast, ui, "ui/toast/index.html")
-	eng.AddChild(layout, toast, "toast")
+	eng.AddToSlot(layout, "toast", toast)
 
 	// Sidebar
 	sidebar := &Sidebar{
@@ -55,32 +55,32 @@ func main() {
 	}
 	sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
 	eng.Mount(sidebar, ui, "ui/sidebar/index.html")
-	eng.AddChild(layout, sidebar, "sidebar")
+	eng.AddToSlot(layout, "sidebar", sidebar)
 
 	// Counter
 	counter := &Counter{Step: 1}
 	eng.Mount(counter, ui, "ui/counter/index.html")
-	eng.AddChild(layout, counter, "counter")
+	eng.AddToSlot(layout, "counter", counter)
 
 	// Clock
 	clock := &Clock{}
 	eng.Mount(clock, ui, "ui/clock/index.html")
-	eng.AddChild(layout, clock, "clock")
+	eng.AddToSlot(layout, "clock", clock)
 
 	// System Monitor
 	monitor := &Monitor{}
 	eng.Mount(monitor, ui, "ui/monitor/index.html")
-	eng.AddChild(layout, monitor, "monitor")
+	eng.AddToSlot(layout, "monitor", monitor)
 
 	// Stock Ticker
 	ticker := &Ticker{}
 	eng.Mount(ticker, ui, "ui/ticker/index.html")
-	eng.AddChild(layout, ticker, "ticker")
+	eng.AddToSlot(layout, "ticker", ticker)
 
 	// Tips
 	tips := &Tips{}
 	eng.Mount(tips, ui, "ui/tips/index.html")
-	eng.AddChild(layout, tips, "tips")
+	eng.AddToSlot(layout, "tips", tips)
 
 	go clock.startClock()
 	go monitor.startMonitor()

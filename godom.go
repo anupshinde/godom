@@ -91,7 +91,7 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 // The entryPath is the path to the index.html file within fsys (e.g. "ui/index.html").
 //
 // For single-component apps, call Mount once. For multi-component apps, call
-// Mount for each component and use AddChild to establish parent-child relationships.
+// Mount for each component and use AddToSlot to place them into parent slots.
 // The root component (no parent) provides the full page HTML; child components
 // provide HTML fragments that render into the parent's <g-slot> placeholders.
 func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
@@ -153,17 +153,16 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 	a.compIndex[comp] = idx
 }
 
-// AddChild registers a child component to render into a named <g-slot> in the
-// parent component's template. The parent must already be mounted.
-// The child will target the slot's VDOM node in the parent's resolved tree.
-func (a *Engine) AddChild(parent, child interface{}, slotName string) {
+// AddToSlot registers a child component to render into a named <g-slot> in the
+// parent component's template. Both parent and child must already be mounted.
+func (a *Engine) AddToSlot(parent interface{}, slotName string, child interface{}) {
 	parentIdx, ok := a.compIndex[parent]
 	if !ok {
-		log.Fatal("godom: AddChild called with unmounted parent")
+		log.Fatal("godom: AddToSlot called with unmounted parent")
 	}
 	childIdx, ok := a.compIndex[child]
 	if !ok {
-		log.Fatal("godom: AddChild called with unmounted child")
+		log.Fatal("godom: AddToSlot called with unmounted child")
 	}
 	for i, mc := range a.comps {
 		if i != childIdx && mc.ParentIdx == parentIdx && mc.SlotName == slotName {
