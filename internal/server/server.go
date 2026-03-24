@@ -406,6 +406,17 @@ func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
 			}
 			ci.NodeStableIDs = remapped
 		}
+		if ci.InputBindings != nil {
+			remappedIB := make(map[int]vdom.InputBinding, len(ci.InputBindings))
+			for nodeID, ib := range ci.InputBindings {
+				if mergedID, ok := remap[nodeID]; ok {
+					remappedIB[mergedID] = ib
+				} else {
+					remappedIB[nodeID] = ib
+				}
+			}
+			ci.InputBindings = remappedIB
+		}
 	}
 
 	if len(patches) == 0 {
@@ -435,6 +446,7 @@ func buildTree(ci *component.Info) *vdom.ElementNode {
 	if ctx.Bindings != nil {
 		ci.Bindings = ctx.Bindings
 	}
+	ci.InputBindings = ctx.InputBindings
 	ci.NodeStableIDs = nodeStableIDs
 
 	return root
@@ -482,6 +494,12 @@ func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
 					NodeID: b.NodeID,
 					Type:   vdom.PatchFacts,
 					Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Attrs: map[string]string{b.Prop: strVal}}},
+				})
+			case "bind":
+				patches = append(patches, vdom.Patch{
+					NodeID: b.NodeID,
+					Type:   vdom.PatchFacts,
+					Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Props: map[string]any{"value": strVal}}},
 				})
 			case "text":
 				patches = append(patches, vdom.Patch{
@@ -552,6 +570,13 @@ func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
 						pv = truthy
 					}
 					el.Facts.Props[b.Prop] = pv
+				}
+			case "bind":
+				if el, ok := node.(*vdom.ElementNode); ok {
+					if el.Facts.Props == nil {
+						el.Facts.Props = make(map[string]any)
+					}
+					el.Facts.Props["value"] = strVal
 				}
 			case "attr":
 				if el, ok := node.(*vdom.ElementNode); ok {
@@ -687,11 +712,6 @@ func handleNodeEvent(ci *component.Info, nodeID int32, value string, pool *connP
 		return
 	}
 
-	// Update the live tree in place
-	if el.Facts.Props == nil {
-		el.Facts.Props = make(map[string]any)
-	}
-
 	// Checkboxes send "true"/"false" and use Props["checked"] (bool)
 	isCheckbox := el.Tag == "input" && el.Facts.Attrs["type"] == "checkbox"
 	propKey := "value"
@@ -700,37 +720,33 @@ func handleNodeEvent(ci *component.Info, nodeID int32, value string, pool *connP
 		propKey = "checked"
 		propVal = value == "true"
 	}
-	el.Facts.Props[propKey] = propVal
 
-	// Sync bound fields back to the struct so ci.Tree and the struct stay
-	// in sync. Without this, BuildInit would send the stale tree value
-	// instead of the struct value after a method changes the field.
-	boundFieldSynced := false
-	if ci.Bindings != nil {
-		for field, bindings := range ci.Bindings {
-			for _, b := range bindings {
-				if b.NodeID == int(nodeID) && (b.Kind == "prop" || b.Kind == "bind") {
-					raw, err := json.Marshal(propVal)
-					if err == nil {
-						setPath := field
-						if b.Expr != "" {
-							setPath = b.Expr
-						}
-						ci.SetField(setPath, json.RawMessage(raw))
-						boundFieldSynced = true
-					}
-				}
+	// If this node has an input binding (g-bind, g-value, g-checked),
+	// sync the value to the struct and trigger a full refresh so all
+	// nodes referencing that field get updated (including computed methods).
+	// Don't update ci.Tree directly — BuildUpdate will rebuild from the
+	// struct, diff against the old tree, and produce proper patches.
+	if ib, ok := ci.InputBindings[int(nodeID)]; ok {
+		raw, err := json.Marshal(propVal)
+		if err == nil {
+			setPath := ib.Field
+			if ib.Expr != "" {
+				setPath = ib.Expr
 			}
+			ci.SetField(setPath, json.RawMessage(raw))
+		}
+		if ci.RefreshFn != nil {
+			ci.Mu.Unlock()
+			ci.RefreshFn()
+			return
 		}
 	}
 
-	// If we synced a bound field, do a full refresh so all nodes referencing
-	// that field (e.g. g-text) get updated — not just the input node itself.
-	if boundFieldSynced && ci.RefreshFn != nil {
-		ci.Mu.Unlock()
-		ci.RefreshFn()
-		return
+	// Unbound input: update tree directly and broadcast targeted patch
+	if el.Facts.Props == nil {
+		el.Facts.Props = make(map[string]any)
 	}
+	el.Facts.Props[propKey] = propVal
 
 	// Store unbound input value so it survives tree rebuilds
 	if stableKey, ok := ci.NodeStableIDs[int(nodeID)]; ok {

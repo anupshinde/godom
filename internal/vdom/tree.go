@@ -413,12 +413,22 @@ type Binding struct {
 	Expr   string // original expression (e.g., "Inputs[first]") — used by g-bind to write back
 }
 
+// InputBinding is the reverse lookup: nodeID → field info for input nodes.
+type InputBinding struct {
+	Field string // struct field name (binding key)
+	Expr  string // original expression (e.g., "Inputs[first]")
+	Prop  string // "value" or "checked"
+}
+
 // ResolveContext holds the state and loop variables available during tree resolution.
 type ResolveContext struct {
 	State    reflect.Value        // the component struct (or pointer to it)
 	Vars     map[string]any       // loop variables: {todo: item, i: index}
 	IDs      *IDCounter           // node ID allocator (must persist across renders)
 	Bindings map[string][]Binding // field name → bindings (built during resolve)
+
+	// Reverse lookup: nodeID → field for input bindings (g-bind, g-value, g-checked)
+	InputBindings map[int]InputBinding
 
 	// Unbound input support
 	UnboundValues map[string]any    // stableKey → stored value (passed in from component.Info)
@@ -449,6 +459,14 @@ func (ctx *ResolveContext) addBinding(expr string, nodeID int, kind, prop string
 		ctx.Bindings = make(map[string][]Binding)
 	}
 	ctx.Bindings[bindKey] = append(ctx.Bindings[bindKey], Binding{NodeID: nodeID, Kind: kind, Prop: prop, Expr: expr})
+
+	// Build reverse lookup for input bindings (g-bind, g-value, g-checked)
+	if kind == "bind" || kind == "prop" {
+		if ctx.InputBindings == nil {
+			ctx.InputBindings = make(map[int]InputBinding)
+		}
+		ctx.InputBindings[nodeID] = InputBinding{Field: bindKey, Expr: expr, Prop: prop}
+	}
 }
 
 // ResolveTree resolves a list of template nodes into concrete Nodes.
@@ -555,9 +573,7 @@ func resolveElementNode(t *TemplateNode, ctx *ResolveContext) Node {
 			val := ResolveExpr(d.Expr, ctx)
 			text := fmt.Sprint(val)
 			textID := nextID(ctx)
-			if text != "" {
-				el.Children = []Node{&TextNode{NodeBase: NodeBase{ID: textID}, Text: text}}
-			}
+			el.Children = []Node{&TextNode{NodeBase: NodeBase{ID: textID}, Text: text}}
 			ctx.addBinding(d.Expr, textID, "text", "")
 			return el
 		}

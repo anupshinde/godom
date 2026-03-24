@@ -935,8 +935,8 @@ func TestMergeAdjacentText_DropsEmptyText(t *testing.T) {
 }
 
 func TestResolveElementNode_GTextEmpty(t *testing.T) {
-	// When g-text resolves to "", the element should have no children
-	// because the browser creates no DOM text node for empty innerHTML.
+	// Even when g-text resolves to "", the element must have a text node child
+	// so the bridge can target it with PatchText updates later.
 	tmpl := &TemplateNode{
 		Tag:        "div",
 		Directives: []Directive{{Type: "text", Expr: "Name"}},
@@ -951,8 +951,15 @@ func TestResolveElementNode_GTextEmpty(t *testing.T) {
 		t.Fatalf("expected 1 element, got %d", len(nodes))
 	}
 	el := nodes[0].(*ElementNode)
-	if len(el.Children) != 0 {
-		t.Errorf("expected 0 children for empty g-text, got %d", len(el.Children))
+	if len(el.Children) != 1 {
+		t.Fatalf("expected 1 child (empty text node), got %d", len(el.Children))
+	}
+	tn, ok := el.Children[0].(*TextNode)
+	if !ok {
+		t.Fatalf("child is not a TextNode")
+	}
+	if tn.Text != "" {
+		t.Errorf("expected empty text, got %q", tn.Text)
 	}
 }
 
