@@ -35,8 +35,7 @@ type MountedComponent struct {
 
 // Config holds everything the server needs to run.
 type Config struct {
-	Comp    *component.Info     // single-component mode (no slots)
-	Comps   []*MountedComponent // multi-component mode
+	Comps   []*MountedComponent
 	Plugins map[string][]string
 	StaticFS  fs.FS
 	Port      int
@@ -68,26 +67,17 @@ func Run(cfg Config) error {
 		}
 	}
 
-	multiMode := len(cfg.Comps) > 0
-
-	// In multi-component mode, all components share a single IDCounter
-	// so node IDs are globally unique across the bridge's nodeMap.
-	var sharedIDCounter *vdom.IDCounter
-	if multiMode {
-		sharedIDCounter = &vdom.IDCounter{}
-		for _, mc := range cfg.Comps {
-			mc.Info.IDCounter = sharedIDCounter
-		}
+	// All components share a single IDCounter so node IDs are globally
+	// unique across the bridge's nodeMap.
+	sharedIDCounter := &vdom.IDCounter{}
+	for _, mc := range cfg.Comps {
+		mc.Info.IDCounter = sharedIDCounter
 	}
 
 	// Wire up Refresh for each component.
-	if multiMode {
-		for _, mc := range cfg.Comps {
-			mc := mc // capture for closure
-			wireRefreshMulti(mc, pool)
-		}
-	} else {
-		wireRefresh(cfg.Comp, pool)
+	for _, mc := range cfg.Comps {
+		mc := mc // capture for closure
+		wireRefresh(mc, pool)
 	}
 
 	mux := http.NewServeMux()
@@ -107,17 +97,13 @@ func Run(cfg Config) error {
 	}
 	injectedJS += "<script>" + cfg.BridgeJS + "</script>\n"
 
+	// The root component (ParentIdx < 0) provides the page HTML.
 	var pageHTML string
-	if multiMode {
-		// In multi-component mode, the root component (no parent) provides the page HTML.
-		for _, mc := range cfg.Comps {
-			if mc.ParentIdx < 0 {
-				pageHTML = strings.Replace(mc.Info.HTMLBody, "</body>", injectedJS+"</body>", 1)
-				break
-			}
+	for _, mc := range cfg.Comps {
+		if mc.ParentIdx < 0 {
+			pageHTML = strings.Replace(mc.Info.HTMLBody, "</body>", injectedJS+"</body>", 1)
+			break
 		}
-	} else {
-		pageHTML = strings.Replace(cfg.Comp.HTMLBody, "</body>", injectedJS+"</body>", 1)
 	}
 
 	// Serve static assets (CSS, images, etc.) from the embedded UI filesystem.
@@ -155,30 +141,19 @@ func Run(cfg Config) error {
 
 		wc := pool.add(conn)
 
-		// Send init for each component.
-		// Components are sent in order: parents before children.
-		// initOrder ensures this by topological sort on ParentIdx.
-		if multiMode {
-			for _, idx := range initOrder(cfg.Comps) {
-				mc := cfg.Comps[idx]
-				// Resolve slot node ID from parent's tree (parent is already initialized).
-				if mc.ParentIdx >= 0 && mc.SlotName != "" {
-					parentTree := cfg.Comps[mc.ParentIdx].Info.Tree
-					mc.SlotNodeID = findSlotNodeID(parentTree, mc.SlotName)
-					if mc.SlotNodeID == 0 {
-						log.Printf("godom: slot %q not found in parent tree", mc.SlotName)
-					}
-				}
-				if err := handleInitMulti(wc, mc.Info, mc.SlotNodeID); err != nil {
-					log.Printf("godom: failed to compute init for slot %q: %v", mc.SlotName, err)
-					pool.remove(wc)
-					conn.Close()
-					return
+		// Send init for each component in topological order (parents before children).
+		for _, idx := range initOrder(cfg.Comps) {
+			mc := cfg.Comps[idx]
+			// Resolve slot node ID from parent's tree (parent is already initialized).
+			if mc.ParentIdx >= 0 && mc.SlotName != "" {
+				parentTree := cfg.Comps[mc.ParentIdx].Info.Tree
+				mc.SlotNodeID = findSlotNodeID(parentTree, mc.SlotName)
+				if mc.SlotNodeID == 0 {
+					log.Printf("godom: slot %q not found in parent tree", mc.SlotName)
 				}
 			}
-		} else {
-			if err := handleInit(wc, cfg.Comp); err != nil {
-				log.Printf("godom: failed to compute init: %v", err)
+			if err := handleInit(wc, mc.Info, mc.SlotNodeID); err != nil {
+				log.Printf("godom: failed to compute init for slot %q: %v", mc.SlotName, err)
 				pool.remove(wc)
 				conn.Close()
 				return
@@ -219,12 +194,8 @@ func Run(cfg Config) error {
 					log.Printf("godom: node event unmarshal error: %v", err)
 					continue
 				}
-				if multiMode {
-					if ci := findComponentByNodeID(cfg.Comps, int(evt.NodeId)); ci != nil {
-						handleNodeEvent(ci, evt.NodeId, evt.Value, pool)
-					}
-				} else {
-					handleNodeEvent(cfg.Comp, evt.NodeId, evt.Value, pool)
+				if ci := findComponentByNodeID(cfg.Comps, int(evt.NodeId)); ci != nil {
+					handleNodeEvent(ci, evt.NodeId, evt.Value, pool)
 				}
 
 			case 2: // MethodCall (Layer 2)
@@ -233,12 +204,8 @@ func Run(cfg Config) error {
 					log.Printf("godom: method call unmarshal error: %v", err)
 					continue
 				}
-				if multiMode {
-					if ci := findComponentByNodeID(cfg.Comps, int(call.NodeId)); ci != nil {
-						handleMethodCall(ci, call, pool)
-					}
-				} else {
-					handleMethodCall(cfg.Comp, call, pool)
+				if ci := findComponentByNodeID(cfg.Comps, int(call.NodeId)); ci != nil {
+					handleMethodCall(ci, call, pool)
 				}
 			}
 		}
@@ -279,34 +246,10 @@ func Run(cfg Config) error {
 	return http.Serve(ln, mux)
 }
 
-// wireRefresh sets up the RefreshFn for single-component mode.
-func wireRefresh(ci *component.Info, pool *connPool) {
-	ci.RefreshFn = func() {
-		ci.Mu.Lock()
-		fields := ci.MarkedFields
-		ci.MarkedFields = nil
-		if len(fields) > 0 {
-			patches := buildSurgicalPatches(ci, fields)
-			if len(patches) > 0 {
-				ci.Mu.Unlock()
-				msg := render.EncodePatchMessage(patches)
-				data, _ := proto.Marshal(msg)
-				pool.broadcast(data)
-				return
-			}
-		}
-		msg := BuildUpdate(ci)
-		ci.Mu.Unlock()
-		if msg != nil {
-			data, _ := proto.Marshal(msg)
-			pool.broadcast(data)
-		}
-	}
-}
-
-// wireRefreshMulti sets up the RefreshFn for a component in multi-component mode.
+// wireRefresh sets up the RefreshFn for a mounted component.
 // The slot node ID is read from mc.SlotNodeID at refresh time (set during init).
-func wireRefreshMulti(mc *MountedComponent, pool *connPool) {
+// For root components, SlotNodeID is 0, which tells the bridge to render into body.
+func wireRefresh(mc *MountedComponent, pool *connPool) {
 	ci := mc.Info
 	ci.RefreshFn = func() {
 		ci.Mu.Lock()
@@ -704,18 +647,7 @@ func (p *connPool) broadcastClose(closeMsg []byte) {
 
 // --- Message handlers ---
 
-func handleInit(wc *wsConn, ci *component.Info) error {
-	ci.Mu.Lock()
-	msg := BuildInit(ci)
-	ci.Mu.Unlock()
-	data, err := proto.Marshal(msg)
-	if err != nil {
-		return err
-	}
-	return wc.writeBinary(data)
-}
-
-func handleInitMulti(wc *wsConn, ci *component.Info, targetNodeID int32) error {
+func handleInit(wc *wsConn, ci *component.Info, targetNodeID int32) error {
 	ci.Mu.Lock()
 	msg := BuildInit(ci)
 	msg.TargetNodeId = targetNodeID

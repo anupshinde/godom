@@ -22,9 +22,9 @@ var gAttrRe = regexp.MustCompile(`(g-[a-z]+(?::[a-z-]+)?)\s*=\s*"([^"]*)"`)
 // ExpandComponents takes HTML and recursively replaces custom element tags
 // with the contents of their corresponding HTML files from the filesystem.
 func ExpandComponents(htmlStr string, fsys fs.FS, baseDir string) (string, error) {
-	maxDepth := 10
+	maxExpansions := 10
 	searchFrom := 0
-	for depth := 0; depth < maxDepth; depth++ {
+	for expansions := 0; expansions < maxExpansions; expansions++ {
 		loc := openTagRe.FindStringSubmatchIndex(htmlStr[searchFrom:])
 		if loc == nil {
 			break
@@ -41,7 +41,7 @@ func ExpandComponents(htmlStr string, fsys fs.FS, baseDir string) (string, error
 		// Skip g-* tags — these are framework directives, not custom components.
 		if strings.HasPrefix(tagName, "g-") {
 			searchFrom = loc[1]
-			depth--
+			expansions--
 			continue
 		}
 

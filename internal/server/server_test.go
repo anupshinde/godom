@@ -562,7 +562,7 @@ func TestHandleInit_SendsInitMessage(t *testing.T) {
 	<-done
 
 	wc := &wsConn{conn: serverConn}
-	if err := handleInit(wc, ci); err != nil {
+	if err := handleInit(wc, ci, 0); err != nil {
 		t.Fatalf("handleInit error: %v", err)
 	}
 
@@ -1914,7 +1914,7 @@ func TestRun_ServesHTML(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comp:      ci,
+		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -1954,7 +1954,7 @@ func TestRun_AuthRejectsWithoutToken(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comp:      ci,
+		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
 		NoAuth:    false,
 		Token:     "testsecret",
 		NoBrowser: true,
@@ -1984,7 +1984,7 @@ func TestRun_AuthAcceptsWithToken(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comp:      ci,
+		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
 		NoAuth:    false,
 		Token:     "testsecret",
 		NoBrowser: true,
@@ -2043,7 +2043,7 @@ func TestRun_WebSocketUpgrade(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comp:      ci,
+		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -2086,7 +2086,7 @@ func TestRun_WebSocketMethodCall(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comp:      ci,
+		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -2153,7 +2153,7 @@ func TestRun_WebSocketNodeEvent(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comp:      ci,
+		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -2226,7 +2226,7 @@ func TestRun_WebSocketAuthReject(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comp:      ci,
+		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
 		NoAuth:    false,
 		Token:     "secret",
 		NoBrowser: true,
@@ -2256,7 +2256,7 @@ func TestRun_PluginScripts(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comp:      ci,
+		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -2293,7 +2293,7 @@ func TestRun_StaticFiles(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comp:      ci,
+		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -2654,7 +2654,7 @@ func TestRun_WebSocketIgnoresNonBinary(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comp:      ci,
+		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -2709,7 +2709,7 @@ func TestRun_WebSocketBadProtobuf(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comp:      ci,
+		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -3031,7 +3031,7 @@ func walkTree(n vdom.Node, fn func(vdom.Node)) {
 func startTestServer(t *testing.T, cfg Config) (string, error) {
 	t.Helper()
 
-	ci := cfg.Comp
+	ci := cfg.Comps[0].Info
 	pool := &connPool{}
 
 	var token string
@@ -3113,7 +3113,7 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 			return
 		}
 		wc := pool.add(conn)
-		if err := handleInit(wc, ci); err != nil {
+		if err := handleInit(wc, ci, 0); err != nil {
 			pool.remove(wc)
 			conn.Close()
 			return
