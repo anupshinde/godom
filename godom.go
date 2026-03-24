@@ -166,6 +166,11 @@ func (a *Engine) AddChild(parent, child interface{}, slotName string) {
 	if !ok {
 		log.Fatal("godom: AddChild called with unmounted child")
 	}
+	for i, mc := range a.comps {
+		if i != childIdx && mc.ParentIdx == parentIdx && mc.SlotName == slotName {
+			log.Fatalf("godom: slot %q on this parent already has a component", slotName)
+		}
+	}
 	a.comps[childIdx].ParentIdx = parentIdx
 	a.comps[childIdx].SlotName = slotName
 }

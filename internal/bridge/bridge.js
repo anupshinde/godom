@@ -75,14 +75,14 @@
                 hideDisconnectOverlay();
                 reconnectDelay = 1000;
 
-                var targetId = msg.targetId || "";
+                var targetNodeId = msg.targetNodeId || 0;
 
-                if (targetId) {
-                    // Multi-component mode: render into target element
+                if (targetNodeId) {
+                    // Multi-component mode: render into slot element via nodeMap
                     multiMode = true;
-                    var target = document.getElementById(targetId);
+                    var target = nodeMap[targetNodeId];
                     if (!target) {
-                        console.warn("[godom init] target element #" + targetId + " not found");
+                        console.warn("[godom init] slot node " + targetNodeId + " not found in nodeMap");
                         return;
                     }
                     // Clean only this target's nodeMap entries

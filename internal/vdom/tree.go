@@ -99,7 +99,32 @@ func ParseTemplate(htmlStr string) ([]*TemplateNode, error) {
 			nodes = append(nodes, tn)
 		}
 	}
+	if err := checkDuplicateSlots(nodes); err != nil {
+		return nil, err
+	}
 	return nodes, nil
+}
+
+// checkDuplicateSlots walks the template tree and returns an error if any
+// static slot name appears more than once.
+func checkDuplicateSlots(nodes []*TemplateNode) error {
+	seen := map[string]bool{}
+	var walk func([]*TemplateNode) error
+	walk = func(nodes []*TemplateNode) error {
+		for _, n := range nodes {
+			if n.IsSlot && n.SlotExpr != "" && !strings.Contains(n.SlotExpr, ".") && !strings.Contains(n.SlotExpr, "{") {
+				if seen[n.SlotExpr] {
+					return fmt.Errorf("duplicate <g-slot> name %q in template", n.SlotExpr)
+				}
+				seen[n.SlotExpr] = true
+			}
+			if err := walk(n.Children); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return walk(nodes)
 }
 
 func htmlToTemplate(n *html.Node) *TemplateNode {
@@ -653,19 +678,14 @@ func resolveSlotNode(t *TemplateNode, ctx *ResolveContext) Node {
 	// name="counter" → "counter", name="{{slot.Name}}" → resolved value.
 	name := resolveAttrValue(t.SlotExpr, ctx)
 
-	// Create a div placeholder with an HTML id for the bridge to find,
-	// and a data attribute to mark it as a slot boundary for diff/merge.
+	// Create a plain div placeholder. Slot metadata lives on the VDOM node
+	// (IsSlot/SlotName), not in DOM attributes. The bridge targets this node
+	// via its VDOM ID (nodeMap lookup), not via getElementById.
 	el := &ElementNode{
-		NodeBase:  NodeBase{ID: id},
-		Tag:       "div",
-		Facts: Facts{
-			Props: map[string]any{
-				"id": "godom-slot-" + name,
-			},
-			Attrs: map[string]string{
-				"data-godom-slot": name,
-			},
-		},
+		NodeBase: NodeBase{ID: id},
+		Tag:      "div",
+		IsSlot:   true,
+		SlotName: name,
 	}
 	return el
 }

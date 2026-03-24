@@ -27,9 +27,10 @@ import (
 
 // MountedComponent pairs a component with its slot in a parent component.
 type MountedComponent struct {
-	Info      *component.Info
-	ParentIdx int    // index of parent component in Comps (-1 = no parent / root)
-	SlotName  string // slot name in parent's <g-slot> (empty = root, renders into body)
+	Info       *component.Info
+	ParentIdx  int    // index of parent component in Comps (-1 = no parent / root)
+	SlotName   string // slot name in parent's <g-slot> (empty = root, renders into body)
+	SlotNodeID int32  // VDOM node ID of the slot element in parent's tree (set during init)
 }
 
 // Config holds everything the server needs to run.
@@ -83,11 +84,10 @@ func Run(cfg Config) error {
 	if multiMode {
 		for _, mc := range cfg.Comps {
 			mc := mc // capture for closure
-			targetID := slotTargetID(mc.SlotName)
-			wireRefresh(mc.Info, targetID, pool)
+			wireRefreshMulti(mc, pool)
 		}
 	} else {
-		wireRefresh(cfg.Comp, "", pool)
+		wireRefresh(cfg.Comp, pool)
 	}
 
 	mux := http.NewServeMux()
@@ -161,9 +161,16 @@ func Run(cfg Config) error {
 		if multiMode {
 			for _, idx := range initOrder(cfg.Comps) {
 				mc := cfg.Comps[idx]
-				targetID := slotTargetID(mc.SlotName)
-				if err := handleInitMulti(wc, mc.Info, targetID); err != nil {
-					log.Printf("godom: failed to compute init for %s: %v", targetID, err)
+				// Resolve slot node ID from parent's tree (parent is already initialized).
+				if mc.ParentIdx >= 0 && mc.SlotName != "" {
+					parentTree := cfg.Comps[mc.ParentIdx].Info.Tree
+					mc.SlotNodeID = findSlotNodeID(parentTree, mc.SlotName)
+					if mc.SlotNodeID == 0 {
+						log.Printf("godom: slot %q not found in parent tree", mc.SlotName)
+					}
+				}
+				if err := handleInitMulti(wc, mc.Info, mc.SlotNodeID); err != nil {
+					log.Printf("godom: failed to compute init for slot %q: %v", mc.SlotName, err)
 					pool.remove(wc)
 					conn.Close()
 					return
@@ -272,9 +279,8 @@ func Run(cfg Config) error {
 	return http.Serve(ln, mux)
 }
 
-// wireRefresh sets up the RefreshFn for a component, tagging messages
-// with targetID for multi-component mode (empty for legacy mode).
-func wireRefresh(ci *component.Info, targetID string, pool *connPool) {
+// wireRefresh sets up the RefreshFn for a single-component (legacy) mode.
+func wireRefresh(ci *component.Info, pool *connPool) {
 	ci.RefreshFn = func() {
 		ci.Mu.Lock()
 		fields := ci.MarkedFields
@@ -284,30 +290,73 @@ func wireRefresh(ci *component.Info, targetID string, pool *connPool) {
 			if len(patches) > 0 {
 				ci.Mu.Unlock()
 				msg := render.EncodePatchMessage(patches)
-				msg.TargetId = targetID
 				data, _ := proto.Marshal(msg)
 				pool.broadcast(data)
 				return
 			}
-			// No patches produced (fields had no bindings) — fall through to full rebuild.
 		}
 		msg := BuildUpdate(ci)
 		ci.Mu.Unlock()
 		if msg != nil {
-			msg.TargetId = targetID
 			data, _ := proto.Marshal(msg)
 			pool.broadcast(data)
 		}
 	}
 }
 
-// slotTargetID returns the DOM element ID for a slot name.
-// Root components (empty slot name) return "" which means render into body.
-func slotTargetID(slotName string) string {
-	if slotName == "" {
-		return ""
+// wireRefreshMulti sets up the RefreshFn for a component in multi-component mode.
+// The slot node ID is read from mc.SlotNodeID at refresh time (set during init).
+func wireRefreshMulti(mc *MountedComponent, pool *connPool) {
+	ci := mc.Info
+	ci.RefreshFn = func() {
+		ci.Mu.Lock()
+		fields := ci.MarkedFields
+		ci.MarkedFields = nil
+		if len(fields) > 0 {
+			patches := buildSurgicalPatches(ci, fields)
+			if len(patches) > 0 {
+				ci.Mu.Unlock()
+				msg := render.EncodePatchMessage(patches)
+				msg.TargetNodeId = mc.SlotNodeID
+				data, _ := proto.Marshal(msg)
+				pool.broadcast(data)
+				return
+			}
+		}
+		msg := BuildUpdate(ci)
+		ci.Mu.Unlock()
+		if msg != nil {
+			msg.TargetNodeId = mc.SlotNodeID
+			data, _ := proto.Marshal(msg)
+			pool.broadcast(data)
+		}
 	}
-	return "godom-slot-" + slotName
+}
+
+// findSlotNodeID walks the resolved tree and returns the VDOM node ID of the
+// slot element with the given name. Returns 0 if not found.
+func findSlotNodeID(tree vdom.Node, slotName string) int32 {
+	if tree == nil {
+		return 0
+	}
+	switch n := tree.(type) {
+	case *vdom.ElementNode:
+		if n.IsSlot && n.SlotName == slotName {
+			return int32(n.ID)
+		}
+		for _, c := range n.Children {
+			if id := findSlotNodeID(c, slotName); id != 0 {
+				return id
+			}
+		}
+	case *vdom.KeyedElementNode:
+		for _, kc := range n.Children {
+			if id := findSlotNodeID(kc.Node, slotName); id != 0 {
+				return id
+			}
+		}
+	}
+	return 0
 }
 
 // initOrder returns indices into comps in topological order: parents before
@@ -666,10 +715,10 @@ func handleInit(wc *wsConn, ci *component.Info) error {
 	return wc.writeBinary(data)
 }
 
-func handleInitMulti(wc *wsConn, ci *component.Info, targetID string) error {
+func handleInitMulti(wc *wsConn, ci *component.Info, targetNodeID int32) error {
 	ci.Mu.Lock()
 	msg := BuildInit(ci)
-	msg.TargetId = targetID
+	msg.TargetNodeId = targetNodeID
 	ci.Mu.Unlock()
 	data, err := proto.Marshal(msg)
 	if err != nil {

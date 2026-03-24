@@ -73,7 +73,7 @@ func diffText(old, new *TextNode, patches *[]Patch) {
 // Slot nodes are opaque boundaries — their children are managed by child
 // components and must not be diffed or merged by the parent.
 func IsSlotNode(n *ElementNode) bool {
-	return n.Facts.Attrs != nil && n.Facts.Attrs["data-godom-slot"] != ""
+	return n.IsSlot
 }
 
 func diffElement(old, new *ElementNode, patches *[]Patch) {
