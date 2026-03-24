@@ -30,5 +30,4 @@ Not urgent while godom targets single-user local apps, but required before any m
 
 ## Open Questions
 
-- **Persistence:** Optional state save to disk?
 - **Testing:** How to test components without a browser? (Unit tests exist for parsing, rendering, validation, diffing, and merging — but no integration tests yet)

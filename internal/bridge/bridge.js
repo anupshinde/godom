@@ -211,7 +211,18 @@
     function applyProps(el, props) {
         if (!props) return;
         for (var key in props) {
-            el[key] = props[key];
+            if (key === "_scrollratio") {
+                // Deferred: content may not be laid out yet (e.g. innerHTML just changed).
+                // Convert fraction (0–1) to absolute scrollTop using actual dimensions.
+                var ratio = props[key];
+                (function(target, r) {
+                    requestAnimationFrame(function() {
+                        target.scrollTop = r * (target.scrollHeight - target.clientHeight);
+                    });
+                })(el, ratio);
+            } else {
+                el[key] = props[key];
+            }
         }
     }
 
@@ -435,6 +446,12 @@
                     el[key] = "";
                 } else if (key === "value" && el.tagName === "SELECT") {
                     deferSelectValue(el, val);
+                } else if (key === "_scrollratio") {
+                    (function(target, r) {
+                        requestAnimationFrame(function() {
+                            target.scrollTop = r * (target.scrollHeight - target.clientHeight);
+                        });
+                    })(el, val);
                 } else {
                     el[key] = val;
                 }
@@ -608,14 +625,14 @@
             return;
         }
 
-        // Throttle mousemove: dispatch at most once per animation frame.
-        var isMouseMove = (eventType === "mousemove");
+        // Throttle mousemove and scroll: dispatch at most once per animation frame.
+        var isThrottled = (eventType === "mousemove" || eventType === "scroll");
         var pendingFrame = 0;
         var latestDomEvent = null;
 
         el.addEventListener(eventType, function(domEvent) {
             if (ev.key && domEvent.key !== ev.key) return;
-            if (isMouseMove) {
+            if (isThrottled) {
                 latestDomEvent = domEvent;
                 if (pendingFrame) return;
                 pendingFrame = requestAnimationFrame(function() {
@@ -624,10 +641,18 @@
                     if (ev.sp) de.stopPropagation();
                     if (ev.pd) de.preventDefault();
                     var allArgs = ev.args ? ev.args.slice() : [];
-                    allArgs.unshift(
-                        textEncoder.encode(String(de.clientX)),
-                        textEncoder.encode(String(de.clientY))
-                    );
+                    if (eventType === "mousemove") {
+                        allArgs.unshift(
+                            textEncoder.encode(String(de.clientX)),
+                            textEncoder.encode(String(de.clientY))
+                        );
+                    } else if (eventType === "scroll") {
+                        allArgs.unshift(
+                            textEncoder.encode(String(Math.round(el.scrollTop))),
+                            textEncoder.encode(String(Math.round(el.scrollHeight))),
+                            textEncoder.encode(String(Math.round(el.clientHeight)))
+                        );
+                    }
                     sendMethodCall(nodeId, ev.method, allArgs);
                 });
                 return;

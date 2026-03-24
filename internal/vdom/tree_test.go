@@ -1264,7 +1264,7 @@ func TestResolve_GKeydown(t *testing.T) {
 }
 
 func TestResolve_MouseEvents(t *testing.T) {
-	eventTypes := []string{"mousedown", "mousemove", "mouseup", "wheel", "drop"}
+	eventTypes := []string{"mousedown", "mousemove", "mouseup", "wheel", "scroll", "drop"}
 
 	for _, evType := range eventTypes {
 		t.Run(evType, func(t *testing.T) {
@@ -3839,5 +3839,286 @@ func TestResolveFacts_InterpolatedAttr(t *testing.T) {
 	}
 	if href != "/user/42" {
 		t.Errorf("expected '/user/42', got %q", href)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// g-html directive tests
+// ---------------------------------------------------------------------------
+
+func TestParseTemplate_GHtmlDirective(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body>
+		<div g-html="Preview">placeholder</div>
+	</body></html>`
+
+	nodes, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	node := findTemplateTagWithDirective(nodes, "div", "html")
+	if node == nil {
+		t.Fatal("expected div element with html directive")
+	}
+	for _, d := range node.Directives {
+		if d.Type == "html" {
+			if d.Expr != "Preview" {
+				t.Errorf("expected Expr='Preview', got %q", d.Expr)
+			}
+			return
+		}
+	}
+	t.Error("html directive not found")
+}
+
+func TestResolve_GHtml(t *testing.T) {
+	tmpl := &TemplateNode{
+		Tag:        "div",
+		Directives: []Directive{{Type: "html", Expr: "Preview"}},
+	}
+
+	type comp struct {
+		Preview string
+	}
+
+	t.Run("resolves to innerHTML prop", func(t *testing.T) {
+		state := &comp{Preview: "<b>hello</b>"}
+		ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+		nodes := ResolveTemplateNode(tmpl, ctx)
+		el := nodes[0].(*ElementNode)
+		if el.Facts.Props["innerHTML"] != "<b>hello</b>" {
+			t.Errorf("expected innerHTML='<b>hello</b>', got %v", el.Facts.Props["innerHTML"])
+		}
+	})
+
+	t.Run("has no children", func(t *testing.T) {
+		state := &comp{Preview: "<b>hello</b>"}
+		ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+		nodes := ResolveTemplateNode(tmpl, ctx)
+		el := nodes[0].(*ElementNode)
+		if len(el.Children) != 0 {
+			t.Errorf("expected no children, got %d", len(el.Children))
+		}
+	})
+
+	t.Run("empty string resolves to empty innerHTML", func(t *testing.T) {
+		state := &comp{Preview: ""}
+		ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+		nodes := ResolveTemplateNode(tmpl, ctx)
+		el := nodes[0].(*ElementNode)
+		if el.Facts.Props["innerHTML"] != "" {
+			t.Errorf("expected empty innerHTML, got %v", el.Facts.Props["innerHTML"])
+		}
+	})
+
+	t.Run("registers binding", func(t *testing.T) {
+		state := &comp{Preview: "<p>test</p>"}
+		ctx := &ResolveContext{
+			State:    reflect.ValueOf(state),
+			Vars:     make(map[string]any),
+			Bindings: make(map[string][]Binding),
+		}
+		nodes := ResolveTemplateNode(tmpl, ctx)
+		el := nodes[0].(*ElementNode)
+		bs := ctx.Bindings["Preview"]
+		if len(bs) != 1 {
+			t.Fatalf("expected 1 binding, got %d", len(bs))
+		}
+		if bs[0].NodeID != el.ID {
+			t.Errorf("binding NodeID=%d, expected %d", bs[0].NodeID, el.ID)
+		}
+		if bs[0].Kind != "prop" || bs[0].Prop != "innerHTML" {
+			t.Errorf("expected binding kind=prop prop=innerHTML, got kind=%s prop=%s", bs[0].Kind, bs[0].Prop)
+		}
+	})
+}
+
+func TestDiff_GHtml_ChangeDetected(t *testing.T) {
+	// When innerHTML prop changes, a PatchFacts should be emitted
+	old := &ElementNode{
+		NodeBase: NodeBase{ID: 1},
+		Tag:      "div",
+		Facts:    Facts{Props: map[string]any{"innerHTML": "<b>old</b>"}},
+	}
+	new := &ElementNode{
+		NodeBase: NodeBase{ID: 1},
+		Tag:      "div",
+		Facts:    Facts{Props: map[string]any{"innerHTML": "<b>new</b>"}},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	if patches[0].Type != PatchFacts {
+		t.Errorf("expected PatchFacts, got %d", patches[0].Type)
+	}
+	fd := patches[0].Data.(PatchFactsData)
+	if fd.Diff.Props["innerHTML"] != "<b>new</b>" {
+		t.Errorf("expected innerHTML='<b>new</b>' in diff, got %v", fd.Diff.Props["innerHTML"])
+	}
+}
+
+func TestDiff_GHtml_NoChangeNoPatch(t *testing.T) {
+	old := &ElementNode{
+		NodeBase: NodeBase{ID: 1},
+		Tag:      "div",
+		Facts:    Facts{Props: map[string]any{"innerHTML": "<b>same</b>"}},
+	}
+	new := &ElementNode{
+		NodeBase: NodeBase{ID: 1},
+		Tag:      "div",
+		Facts:    Facts{Props: map[string]any{"innerHTML": "<b>same</b>"}},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+	patches := Diff(old, new)
+	if len(patches) != 0 {
+		t.Errorf("expected 0 patches for same innerHTML, got %d", len(patches))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// g-prop: directive tests
+// ---------------------------------------------------------------------------
+
+func TestParseTemplate_GPropDirective(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body>
+		<div g-prop:scroll-top="ScrollPos">content</div>
+	</body></html>`
+
+	nodes, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	node := findTemplateTagWithDirective(nodes, "div", "prop")
+	if node == nil {
+		t.Fatal("expected div element with prop directive")
+	}
+	for _, d := range node.Directives {
+		if d.Type == "prop" {
+			if d.Name != "scrollTop" {
+				t.Errorf("expected Name='scrollTop', got %q", d.Name)
+			}
+			if d.Expr != "ScrollPos" {
+				t.Errorf("expected Expr='ScrollPos', got %q", d.Expr)
+			}
+			return
+		}
+	}
+	t.Error("prop directive not found")
+}
+
+func TestResolve_GProp(t *testing.T) {
+	tmpl := &TemplateNode{
+		Tag:        "div",
+		Directives: []Directive{{Type: "prop", Name: "scrollTop", Expr: "Count"}},
+	}
+
+	t.Run("resolves to Facts.Props", func(t *testing.T) {
+		state := &testDirectiveState{Count: 42}
+		ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+		nodes := ResolveTemplateNode(tmpl, ctx)
+		el := nodes[0].(*ElementNode)
+		if el.Facts.Props["scrollTop"] != 42 {
+			t.Errorf("expected scrollTop=42, got %v", el.Facts.Props["scrollTop"])
+		}
+	})
+
+	t.Run("registers binding", func(t *testing.T) {
+		state := &testDirectiveState{Count: 100}
+		ctx := &ResolveContext{
+			State:    reflect.ValueOf(state),
+			Vars:     make(map[string]any),
+			Bindings: make(map[string][]Binding),
+		}
+		nodes := ResolveTemplateNode(tmpl, ctx)
+		el := nodes[0].(*ElementNode)
+		bs := ctx.Bindings["Count"]
+		if len(bs) != 1 {
+			t.Fatalf("expected 1 binding, got %d", len(bs))
+		}
+		if bs[0].NodeID != el.ID {
+			t.Errorf("binding NodeID=%d, expected %d", bs[0].NodeID, el.ID)
+		}
+		if bs[0].Kind != "prop" || bs[0].Prop != "scrollTop" {
+			t.Errorf("expected kind=prop prop=scrollTop, got kind=%s prop=%s", bs[0].Kind, bs[0].Prop)
+		}
+	})
+}
+
+func TestDiff_GProp_ChangeDetected(t *testing.T) {
+	old := &ElementNode{
+		NodeBase: NodeBase{ID: 1},
+		Tag:      "div",
+		Facts:    Facts{Props: map[string]any{"scrollTop": 0}},
+	}
+	new := &ElementNode{
+		NodeBase: NodeBase{ID: 1},
+		Tag:      "div",
+		Facts:    Facts{Props: map[string]any{"scrollTop": 500}},
+	}
+	ComputeDescendants(old)
+	ComputeDescendants(new)
+	patches := Diff(old, new)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	if patches[0].Type != PatchFacts {
+		t.Errorf("expected PatchFacts, got %d", patches[0].Type)
+	}
+	fd := patches[0].Data.(PatchFactsData)
+	if fd.Diff.Props["scrollTop"] != 500 {
+		t.Errorf("expected scrollTop=500 in diff, got %v", fd.Diff.Props["scrollTop"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// g-scroll directive tests
+// ---------------------------------------------------------------------------
+
+func TestParseTemplate_GScrollDirective(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body>
+		<textarea g-scroll="OnScroll"></textarea>
+	</body></html>`
+
+	nodes, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	node := findTemplateTagWithDirective(nodes, "textarea", "scroll")
+	if node == nil {
+		t.Fatal("expected textarea element with scroll directive")
+	}
+	for _, d := range node.Directives {
+		if d.Type == "scroll" {
+			if d.Expr != "OnScroll" {
+				t.Errorf("expected Expr='OnScroll', got %q", d.Expr)
+			}
+			return
+		}
+	}
+	t.Error("scroll directive not found")
+}
+
+func TestResolve_GScroll(t *testing.T) {
+	tmpl := &TemplateNode{
+		Tag:        "textarea",
+		Directives: []Directive{{Type: "scroll", Expr: "Handle"}},
+	}
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+	nodes := ResolveTemplateNode(tmpl, ctx)
+	el := nodes[0].(*ElementNode)
+
+	ev, ok := el.Facts.Events["scroll"]
+	if !ok {
+		t.Fatal("expected scroll event")
+	}
+	if ev.Handler != "Handle" {
+		t.Errorf("expected handler 'Handle', got %q", ev.Handler)
 	}
 }

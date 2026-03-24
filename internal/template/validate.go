@@ -11,7 +11,7 @@ import (
 )
 
 // directiveRe matches g-* attributes in HTML.
-var directiveRe = regexp.MustCompile(`g-(text|bind|value|click|keydown|mousedown|mousemove|mouseup|wheel|for|if|show|hide|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|style:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+|draggable(?::[a-zA-Z0-9_-]+)?|dropzone|drop(?::[a-zA-Z0-9_-]+)?)\s*=\s*"([^"]*)"`)
+var directiveRe = regexp.MustCompile(`g-(text|html|bind|value|click|keydown|mousedown|mousemove|mouseup|wheel|scroll|for|if|show|hide|checked|class:[a-zA-Z0-9_-]+|attr:[a-zA-Z0-9_-]+|style:[a-zA-Z0-9_-]+|prop:[a-zA-Z0-9_-]+|plugin:[a-zA-Z0-9_-]+|draggable(?::[a-zA-Z0-9_-]+)?|dropzone|drop(?::[a-zA-Z0-9_-]+)?)\s*=\s*"([^"]*)"`)
 
 // gForRe matches g-for attributes to extract loop variable names.
 var gForRe = regexp.MustCompile(`g-for\s*=\s*"([^"]*)"`)
@@ -59,7 +59,7 @@ func ValidateDirectives(htmlStr string, ci *component.Info) error {
 			if err := validateKeydownExpr(expr, ci, loopVars); err != nil {
 				return err
 			}
-		case "mousedown", "mousemove", "mouseup", "wheel":
+		case "mousedown", "mousemove", "mouseup", "wheel", "scroll":
 			if err := validateMethodRef("g-"+dirType, expr, ci, loopVars); err != nil {
 				return err
 			}
