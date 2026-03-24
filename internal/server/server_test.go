@@ -3295,3 +3295,179 @@ func TestBuildUpdate_RemapsNodeStableIDs_ElseBranch(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// initOrder tests
+// ---------------------------------------------------------------------------
+
+func TestInitOrder_SingleRoot(t *testing.T) {
+	comps := []*MountedComponent{
+		{ParentIdx: -1},
+	}
+	order := initOrder(comps)
+	if len(order) != 1 || order[0] != 0 {
+		t.Errorf("expected [0], got %v", order)
+	}
+}
+
+func TestInitOrder_ParentBeforeChildren(t *testing.T) {
+	comps := []*MountedComponent{
+		{ParentIdx: -1}, // 0: root
+		{ParentIdx: 0},  // 1: child of root
+		{ParentIdx: 0},  // 2: another child of root
+		{ParentIdx: 1},  // 3: grandchild
+	}
+	order := initOrder(comps)
+	if len(order) != 4 {
+		t.Fatalf("expected 4 items, got %d", len(order))
+	}
+
+	// Build position map
+	pos := map[int]int{}
+	for i, idx := range order {
+		pos[idx] = i
+	}
+	// Root must come before its children
+	if pos[0] >= pos[1] {
+		t.Error("root should come before child 1")
+	}
+	if pos[0] >= pos[2] {
+		t.Error("root should come before child 2")
+	}
+	if pos[1] >= pos[3] {
+		t.Error("child 1 should come before grandchild 3")
+	}
+}
+
+func TestInitOrder_ChildBeforeParent_InSlice(t *testing.T) {
+	// Even if child appears before parent in the slice, order is correct
+	comps := []*MountedComponent{
+		{ParentIdx: 1},  // 0: child of 1
+		{ParentIdx: -1}, // 1: root
+	}
+	order := initOrder(comps)
+	if len(order) != 2 {
+		t.Fatalf("expected 2, got %d", len(order))
+	}
+	if order[0] != 1 || order[1] != 0 {
+		t.Errorf("expected [1, 0], got %v", order)
+	}
+}
+
+func TestInitOrder_Empty(t *testing.T) {
+	order := initOrder(nil)
+	if len(order) != 0 {
+		t.Errorf("expected empty, got %v", order)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// findSlotNodeID tests
+// ---------------------------------------------------------------------------
+
+func TestFindSlotNodeID_Found(t *testing.T) {
+	tree := &vdom.ElementNode{
+		NodeBase: vdom.NodeBase{ID: 1}, Tag: "div",
+		Children: []vdom.Node{
+			&vdom.ElementNode{
+				NodeBase: vdom.NodeBase{ID: 2}, Tag: "div",
+				IsSlot: true, SlotName: "counter",
+			},
+			&vdom.TextNode{NodeBase: vdom.NodeBase{ID: 3}, Text: "hello"},
+		},
+	}
+	id := findSlotNodeID(tree, "counter")
+	if id != 2 {
+		t.Errorf("expected slot node ID 2, got %d", id)
+	}
+}
+
+func TestFindSlotNodeID_NotFound(t *testing.T) {
+	tree := &vdom.ElementNode{
+		NodeBase: vdom.NodeBase{ID: 1}, Tag: "div",
+		Children: []vdom.Node{
+			&vdom.TextNode{NodeBase: vdom.NodeBase{ID: 2}, Text: "hello"},
+		},
+	}
+	id := findSlotNodeID(tree, "counter")
+	if id != 0 {
+		t.Errorf("expected 0 for not found, got %d", id)
+	}
+}
+
+func TestFindSlotNodeID_NilTree(t *testing.T) {
+	id := findSlotNodeID(nil, "counter")
+	if id != 0 {
+		t.Errorf("expected 0 for nil tree, got %d", id)
+	}
+}
+
+func TestFindSlotNodeID_NestedInKeyed(t *testing.T) {
+	tree := &vdom.KeyedElementNode{
+		NodeBase: vdom.NodeBase{ID: 1}, Tag: "ul",
+		Children: []vdom.KeyedChild{
+			{Key: "a", Node: &vdom.ElementNode{
+				NodeBase: vdom.NodeBase{ID: 5}, Tag: "div",
+				IsSlot: true, SlotName: "sidebar",
+			}},
+		},
+	}
+	id := findSlotNodeID(tree, "sidebar")
+	if id != 5 {
+		t.Errorf("expected 5, got %d", id)
+	}
+}
+
+func TestFindSlotNodeID_TextNode(t *testing.T) {
+	// Text nodes aren't slot nodes; should return 0
+	tree := &vdom.TextNode{NodeBase: vdom.NodeBase{ID: 1}, Text: "hello"}
+	id := findSlotNodeID(tree, "counter")
+	if id != 0 {
+		t.Errorf("expected 0 for text node, got %d", id)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// findComponentByNodeID tests
+// ---------------------------------------------------------------------------
+
+func TestFindComponentByNodeID_Found(t *testing.T) {
+	ci1 := &component.Info{}
+	ci1.Tree = &vdom.ElementNode{
+		NodeBase: vdom.NodeBase{ID: 10}, Tag: "div",
+	}
+	ci2 := &component.Info{}
+	ci2.Tree = &vdom.ElementNode{
+		NodeBase: vdom.NodeBase{ID: 20}, Tag: "span",
+	}
+
+	comps := []*MountedComponent{
+		{Info: ci1, ParentIdx: -1},
+		{Info: ci2, ParentIdx: 0},
+	}
+
+	found := findComponentByNodeID(comps, 20)
+	if found != ci2 {
+		t.Error("expected to find ci2 for node ID 20")
+	}
+}
+
+func TestFindComponentByNodeID_NotFound(t *testing.T) {
+	ci := &component.Info{}
+	ci.Tree = &vdom.ElementNode{
+		NodeBase: vdom.NodeBase{ID: 10}, Tag: "div",
+	}
+	comps := []*MountedComponent{{Info: ci, ParentIdx: -1}}
+
+	found := findComponentByNodeID(comps, 999)
+	if found != nil {
+		t.Error("expected nil for non-existent node ID")
+	}
+}
+
+func TestFindComponentByNodeID_Empty(t *testing.T) {
+	found := findComponentByNodeID(nil, 1)
+	if found != nil {
+		t.Error("expected nil for empty comps")
+	}
+}

@@ -334,6 +334,112 @@ func TestMount_InvalidDirective(t *testing.T) {
 	}
 }
 
+// --- AddToSlot ---
+
+type childApp struct {
+	Component
+	Value string
+}
+
+var childHTML = `<!DOCTYPE html><html><head></head><body><span g-text="Value">placeholder</span></body></html>`
+
+func makeChildFS() fstest.MapFS {
+	return fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(childHTML)},
+	}
+}
+
+func TestAddToSlot_Valid(t *testing.T) {
+	e := NewEngine()
+	parent := &testApp{Name: "parent"}
+	child := &childApp{Value: "child"}
+
+	e.Mount(parent, makeTestFS(), "index.html")
+	e.Mount(child, makeChildFS(), "index.html")
+	e.AddToSlot(parent, "sidebar", child)
+
+	if len(e.comps) != 2 {
+		t.Fatalf("expected 2 comps, got %d", len(e.comps))
+	}
+	if e.comps[1].ParentIdx != 0 {
+		t.Errorf("expected child ParentIdx=0, got %d", e.comps[1].ParentIdx)
+	}
+	if e.comps[1].SlotName != "sidebar" {
+		t.Errorf("expected SlotName='sidebar', got %q", e.comps[1].SlotName)
+	}
+}
+
+func TestAddToSlot_UnmountedParent(t *testing.T) {
+	if os.Getenv("TEST_FATAL_ADDSLOT_PARENT") == "1" {
+		e := NewEngine()
+		child := &childApp{Value: "child"}
+		e.Mount(child, makeChildFS(), "index.html")
+		e.AddToSlot(&testApp{}, "sidebar", child) // parent not mounted
+		return
+	}
+	out := runSubprocess(t, "TestAddToSlot_UnmountedParent", "TEST_FATAL_ADDSLOT_PARENT")
+	if !strings.Contains(out, "unmounted parent") {
+		t.Errorf("expected 'unmounted parent' error, got: %s", out)
+	}
+}
+
+func TestAddToSlot_UnmountedChild(t *testing.T) {
+	if os.Getenv("TEST_FATAL_ADDSLOT_CHILD") == "1" {
+		e := NewEngine()
+		parent := &testApp{Name: "parent"}
+		e.Mount(parent, makeTestFS(), "index.html")
+		e.AddToSlot(parent, "sidebar", &childApp{}) // child not mounted
+		return
+	}
+	out := runSubprocess(t, "TestAddToSlot_UnmountedChild", "TEST_FATAL_ADDSLOT_CHILD")
+	if !strings.Contains(out, "unmounted child") {
+		t.Errorf("expected 'unmounted child' error, got: %s", out)
+	}
+}
+
+func TestAddToSlot_DuplicateSlot(t *testing.T) {
+	if os.Getenv("TEST_FATAL_ADDSLOT_DUP") == "1" {
+		e := NewEngine()
+		parent := &testApp{Name: "parent"}
+		child1 := &childApp{Value: "c1"}
+		child2 := &childApp{Value: "c2"}
+
+		e.Mount(parent, makeTestFS(), "index.html")
+		e.Mount(child1, makeChildFS(), "index.html")
+		e.Mount(child2, makeChildFS(), "index.html")
+
+		e.AddToSlot(parent, "sidebar", child1)
+		e.AddToSlot(parent, "sidebar", child2) // duplicate slot
+		return
+	}
+	out := runSubprocess(t, "TestAddToSlot_DuplicateSlot", "TEST_FATAL_ADDSLOT_DUP")
+	if !strings.Contains(out, "already has a component") {
+		t.Errorf("expected 'already has a component' error, got: %s", out)
+	}
+}
+
+func TestMount_MultipleComponents_StaticFSFromFirst(t *testing.T) {
+	e := NewEngine()
+	parent := &testApp{Name: "parent"}
+	child := &childApp{Value: "child"}
+
+	e.Mount(parent, makeTestFSNested(), "ui/index.html")
+	e.Mount(child, makeChildFS(), "index.html")
+
+	// staticFS should be derived from the first Mount call only
+	if e.staticFS == nil {
+		t.Fatal("expected staticFS to be set")
+	}
+	// It should be the "ui/" subdirectory from the first mount
+	data, err := fs.ReadFile(e.staticFS, "style.css")
+	if err != nil {
+		t.Errorf("expected staticFS from first mount, got error: %v", err)
+	}
+	if string(data) != "body{}" {
+		t.Errorf("unexpected content: %q", string(data))
+	}
+}
+
 func TestStart_NoMount(t *testing.T) {
 	e := NewEngine()
 	err := e.Start()

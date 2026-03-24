@@ -310,6 +310,42 @@ func TestExpandComponents_AttrsNoGAttrsNoProps(t *testing.T) {
 	}
 }
 
+func TestExpandComponents_SkipsGTags(t *testing.T) {
+	// g-* tags are framework directives, not custom components — they should
+	// be left in place and not trigger a file lookup.
+	fsys := fstest.MapFS{}
+	input := `<div><g-slot name="sidebar"></g-slot><span>after</span></div>`
+	result, err := ExpandComponents(input, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result, "g-slot") {
+		t.Errorf("expected g-slot to remain, got: %s", result)
+	}
+	if !strings.Contains(result, "<span>after</span>") {
+		t.Errorf("expected sibling to remain, got: %s", result)
+	}
+}
+
+func TestExpandComponents_GTagBeforeCustomElement(t *testing.T) {
+	// g-slot appears before a real custom element — g-slot is skipped,
+	// custom element is expanded.
+	fsys := fstest.MapFS{
+		"my-comp.html": {Data: []byte(`<span>expanded</span>`)},
+	}
+	input := `<div><g-slot name="x"></g-slot><my-comp></my-comp></div>`
+	result, err := ExpandComponents(input, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result, "g-slot") {
+		t.Errorf("expected g-slot to remain, got: %s", result)
+	}
+	if !strings.Contains(result, "<span>expanded</span>") {
+		t.Errorf("expected my-comp to be expanded, got: %s", result)
+	}
+}
+
 // === Negative tests and edge cases ===
 
 func TestExpandComponents_MaxDepthExhaustion(t *testing.T) {

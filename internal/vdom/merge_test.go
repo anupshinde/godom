@@ -952,3 +952,50 @@ func TestMergeTree_CanMerge_KeyedElementChild(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Slot boundary tests
+// ---------------------------------------------------------------------------
+
+func TestMergeTree_SlotBoundary_SkipsChildMerge(t *testing.T) {
+	// Slot nodes should NOT merge children — children are owned by child components.
+	dst := &ElementNode{
+		NodeBase: NodeBase{ID: 1}, Tag: "div", IsSlot: true, SlotName: "counter",
+		Children: []Node{&TextNode{NodeBase: NodeBase{ID: 2}, Text: "old child"}},
+	}
+	src := &ElementNode{
+		NodeBase: NodeBase{ID: 100}, Tag: "div", IsSlot: true, SlotName: "counter",
+		Children: []Node{&TextNode{NodeBase: NodeBase{ID: 101}, Text: "new child"}},
+	}
+
+	MergeTree(dst, src)
+
+	// Facts should be updated
+	// But children should remain from dst (not merged from src)
+	if len(dst.Children) != 1 {
+		t.Fatalf("expected 1 child, got %d", len(dst.Children))
+	}
+	text := dst.Children[0].(*TextNode).Text
+	if text != "old child" {
+		t.Errorf("expected slot children unchanged ('old child'), got %q", text)
+	}
+}
+
+func TestMergeTree_NonSlot_MergesChildren(t *testing.T) {
+	// Non-slot nodes should merge children normally.
+	dst := &ElementNode{
+		NodeBase: NodeBase{ID: 1}, Tag: "div",
+		Children: []Node{&TextNode{NodeBase: NodeBase{ID: 2}, Text: "old"}},
+	}
+	src := &ElementNode{
+		NodeBase: NodeBase{ID: 100}, Tag: "div",
+		Children: []Node{&TextNode{NodeBase: NodeBase{ID: 101}, Text: "new"}},
+	}
+
+	MergeTree(dst, src)
+
+	text := dst.Children[0].(*TextNode).Text
+	if text != "new" {
+		t.Errorf("expected merged text 'new', got %q", text)
+	}
+}
+
