@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Select &amp; Checkbox Test</title>
+    <style>
+        body { font-family: sans-serif; max-width: 500px; margin: 40px auto; }
+        select, button { font-size: 16px; padding: 6px 12px; margin: 4px; }
+        .result { margin-top: 16px; padding: 12px; background: #f0f0f0; border-radius: 4px; }
+        .section { margin-bottom: 32px; border-bottom: 1px solid #ddd; padding-bottom: 16px; }
+        label { font-size: 16px; cursor: pointer; }
+        input[type="checkbox"] { width: 18px; height: 18px; margin-right: 8px; }
+    </style>
+</head>
+<body>
+    <h1>Select &amp; Checkbox Test</h1>
+
+    <div class="section">
+        <h2>Select (g-value)</h2>
+
+        <p><strong>Test 1:</strong> Initial value should be "blue"</p>
+        <select g-value="Color">
+            <option g-for="c in Colors" g-text="c" g-attr:value="c"></option>
+        </select>
+
+        <p>Current value: <strong g-text="Color"></strong></p>
+
+        <p><strong>Test 2:</strong> Change dropdown, click Confirm</p>
+        <button g-click="Confirm">Confirm Selection</button>
+
+        <p><strong>Test 3:</strong> Click Reset — dropdown should change to "green"</p>
+        <button g-click="ResetToGreen">Reset to Green</button>
+
+        <div class="result" g-show="Message">
+            <span g-text="Message"></span>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Checkbox (g-checked)</h2>
+
+        <p><strong>Test 4:</strong> "Agree" should be checked initially</p>
+        <label>
+            <input type="checkbox" g-checked="Agree" />
+            I agree (Agree = <span g-text="Agree"></span>)
+        </label>
+
+        <p><strong>Test 5:</strong> "Dark" should be unchecked initially</p>
+        <label>
+            <input type="checkbox" g-checked="Dark" />
+            Dark mode (Dark = <span g-text="Dark"></span>)
+        </label>
+
+        <p><strong>Test 6:</strong> Click Toggle — Dark checkbox should flip</p>
+        <button g-click="ToggleDark">Toggle Dark from Go</button>
+    </div>
+
+    <div class="section">
+        <h2>Text Input (g-bind)</h2>
+
+        <p><strong>Test 7:</strong> Type in the input — text below should update live</p>
+        <input type="text" g-bind="Title" placeholder="Enter a title..." style="font-size:16px; padding:6px 12px; width:100%;" />
+        <input type="text" g-bind="Title" placeholder="Copy of title" style="font-size:16px; padding:6px 12px; width:90%;" />
+        <p>Title: <strong g-text="Title"></strong></p>
+
+        <p><strong>Test 8:</strong> Type in the textarea — text below should update live</p>
+        <textarea g-bind="Description" placeholder="Enter a description..." style="font-size:16px; padding:6px 12px; width:100%; height:80px;"></textarea>
+        <p>Description: <strong g-text="Description"></strong></p>
+
+        <p>Summary: <strong g-text="Summary"></strong></p>
+    </div>
+</body>
+</html>

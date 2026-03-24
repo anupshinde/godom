@@ -33,6 +33,7 @@ type Info struct {
 	Tree          vdom.Node                 // last rendered tree (for diffing)
 	IDCounter     *vdom.IDCounter           // monotonic node ID allocator (persists across renders)
 	Bindings      map[string][]vdom.Binding // field name → node bindings (built during first resolve)
+	InputBindings map[int]vdom.InputBinding // nodeID → field info for input bindings (reverse lookup)
 
 	// Unbound input support
 	UnboundValues map[string]any // stableKey → value (survives tree rebuilds)

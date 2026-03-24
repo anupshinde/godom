@@ -187,6 +187,14 @@
             }
         }
 
+        // For <select>, defer value assignment. Setting el.value only works
+        // after the <option> children are in the DOM and the browser has
+        // processed them. A synchronous assignment on a detached or freshly
+        // built select is silently ignored.
+        if (tree.tag === "select" && tree.p && tree.p.value !== undefined) {
+            deferSelectValue(el, tree.p.value);
+        }
+
         // Plugin init — deferred until tree is appended to document.body
         // so that plugins can measure element dimensions.
         if (tree.plug) {
@@ -425,6 +433,8 @@
                 var val = diff.p[key];
                 if (val === null || val === undefined) {
                     el[key] = "";
+                } else if (key === "value" && el.tagName === "SELECT") {
+                    deferSelectValue(el, val);
                 } else {
                     el[key] = val;
                 }
@@ -505,7 +515,11 @@
         if (el._godomSync) return;
         el._godomSync = true;
 
-        if (tag === "input" || tag === "textarea") {
+        if (tag === "input" && el.type === "checkbox") {
+            el.addEventListener("change", function() {
+                sendNodeEvent(nodeId, el.checked ? "true" : "false");
+            });
+        } else if (tag === "input" || tag === "textarea") {
             el.addEventListener("input", function() {
                 sendNodeEvent(nodeId, el.value);
             });
@@ -639,6 +653,13 @@
     // =========================================================================
     // 7. Helpers
     // =========================================================================
+
+    // Defer setting a <select> element's value until the next animation frame.
+    // Browsers ignore select.value assignments when the element is detached or
+    // its <option> children haven't been rendered yet.
+    function deferSelectValue(el, val) {
+        requestAnimationFrame(function() { el.value = val; });
+    }
 
     // Remove a DOM node and clean up all nodeMap references.
     function cleanNodeMap(node) {
