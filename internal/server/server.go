@@ -35,7 +35,7 @@ type MountedComponent struct {
 
 // Config holds everything the server needs to run.
 type Config struct {
-	Comp    *component.Info     // legacy single-component mode
+	Comp    *component.Info     // single-component mode (no slots)
 	Comps   []*MountedComponent // multi-component mode
 	Plugins map[string][]string
 	StaticFS  fs.FS
@@ -279,7 +279,7 @@ func Run(cfg Config) error {
 	return http.Serve(ln, mux)
 }
 
-// wireRefresh sets up the RefreshFn for a single-component (legacy) mode.
+// wireRefresh sets up the RefreshFn for single-component mode.
 func wireRefresh(ci *component.Info, pool *connPool) {
 	ci.RefreshFn = func() {
 		ci.Mu.Lock()

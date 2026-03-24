@@ -25,7 +25,6 @@
     var pluginState = {};   // node ID → true if plugin init called
     var pendingPluginInits = []; // deferred init calls (element not yet in DOM)
     var rootNode;           // the root DOM node (document.body)
-    var multiMode = false;  // true after first targeted init
 
     var Proto = godomProto;
     var textDecoder = new TextDecoder();
@@ -78,8 +77,7 @@
                 var targetNodeId = msg.targetNodeId || 0;
 
                 if (targetNodeId) {
-                    // Multi-component mode: render into slot element via nodeMap
-                    multiMode = true;
+                    // Slot mode: render into slot element via nodeMap
                     var target = nodeMap[targetNodeId];
                     if (!target) {
                         console.warn("[godom init] slot node " + targetNodeId + " not found in nodeMap");
@@ -104,7 +102,7 @@
                         }
                     }
                 } else {
-                    // Legacy single-component mode: render into body
+                    // Single-component mode: render into body
                     nodeMap = {};
                     pluginState = {};
                     var tree = JSON.parse(textDecoder.decode(msg.tree));

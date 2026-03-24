@@ -223,7 +223,7 @@ func (a *Engine) Start() error {
 		ProtocolJS:    protocolJS,
 	}
 
-	// Single component = legacy mode (no parent-child relationships)
+	// Single component mode (no slots)
 	if len(a.comps) == 1 {
 		cfg.Comp = a.comps[0].Info
 		cfg.Comps = nil
