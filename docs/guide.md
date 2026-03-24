@@ -404,6 +404,28 @@ Open your app in two browser tabs. Type in one — both update instantly. godom 
 
 ---
 
+## Hot Reload
+
+godom doesn't include a built-in file watcher. Use [Air](https://github.com/air-verse/air) for automatic rebuild and restart during development:
+
+```
+go install github.com/air-verse/air@latest
+```
+
+Create `.air.toml` in your project root:
+
+```toml
+[build]
+  cmd = "go build -o ./tmp/main ."
+  bin = "tmp/main"
+  include_ext = ["go", "html", "css"]
+  exclude_dir = ["vendor", ".git", "tmp"]
+```
+
+Then run `air` instead of `go run .`. When you save a `.go` or `.html` file, Air rebuilds and restarts the binary. The browser reconnects automatically — godom's bridge handles WebSocket reconnection out of the box.
+
+---
+
 ## Examples
 
 | Example | What it demonstrates |
