@@ -19,6 +19,19 @@ type Sidebar struct {
 	OnNavigate func(msg, kind string)
 }
 
+func NewSidebar() *Sidebar {
+	items := []MenuItem{
+		{ID: "dashboard", Icon: "\u25A0", Label: "Dashboard", Active: true},
+		{ID: "counter", Icon: "\u25B6", Label: "Counter", Inactive: true},
+		{ID: "clock", Icon: "\u25CB", Label: "Clock", Inactive: true},
+		{ID: "ticker", Icon: "\u25B2", Label: "Ticker", Inactive: true},
+		{ID: "users", Icon: "\u25C6", Label: "Users", Inactive: true},
+		{ID: "analytics", Icon: "\u25AC", Label: "Analytics", Inactive: true},
+		{ID: "settings", Icon: "\u2699", Label: "Settings", Inactive: true},
+	}
+	return &Sidebar{ActiveID: "dashboard", Items: items}
+}
+
 var toastTypes = map[string]string{
 	"dashboard": "info",
 	"counter":   "success",

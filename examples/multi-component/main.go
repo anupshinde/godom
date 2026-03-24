@@ -11,6 +11,10 @@ import (
 //go:embed ui
 var ui embed.FS
 
+// Alternative: use os.DirFS(".") instead of embed.FS to load templates from
+// the local filesystem.
+//   ui := os.DirFS(".")
+
 func main() {
 	eng := godom.NewEngine()
 	chartjs.Register(eng)
@@ -36,23 +40,7 @@ func main() {
 	eng.AddToSlot(layout, "toast", toast)
 
 	// Sidebar
-	sidebar := &Sidebar{
-		ActiveID: "dashboard",
-		Items: []MenuItem{
-			{ID: "dashboard", Icon: "\u25A0", Label: "Dashboard", Active: true},
-			{ID: "counter", Icon: "\u25B6", Label: "Counter"},
-			{ID: "clock", Icon: "\u25CB", Label: "Clock"},
-			{ID: "ticker", Icon: "\u25B2", Label: "Ticker"},
-			{ID: "users", Icon: "\u25C6", Label: "Users"},
-			{ID: "analytics", Icon: "\u25AC", Label: "Analytics"},
-			{ID: "settings", Icon: "\u2699", Label: "Settings"},
-		},
-	}
-	for i := range sidebar.Items {
-		if !sidebar.Items[i].Active {
-			sidebar.Items[i].Inactive = true
-		}
-	}
+	sidebar := NewSidebar()
 	sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
 	eng.Mount(sidebar, ui, "ui/sidebar/index.html")
 	eng.AddToSlot(layout, "sidebar", sidebar)
