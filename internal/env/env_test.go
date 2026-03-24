@@ -82,6 +82,48 @@ func runSelf(t *testing.T, godomDebug string) string {
 	return ""
 }
 
+func TestBool_True(t *testing.T) {
+	t.Setenv("GODOM_TEST_BOOL", "true")
+	if !Bool("GODOM_TEST_BOOL") {
+		t.Error("Bool should return true for \"true\"")
+	}
+}
+
+func TestBool_One(t *testing.T) {
+	t.Setenv("GODOM_TEST_BOOL", "1")
+	if !Bool("GODOM_TEST_BOOL") {
+		t.Error("Bool should return true for \"1\"")
+	}
+}
+
+func TestBool_False(t *testing.T) {
+	t.Setenv("GODOM_TEST_BOOL", "false")
+	if Bool("GODOM_TEST_BOOL") {
+		t.Error("Bool should return false for \"false\"")
+	}
+}
+
+func TestBool_Zero(t *testing.T) {
+	t.Setenv("GODOM_TEST_BOOL", "0")
+	if Bool("GODOM_TEST_BOOL") {
+		t.Error("Bool should return false for \"0\"")
+	}
+}
+
+func TestBool_Unset(t *testing.T) {
+	os.Unsetenv("GODOM_TEST_BOOL")
+	if Bool("GODOM_TEST_BOOL") {
+		t.Error("Bool should return false when unset")
+	}
+}
+
+func TestBool_Invalid(t *testing.T) {
+	t.Setenv("GODOM_TEST_BOOL", "2")
+	if Bool("GODOM_TEST_BOOL") {
+		t.Error("Bool should return false for invalid value")
+	}
+}
+
 func filterEnv(environ []string, key string) []string {
 	prefix := key + "="
 	var filtered []string

@@ -359,14 +359,14 @@ eng.NoBrowser = true      // default: false
 eng.Quiet = true          // default: false
 ```
 
-CLI flags also work — `go run . --port=8081 --no-browser`. Code values take priority over CLI flags.
+Environment variables also work — `GODOM_PORT=8081 GODOM_NO_BROWSER=1 go run .`. Code values take priority over env vars.
 
 ### Headless mode
 
 Run on a server or Raspberry Pi without a local browser:
 
 ```
-./myapp --no-browser --host=0.0.0.0 --port=8081 --token=my-secret
+GODOM_NO_BROWSER=1 GODOM_HOST=0.0.0.0 GODOM_PORT=8081 GODOM_TOKEN=my-secret ./myapp
 ```
 
 ---

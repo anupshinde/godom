@@ -1,6 +1,6 @@
 # Configuration
 
-godom apps can be configured in two ways: **in code** (by setting fields on the `Engine` struct) and **via CLI flags** (passed when running the binary). CLI flags override framework defaults, but values set in code always take priority.
+godom apps can be configured in two ways: **in code** (by setting fields on the `Engine` struct) and **via environment variables** (`GODOM_*`). Values set in code always take priority over env vars.
 
 ## Settings
 
@@ -12,7 +12,7 @@ The TCP port to listen on.
 |---|---|
 | Default | `0` (random available port) |
 | Code | `eng.Port = 8081` |
-| CLI | `--port=8081` |
+| Env | `GODOM_PORT=8081` |
 
 ### Host
 
@@ -22,7 +22,7 @@ The network interface to bind to.
 |---|---|
 | Default | `localhost` (loopback only) |
 | Code | `eng.Host = "0.0.0.0"` |
-| CLI | `--host=0.0.0.0` |
+| Env | `GODOM_HOST=0.0.0.0` |
 
 Set to `0.0.0.0` to allow access from other machines on the network. The startup URL and QR code will show your machine's LAN IP instead of `localhost`.
 
@@ -34,7 +34,7 @@ Disable token-based authentication.
 |---|---|
 | Default | `false` (auth enabled) |
 | Code | `eng.NoAuth = true` |
-| CLI | `--no-auth` |
+| Env | `GODOM_NO_AUTH=1` |
 
 ### Token
 
@@ -44,7 +44,7 @@ Use a fixed auth token instead of generating a random one on each startup. Usefu
 |---|---|
 | Default | `""` (generate random token) |
 | Code | `eng.Token = "my-secret"` |
-| CLI | `--token=my-secret` |
+| Env | `GODOM_TOKEN=my-secret` |
 
 Ignored when `NoAuth` is set.
 
@@ -56,7 +56,7 @@ Don't open the browser automatically on startup. Useful for headless servers or 
 |---|---|
 | Default | `false` (open browser) |
 | Code | `eng.NoBrowser = true` |
-| CLI | `--no-browser` |
+| Env | `GODOM_NO_BROWSER=1` |
 
 ### Quiet
 
@@ -66,45 +66,59 @@ Suppress the startup URL and QR code output.
 |---|---|
 | Default | `false` (print URL and QR code) |
 | Code | `eng.Quiet = true` |
-| CLI | `--quiet` |
+| Env | `GODOM_QUIET=1` |
 
-## CLI flags
+## Environment variables
 
-Every godom app automatically supports these flags — no code changes needed:
+godom reads `GODOM_*` environment variables for any setting not already set in code:
 
 ```
---port=PORT      Port to listen on (default: random)
---host=HOST      Host to bind to (default: localhost)
---no-auth        Disable token authentication
---token=TOKEN    Use a fixed auth token (default: random)
---no-browser     Don't open browser on start
---quiet          Suppress startup output
+GODOM_PORT=8081
+GODOM_HOST=0.0.0.0
+GODOM_NO_AUTH=1
+GODOM_TOKEN=my-secret
+GODOM_NO_BROWSER=1
+GODOM_QUIET=1
 ```
 
 Examples:
 
 ```
-./myapp --port=8081
-./myapp --host=0.0.0.0 --port=8081
-./myapp --no-browser --token=my-secret
-./myapp --quiet
+GODOM_PORT=8081 ./myapp
+GODOM_HOST=0.0.0.0 GODOM_PORT=8081 ./myapp
+GODOM_NO_BROWSER=1 GODOM_TOKEN=my-secret ./myapp
 ```
+
+godom does not parse CLI flags. Your binary owns its flags entirely — there are no flag namespace collisions.
+
+### Disabling env var reads
+
+To prevent godom from reading any `GODOM_*` environment variables, set `NoGodomEnv`:
+
+```go
+eng := godom.NewEngine()
+eng.NoGodomEnv = true  // skip all GODOM_* env var reads
+eng.Port = 8081
+eng.Start()
+```
+
+When `NoGodomEnv` is true, only values set in code apply. This is useful when you want full programmatic control and don't want external env vars influencing godom's configuration.
 
 ## Precedence
 
 ```
-Developer code  >  CLI flags  >  Framework defaults
+Code  >  Env vars  >  Framework defaults
 ```
 
-If a developer explicitly sets a value in code, the CLI flag for that setting is ignored. This lets developers lock down settings when needed while still giving end users control over defaults.
+If a field is set in code, the corresponding env var is not read. If `NoGodomEnv` is true, env vars are skipped entirely. This lets developers lock down settings when needed while still giving end users runtime control via env vars.
 
 For example:
 
 ```go
 eng := godom.NewEngine()
-eng.Port = 9000  // locked to 9000 — `--port` flag is ignored
-// Host is not set — `--host` flag applies
-// NoAuth is not set — `--no-auth` flag applies
+eng.Port = 9000  // locked to 9000 — GODOM_PORT is not read
+// Host is not set — GODOM_HOST is checked, then defaults to "localhost"
+// NoAuth is not set — GODOM_NO_AUTH is checked, then defaults to false
 ```
 
 ## Authentication
@@ -118,11 +132,11 @@ godom running at http://localhost:8081?token=a1b2c3d4e5f6...
 ...
 ```
 
-When using `--host=0.0.0.0`, the URL displays your machine's LAN IP (e.g., `http://192.168.1.10:8081?token=...`) so the QR code can be scanned from other devices on the network.
+When using `Host = "0.0.0.0"`, the URL displays your machine's LAN IP (e.g., `http://192.168.1.10:8081?token=...`) so the QR code can be scanned from other devices on the network.
 
 ### How it works
 
-1. On startup, a 32-character hex token is generated using `crypto/rand` (unless a fixed token is provided via `Token` or `--token`)
+1. On startup, a 32-character hex token is generated using `crypto/rand` (unless a fixed token is provided via `Token` or `GODOM_TOKEN`)
 2. The browser is opened with `?token=...` in the URL (unless `NoBrowser` is set)
 3. The server validates the token and sets an **HttpOnly** cookie (`godom_token`)
 4. The URL is redirected to strip the token from the address bar
@@ -145,14 +159,14 @@ eng.Token = "my-secret"  // in code
 ```
 
 ```
-./myapp --token=my-secret  # from command line
+GODOM_TOKEN=my-secret ./myapp  # via env var
 ```
 
 ### Sharing access
 
 To give someone else access to your app over the network:
 
-1. Set `eng.Host = "0.0.0.0"` (or run with `--host=0.0.0.0`)
+1. Set `eng.Host = "0.0.0.0"` (or set `GODOM_HOST=0.0.0.0`)
 2. Share the token URL from the terminal output
 3. They visit the URL once, get a cookie, and can revisit without the token
 
@@ -167,7 +181,7 @@ eng.NoAuth = true   // in code
 ```
 
 ```
-./myapp --no-auth   # from command line
+GODOM_NO_AUTH=1 ./myapp  # via env var
 ```
 
 When auth is disabled, no token is generated and all requests are allowed.
@@ -177,7 +191,7 @@ When auth is disabled, no token is generated and all requests are allowed.
 To run godom as a background service on a headless machine:
 
 ```
-./myapp --no-browser --host=0.0.0.0 --port=8081 --token=my-secret
+GODOM_NO_BROWSER=1 GODOM_HOST=0.0.0.0 GODOM_PORT=8081 GODOM_TOKEN=my-secret ./myapp
 ```
 
 This binds to all interfaces on a fixed port with a stable token, without trying to open a browser. Access the UI from any browser on the network using the token URL.

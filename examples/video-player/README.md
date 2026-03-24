@@ -12,10 +12,10 @@ Plays video files on an HTML canvas — frames are decoded in Go via `ffmpeg`, s
 go run ./examples/video-player/ -video /path/to/video.mp4
 ```
 
-With godom flags:
+With godom env vars:
 
 ```bash
-go run ./examples/video-player/ -video /path/to/video.mp4 --port 8099 --no-auth
+GODOM_PORT=8099 GODOM_NO_AUTH=1 go run ./examples/video-player/ -video /path/to/video.mp4
 ```
 
 ## Controls

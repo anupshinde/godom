@@ -280,19 +280,22 @@ eng.NoAuth = true                       // Disable token auth (default false = a
 eng.Token = "my-secret"                 // Fixed token (default: random per startup)
 eng.NoBrowser = true                    // Don't auto-open browser
 eng.Quiet = true                        // Suppress startup output
+eng.NoGodomEnv = true                   // Skip reading GODOM_* env vars
 eng.RegisterPlugin("chartjs", libJS, bridgeJS)   // Register a plugin with one or more JS scripts
 eng.Mount(&MyApp{}, fsys, "ui/index.html")  // Mount root component with embedded filesystem and entry path
 eng.AddToSlot(parent, "slotName", child)    // Place a child component into a parent's <g-slot>
 eng.Start()                                 // Start server, open browser, block forever
 ```
 
-Every godom app also supports CLI flags:
+Settings can also be overridden at runtime via environment variables:
 
 ```
-./myapp --port=8081 --host=0.0.0.0 --no-auth --no-browser --quiet --token=my-secret
+GODOM_PORT=8081 GODOM_HOST=0.0.0.0 ./myapp
 ```
 
-See [docs/configuration.md](docs/configuration.md) for the full reference on settings, CLI flags, authentication, and precedence rules.
+Env vars are only read for fields not already set in code. godom does not parse CLI flags — your binary owns its flags entirely.
+
+See [docs/configuration.md](docs/configuration.md) for the full reference on settings, environment variables, authentication, and precedence rules.
 
 ### Component
 
@@ -427,7 +430,7 @@ See [docs/AI_USAGE.md](docs/AI_USAGE.md) for the full philosophy on how AI was u
 - [**Getting Started Guide**](docs/guide.md) — build your first godom app step by step
 - [docs/why.md](docs/why.md) — project rationale, comparison with Electron/Tauri/Wails
 - [docs/architecture.md](docs/architecture.md) — system design, VDOM pipeline, wire protocol
-- [docs/configuration.md](docs/configuration.md) — settings, CLI flags, authentication
+- [docs/configuration.md](docs/configuration.md) — settings, environment variables, authentication
 - [docs/plugins.md](docs/plugins.md) — plugin system overview
 - [docs/javascript-libraries.md](docs/javascript-libraries.md) — using JS libraries with godom
 - [docs/drag-drop.md](docs/drag-drop.md) — drag and drop design and implementation

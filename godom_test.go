@@ -491,6 +491,102 @@ func TestAddToSlot_SameSlotDifferentParents(t *testing.T) {
 	}
 }
 
+func TestApplyEnv_ReadsEnvVars(t *testing.T) {
+	t.Setenv("GODOM_PORT", "9090")
+	t.Setenv("GODOM_HOST", "0.0.0.0")
+	t.Setenv("GODOM_NO_AUTH", "1")
+	t.Setenv("GODOM_TOKEN", "secret123")
+	t.Setenv("GODOM_NO_BROWSER", "true")
+	t.Setenv("GODOM_QUIET", "1")
+
+	e := NewEngine()
+	e.applyEnv()
+
+	if e.Port != 9090 {
+		t.Errorf("Port = %d, want 9090", e.Port)
+	}
+	if e.Host != "0.0.0.0" {
+		t.Errorf("Host = %q, want \"0.0.0.0\"", e.Host)
+	}
+	if !e.NoAuth {
+		t.Error("NoAuth should be true")
+	}
+	if e.Token != "secret123" {
+		t.Errorf("Token = %q, want \"secret123\"", e.Token)
+	}
+	if !e.NoBrowser {
+		t.Error("NoBrowser should be true")
+	}
+	if !e.Quiet {
+		t.Error("Quiet should be true")
+	}
+}
+
+func TestApplyEnv_CodeTakesPriority(t *testing.T) {
+	t.Setenv("GODOM_PORT", "9090")
+	t.Setenv("GODOM_HOST", "0.0.0.0")
+	t.Setenv("GODOM_TOKEN", "envtoken")
+
+	e := NewEngine()
+	e.Port = 8080
+	e.Host = "localhost"
+	e.Token = "codetoken"
+	e.applyEnv()
+
+	if e.Port != 8080 {
+		t.Errorf("Port = %d, want 8080 (code should win)", e.Port)
+	}
+	if e.Host != "localhost" {
+		t.Errorf("Host = %q, want \"localhost\" (code should win)", e.Host)
+	}
+	if e.Token != "codetoken" {
+		t.Errorf("Token = %q, want \"codetoken\" (code should win)", e.Token)
+	}
+}
+
+func TestApplyEnv_NoGodomEnvSkipsAll(t *testing.T) {
+	t.Setenv("GODOM_PORT", "9090")
+	t.Setenv("GODOM_HOST", "0.0.0.0")
+	t.Setenv("GODOM_NO_AUTH", "1")
+	t.Setenv("GODOM_TOKEN", "secret")
+	t.Setenv("GODOM_NO_BROWSER", "1")
+	t.Setenv("GODOM_QUIET", "1")
+
+	e := NewEngine()
+	e.NoGodomEnv = true
+	e.applyEnv()
+
+	if e.Port != 0 {
+		t.Errorf("Port = %d, want 0 (env should be skipped)", e.Port)
+	}
+	if e.Host != "" {
+		t.Errorf("Host = %q, want \"\" (env should be skipped)", e.Host)
+	}
+	if e.NoAuth {
+		t.Error("NoAuth should be false (env should be skipped)")
+	}
+	if e.Token != "" {
+		t.Errorf("Token = %q, want \"\" (env should be skipped)", e.Token)
+	}
+	if e.NoBrowser {
+		t.Error("NoBrowser should be false (env should be skipped)")
+	}
+	if e.Quiet {
+		t.Error("Quiet should be false (env should be skipped)")
+	}
+}
+
+func TestApplyEnv_InvalidPort(t *testing.T) {
+	t.Setenv("GODOM_PORT", "notanumber")
+
+	e := NewEngine()
+	e.applyEnv()
+
+	if e.Port != 0 {
+		t.Errorf("Port = %d, want 0 (invalid port should be ignored)", e.Port)
+	}
+}
+
 func TestStart_NoMount(t *testing.T) {
 	e := NewEngine()
 	err := e.Start()

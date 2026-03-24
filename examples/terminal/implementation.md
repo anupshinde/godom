@@ -410,7 +410,7 @@ If you need to access the terminal from another device (your phone, tablet, anot
 1. Install Tailscale on the machine running the terminal app and on the device you want to access it from
 2. Run the terminal app bound to the Tailscale interface:
    ```bash
-   go run . --host 0.0.0.0
+   GODOM_HOST=0.0.0.0 go run .
    ```
    Or bind specifically to the Tailscale IP (usually `100.x.y.z`).
 3. From your other device, open the browser and navigate to the godom URL using the Tailscale IP
@@ -430,9 +430,9 @@ This is the sweet spot: zero-config remote access with strong security guarantee
 | Scenario | Host flag | Risk level | Notes |
 |---|---|---|---|
 | Local development | (default: `localhost`) | Low | Only accessible from the same machine |
-| Tailscale/VPN access | `--host 0.0.0.0` | Low | Encrypted tunnel, authenticated network |
-| Trusted home LAN | `--host 0.0.0.0` | Medium | Other devices on LAN can discover it |
-| Shared/public network | `--host 0.0.0.0` | **High** | Token sent in cleartext, port scannable |
+| Tailscale/VPN access | `GODOM_HOST=0.0.0.0` | Low | Encrypted tunnel, authenticated network |
+| Trusted home LAN | `GODOM_HOST=0.0.0.0` | Medium | Other devices on LAN can discover it |
+| Shared/public network | `GODOM_HOST=0.0.0.0` | **High** | Token sent in cleartext, port scannable |
 | Public internet | **Do not do this** | **Critical** | No TLS, no robust auth, full shell access |
 
 ## Dependencies
