@@ -155,8 +155,7 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 
 // AddChild registers a child component to render into a named <g-slot> in the
 // parent component's template. The parent must already be mounted.
-// The child will automatically target the DOM element "godom-slot-{slotName}"
-// that the parent's <g-slot name="..."> resolves to.
+// The child will target the slot's VDOM node in the parent's resolved tree.
 func (a *Engine) AddChild(parent, child interface{}, slotName string) {
 	parentIdx, ok := a.compIndex[parent]
 	if !ok {
