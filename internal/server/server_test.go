@@ -3471,3 +3471,438 @@ func TestFindComponentByNodeID_Empty(t *testing.T) {
 		t.Error("expected nil for empty comps")
 	}
 }
+
+// --- Checkbox and InputBindings tests ---
+
+type checkboxApp struct {
+	Component struct{}
+	Agree     bool
+	Dark      bool
+	Color     string
+	Title     string
+}
+
+func (a *checkboxApp) ToggleDark() { a.Dark = !a.Dark }
+
+const checkboxHTML = `<!DOCTYPE html><html><head></head><body>
+	<input type="checkbox" g-checked="Agree"/>
+	<span g-text="Agree"></span>
+	<input type="checkbox" g-checked="Dark"/>
+	<select g-value="Color">
+		<option value="red">Red</option>
+		<option value="blue">Blue</option>
+	</select>
+	<span g-text="Color"></span>
+	<input type="text" g-bind="Title"/>
+	<span g-text="Title"></span>
+</body></html>`
+
+func makeCheckboxCI(app *checkboxApp) *component.Info {
+	v := reflect.ValueOf(app)
+	t := v.Elem().Type()
+	templates, err := vdom.ParseTemplate(checkboxHTML)
+	if err != nil {
+		panic(err)
+	}
+	return &component.Info{
+		Value:         v,
+		Typ:           t,
+		VDOMTemplates: templates,
+	}
+}
+
+func findNodeByTagAndAttr(n vdom.Node, tag, attrKey, attrVal string) *vdom.ElementNode {
+	if n == nil {
+		return nil
+	}
+	if el, ok := n.(*vdom.ElementNode); ok {
+		if el.Tag == tag && el.Facts.Attrs[attrKey] == attrVal {
+			return el
+		}
+		for _, child := range el.Children {
+			if found := findNodeByTagAndAttr(child, tag, attrKey, attrVal); found != nil {
+				return found
+			}
+		}
+	}
+	return nil
+}
+
+func findNodeByTagAndDirective(ci *component.Info, kind, field string) int {
+	for f, bindings := range ci.Bindings {
+		if f != field {
+			continue
+		}
+		for _, b := range bindings {
+			if b.Kind == kind {
+				return b.NodeID
+			}
+		}
+	}
+	return 0
+}
+
+// TestHandleNodeEvent_CheckboxUpdatesCheckedAsBool verifies that checkbox
+// node events store Props["checked"] as a bool, not Props["value"] as string.
+func TestHandleNodeEvent_CheckboxUpdatesCheckedAsBool(t *testing.T) {
+	app := &checkboxApp{Agree: true}
+	ci := makeCheckboxCI(app)
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	// Find the checkbox node for Agree
+	nodeID := findNodeByTagAndDirective(ci, "prop", "Agree")
+	if nodeID == 0 {
+		t.Fatal("could not find Agree checkbox binding")
+	}
+
+	pool := &connPool{}
+	handleNodeEvent(ci, int32(nodeID), "false", pool)
+
+	// Verify Props["checked"] is bool false, not string "false"
+	node := vdom.FindNodeByID(ci.Tree, nodeID)
+	el := node.(*vdom.ElementNode)
+	checked, ok := el.Facts.Props["checked"]
+	if !ok {
+		t.Fatal("expected Props[checked] to exist")
+	}
+	if checked != false {
+		t.Errorf("expected Props[checked]=false (bool), got %v (%T)", checked, checked)
+	}
+	// Props["value"] should NOT be set by checkbox handling
+	if _, hasValue := el.Facts.Props["value"]; hasValue {
+		t.Error("checkbox should set Props[checked], not Props[value]")
+	}
+}
+
+// TestHandleNodeEvent_CheckboxTrueSetsBoolTrue verifies "true" string
+// from bridge becomes bool true in Props["checked"].
+func TestHandleNodeEvent_CheckboxTrueSetsBoolTrue(t *testing.T) {
+	app := &checkboxApp{Agree: false}
+	ci := makeCheckboxCI(app)
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	nodeID := findNodeByTagAndDirective(ci, "prop", "Agree")
+	if nodeID == 0 {
+		t.Fatal("could not find Agree checkbox binding")
+	}
+
+	pool := &connPool{}
+	handleNodeEvent(ci, int32(nodeID), "true", pool)
+
+	node := vdom.FindNodeByID(ci.Tree, nodeID)
+	el := node.(*vdom.ElementNode)
+	if el.Facts.Props["checked"] != true {
+		t.Errorf("expected Props[checked]=true (bool), got %v (%T)", el.Facts.Props["checked"], el.Facts.Props["checked"])
+	}
+}
+
+// TestHandleNodeEvent_BoundInputSyncsStruct verifies that changing a bound
+// input (g-bind, g-value, g-checked) syncs the value back to the struct
+// via the InputBindings reverse map.
+func TestHandleNodeEvent_BoundInputSyncsStruct(t *testing.T) {
+	app := &checkboxApp{Title: "old", Agree: true, Color: "red"}
+	ci := makeCheckboxCI(app)
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	pool := &connPool{}
+
+	// Test g-bind (text input) syncs struct
+	titleNodeID := findNodeByTagAndDirective(ci, "bind", "Title")
+	if titleNodeID == 0 {
+		t.Fatal("could not find Title binding")
+	}
+	handleNodeEvent(ci, int32(titleNodeID), "new title", pool)
+	if app.Title != "new title" {
+		t.Errorf("expected struct Title='new title', got %q", app.Title)
+	}
+
+	// Test g-checked (checkbox) syncs struct
+	agreeNodeID := findNodeByTagAndDirective(ci, "prop", "Agree")
+	if agreeNodeID == 0 {
+		t.Fatal("could not find Agree binding")
+	}
+	handleNodeEvent(ci, int32(agreeNodeID), "false", pool)
+	if app.Agree != false {
+		t.Errorf("expected struct Agree=false, got %v", app.Agree)
+	}
+
+	// Test g-value (select) syncs struct
+	colorNodeID := findNodeByTagAndDirective(ci, "prop", "Color")
+	if colorNodeID == 0 {
+		t.Fatal("could not find Color binding")
+	}
+	handleNodeEvent(ci, int32(colorNodeID), "blue", pool)
+	if app.Color != "blue" {
+		t.Errorf("expected struct Color='blue', got %q", app.Color)
+	}
+}
+
+// TestHandleNodeEvent_UnboundInputDoesNotSyncStruct verifies that unbound
+// inputs (no g-bind/g-value/g-checked) do NOT sync to the struct.
+func TestHandleNodeEvent_UnboundInputDoesNotSyncStruct(t *testing.T) {
+	app := &counterApp{Step: 5, Count: 0}
+	ci := makeCounterCI(app)
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+
+	// Remove InputBindings to simulate unbound input
+	ci.InputBindings = nil
+
+	var inputNodeID int
+	findInputNode(ci.Tree, &inputNodeID)
+	if inputNodeID == 0 {
+		t.Fatal("could not find input node")
+	}
+
+	pool := &connPool{}
+	handleNodeEvent(ci, int32(inputNodeID), "99", pool)
+
+	// The tree should be updated (targeted patch path)
+	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
+	el := node.(*vdom.ElementNode)
+	if el.Facts.Props["value"] != "99" {
+		t.Errorf("expected Props[value]='99', got %v", el.Facts.Props["value"])
+	}
+	// But the struct should NOT be updated
+	if app.Step != 5 {
+		t.Errorf("unbound input should not sync struct: expected Step=5, got %d", app.Step)
+	}
+}
+
+// TestInputBindings_PopulatedOnResolve verifies that InputBindings reverse
+// map is populated during tree resolution for g-bind, g-value, and g-checked.
+func TestInputBindings_PopulatedOnResolve(t *testing.T) {
+	app := &checkboxApp{Agree: true, Color: "red", Title: "hi"}
+	ci := makeCheckboxCI(app)
+	ci.Tree = buildTree(ci)
+
+	if ci.InputBindings == nil {
+		t.Fatal("expected InputBindings to be populated")
+	}
+
+	// Count input bindings — should have entries for: Agree (checkbox),
+	// Dark (checkbox), Color (select), Title (text input)
+	fields := make(map[string]bool)
+	for _, ib := range ci.InputBindings {
+		fields[ib.Field] = true
+	}
+	for _, expected := range []string{"Agree", "Dark", "Color", "Title"} {
+		if !fields[expected] {
+			t.Errorf("expected InputBinding for field %q", expected)
+		}
+	}
+}
+
+// TestInputBindings_NotPopulatedForNonInputBindings verifies that text, show,
+// class etc. bindings do NOT create InputBindings entries.
+func TestInputBindings_NotPopulatedForNonInputBindings(t *testing.T) {
+	app := &surgicalApp{Name: "Alice", Visible: true, Active: true, Width: "100px"}
+	ci := makeSurgicalCI(app)
+	ci.Tree = buildTree(ci)
+
+	if ci.InputBindings == nil {
+		t.Fatal("expected InputBindings (g-bind on Name)")
+	}
+
+	// Only "bind" and "prop" kinds should be in InputBindings.
+	// The surgicalHTML has g-text, g-attr, g-show, g-hide, g-class, g-style —
+	// none of these should create InputBinding entries.
+	for nodeID, ib := range ci.InputBindings {
+		if ib.Field != "Name" && ib.Field != "InputVal" {
+			t.Errorf("unexpected InputBinding for nodeID=%d field=%q — only Name (g-bind) and InputVal (g-value) should have entries", nodeID, ib.Field)
+		}
+	}
+}
+
+// TestHandleMethodCall_SyncsPropBindings verifies that handleMethodCall
+// syncs Kind="prop" bindings (g-value, g-checked) in addition to g-bind.
+func TestHandleMethodCall_SyncsPropBindings(t *testing.T) {
+	app := &checkboxApp{Dark: false}
+	ci := makeCheckboxCI(app)
+	ci.Mu.Lock()
+	_ = BuildInit(ci)
+	ci.Mu.Unlock()
+	ci.RefreshFn = func() {}
+
+	// Simulate browser toggling the Dark checkbox — update tree prop directly
+	darkNodeID := findNodeByTagAndDirective(ci, "prop", "Dark")
+	if darkNodeID == 0 {
+		t.Fatal("could not find Dark binding")
+	}
+	node := vdom.FindNodeByID(ci.Tree, darkNodeID)
+	el := node.(*vdom.ElementNode)
+	if el.Facts.Props == nil {
+		el.Facts.Props = make(map[string]any)
+	}
+	el.Facts.Props["checked"] = true
+
+	// Call a method — handleMethodCall should sync Dark from tree to struct
+	call := &gproto.MethodCall{Method: "ToggleDark"}
+	pool := &connPool{}
+	handleMethodCall(ci, call, pool)
+
+	// ToggleDark flips Dark. If sync worked, Dark was set to true from tree,
+	// then ToggleDark flipped it to false.
+	if app.Dark != false {
+		t.Errorf("expected Dark=false (synced true then toggled), got %v", app.Dark)
+	}
+}
+
+// TestBuildSurgicalPatches_BindKind verifies that buildSurgicalPatches
+// produces a facts patch with Props["value"] for Kind="bind" bindings.
+func TestBuildSurgicalPatches_BindKind(t *testing.T) {
+	app := &surgicalApp{Name: "Alice"}
+	ci := makeSurgicalCI(app)
+	ci.Tree = buildTree(ci)
+
+	app.Name = "Bob"
+	patches := buildSurgicalPatches(ci, []string{"Name"})
+
+	// Should have both a text patch (g-text) and a facts/props patch (g-bind)
+	var hasTextPatch, hasBindPatch bool
+	for _, p := range patches {
+		if p.Type == vdom.PatchText {
+			data := p.Data.(vdom.PatchTextData)
+			if data.Text == "Bob" {
+				hasTextPatch = true
+			}
+		}
+		if p.Type == vdom.PatchFacts {
+			data := p.Data.(vdom.PatchFactsData)
+			if data.Diff.Props != nil && data.Diff.Props["value"] == "Bob" {
+				hasBindPatch = true
+			}
+		}
+	}
+	if !hasTextPatch {
+		t.Error("expected PatchText for g-text='Name' with text 'Bob'")
+	}
+	if !hasBindPatch {
+		t.Error("expected PatchFacts for g-bind='Name' with Props[value]='Bob'")
+	}
+}
+
+// TestBuildSurgicalPatches_BindKind_UpdatesLiveTree verifies that
+// buildSurgicalPatches updates ci.Tree for Kind="bind" bindings.
+func TestBuildSurgicalPatches_BindKind_UpdatesLiveTree(t *testing.T) {
+	app := &surgicalApp{Name: "Alice"}
+	ci := makeSurgicalCI(app)
+	ci.Tree = buildTree(ci)
+
+	app.Name = "Bob"
+	_ = buildSurgicalPatches(ci, []string{"Name"})
+
+	// Find the g-bind node and check its tree was updated
+	for _, b := range ci.Bindings["Name"] {
+		if b.Kind == "bind" {
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			el := node.(*vdom.ElementNode)
+			if el.Facts.Props["value"] != "Bob" {
+				t.Errorf("expected live tree Props[value]='Bob', got %v", el.Facts.Props["value"])
+			}
+			return
+		}
+	}
+	t.Error("no bind binding found for Name")
+}
+
+// TestBuildSurgicalPatches_CheckedBool verifies that buildSurgicalPatches
+// sends Props["checked"] as a bool (not string) for g-checked bindings.
+func TestBuildSurgicalPatches_CheckedBool(t *testing.T) {
+	app := &checkboxApp{Agree: true}
+	ci := makeCheckboxCI(app)
+	ci.Tree = buildTree(ci)
+
+	app.Agree = false
+	patches := buildSurgicalPatches(ci, []string{"Agree"})
+
+	var foundCheckedPatch bool
+	for _, p := range patches {
+		if p.Type == vdom.PatchFacts {
+			data := p.Data.(vdom.PatchFactsData)
+			if val, ok := data.Diff.Props["checked"]; ok {
+				foundCheckedPatch = true
+				boolVal, isBool := val.(bool)
+				if !isBool {
+					t.Errorf("expected checked to be bool, got %T", val)
+				} else if boolVal != false {
+					t.Errorf("expected checked=false, got %v", boolVal)
+				}
+			}
+		}
+	}
+	if !foundCheckedPatch {
+		t.Error("expected a PatchFacts with Props[checked] for Agree")
+	}
+}
+
+// TestBuildSurgicalPatches_CheckedBool_UpdatesLiveTree verifies the live tree
+// stores Props["checked"] as a bool after surgical patches.
+func TestBuildSurgicalPatches_CheckedBool_UpdatesLiveTree(t *testing.T) {
+	app := &checkboxApp{Agree: true}
+	ci := makeCheckboxCI(app)
+	ci.Tree = buildTree(ci)
+
+	app.Agree = false
+	_ = buildSurgicalPatches(ci, []string{"Agree"})
+
+	for _, b := range ci.Bindings["Agree"] {
+		if b.Kind == "prop" && b.Prop == "checked" {
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			el := node.(*vdom.ElementNode)
+			val := el.Facts.Props["checked"]
+			if val != false {
+				t.Errorf("expected live tree checked=false (bool), got %v (%T)", val, val)
+			}
+			return
+		}
+	}
+	t.Error("no prop/checked binding found for Agree")
+}
+
+// TestInputBindings_RemappedAfterBuildUpdate verifies that InputBindings
+// IDs are remapped when MergeTree reassigns node IDs during BuildUpdate.
+func TestInputBindings_RemappedAfterBuildUpdate(t *testing.T) {
+	app := &checkboxApp{Title: "hello", Agree: true, Color: "red"}
+	ci := makeCheckboxCI(app)
+	ci.Tree = buildTree(ci)
+
+	// Record original InputBindings node IDs
+	origIDs := make(map[string]int) // field → nodeID
+	for nodeID, ib := range ci.InputBindings {
+		origIDs[ib.Field] = nodeID
+	}
+
+	// Trigger a BuildUpdate — this rebuilds the tree with new IDs,
+	// then MergeTree remaps them back to old IDs.
+	ci.Mu.Lock()
+	app.Title = "world"
+	_ = BuildUpdate(ci)
+	ci.Mu.Unlock()
+
+	// InputBindings should still have valid entries for all fields
+	newFields := make(map[string]bool)
+	for _, ib := range ci.InputBindings {
+		newFields[ib.Field] = true
+	}
+	for _, field := range []string{"Title", "Agree", "Dark", "Color"} {
+		if !newFields[field] {
+			t.Errorf("InputBindings missing field %q after BuildUpdate", field)
+		}
+	}
+
+	// Verify the remapped IDs match actual nodes in the merged tree
+	for nodeID, ib := range ci.InputBindings {
+		node := vdom.FindNodeByID(ci.Tree, nodeID)
+		if node == nil {
+			t.Errorf("InputBinding for %q references nodeID=%d which doesn't exist in tree", ib.Field, nodeID)
+		}
+	}
+}

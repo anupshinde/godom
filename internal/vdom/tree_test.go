@@ -3151,11 +3151,65 @@ func TestHasBind(t *testing.T) {
 	if !hasBind([]Directive{{Type: "bind", Expr: "Name"}}) {
 		t.Error("expected hasBind=true for bind directive")
 	}
+	if !hasBind([]Directive{{Type: "value", Expr: "Color"}}) {
+		t.Error("expected hasBind=true for value directive (g-value)")
+	}
+	if !hasBind([]Directive{{Type: "checked", Expr: "Agree"}}) {
+		t.Error("expected hasBind=true for checked directive (g-checked)")
+	}
 	if hasBind([]Directive{{Type: "click", Expr: "DoIt"}}) {
 		t.Error("expected hasBind=false for non-bind directive")
 	}
+	if hasBind([]Directive{{Type: "text", Expr: "Name"}}) {
+		t.Error("expected hasBind=false for text directive")
+	}
+	if hasBind([]Directive{{Type: "show", Expr: "Visible"}}) {
+		t.Error("expected hasBind=false for show directive")
+	}
 	if hasBind(nil) {
 		t.Error("expected hasBind=false for nil directives")
+	}
+}
+
+// --- addBinding: InputBindings reverse map ---
+
+func TestAddBinding_InputBindingsPopulated(t *testing.T) {
+	// "bind" and "prop" kinds should populate InputBindings reverse map
+	ctx := &ResolveContext{
+		Vars: make(map[string]any),
+	}
+	ctx.addBinding("Title", 10, "bind", "value")
+	ctx.addBinding("Color", 20, "prop", "value")
+	ctx.addBinding("Agree", 30, "prop", "checked")
+
+	if len(ctx.InputBindings) != 3 {
+		t.Fatalf("expected 3 InputBindings, got %d", len(ctx.InputBindings))
+	}
+	if ib := ctx.InputBindings[10]; ib.Field != "Title" || ib.Prop != "value" {
+		t.Errorf("InputBinding[10] = %+v, want Field=Title Prop=value", ib)
+	}
+	if ib := ctx.InputBindings[20]; ib.Field != "Color" || ib.Prop != "value" {
+		t.Errorf("InputBinding[20] = %+v, want Field=Color Prop=value", ib)
+	}
+	if ib := ctx.InputBindings[30]; ib.Field != "Agree" || ib.Prop != "checked" {
+		t.Errorf("InputBinding[30] = %+v, want Field=Agree Prop=checked", ib)
+	}
+}
+
+func TestAddBinding_InputBindingsNotPopulatedForNonInputKinds(t *testing.T) {
+	// "text", "style", "attr", "show", "hide", "class" should NOT create InputBindings
+	ctx := &ResolveContext{
+		Vars: make(map[string]any),
+	}
+	ctx.addBinding("Name", 10, "text", "")
+	ctx.addBinding("Color", 20, "style", "color")
+	ctx.addBinding("Id", 30, "attr", "data-id")
+	ctx.addBinding("Visible", 40, "show", "")
+	ctx.addBinding("Hidden", 50, "hide", "")
+	ctx.addBinding("Active", 60, "class", "active")
+
+	if len(ctx.InputBindings) != 0 {
+		t.Errorf("expected 0 InputBindings for non-input kinds, got %d: %+v", len(ctx.InputBindings), ctx.InputBindings)
 	}
 }
 
