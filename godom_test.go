@@ -440,6 +440,57 @@ func TestMount_MultipleComponents_StaticFSFromFirst(t *testing.T) {
 	}
 }
 
+func TestMount_SecondMountDoesNotOverwriteStaticFS(t *testing.T) {
+	e := NewEngine()
+	parent := &testApp{Name: "parent"}
+	child := &childApp{Value: "child"}
+
+	// First mount with nested FS that has style.css
+	e.Mount(parent, makeTestFSNested(), "ui/index.html")
+
+	// Second mount with a different FS — staticFS must NOT change
+	childFS := fstest.MapFS{
+		"other/index.html": &fstest.MapFile{Data: []byte(childHTML)},
+		"other/other.css":  &fstest.MapFile{Data: []byte("div{}")},
+	}
+	e.Mount(child, childFS, "other/index.html")
+
+	// staticFS should still be from the first mount (ui/ subdir)
+	_, err := fs.ReadFile(e.staticFS, "style.css")
+	if err != nil {
+		t.Error("expected staticFS to still serve first mount's style.css")
+	}
+	// The second mount's file should NOT be accessible via staticFS
+	_, err = fs.ReadFile(e.staticFS, "other.css")
+	if err == nil {
+		t.Error("expected second mount's other.css to NOT be in staticFS")
+	}
+}
+
+func TestAddToSlot_SameSlotDifferentParents(t *testing.T) {
+	// Two different parents can each have a child in the same slot name — no conflict.
+	e := NewEngine()
+	parent1 := &testApp{Name: "p1"}
+	parent2 := &testApp{Name: "p2"}
+	child1 := &childApp{Value: "c1"}
+	child2 := &childApp{Value: "c2"}
+
+	e.Mount(parent1, makeTestFS(), "index.html")
+	e.Mount(parent2, makeTestFS(), "index.html")
+	e.Mount(child1, makeChildFS(), "index.html")
+	e.Mount(child2, makeChildFS(), "index.html")
+
+	e.AddToSlot(parent1, "sidebar", child1)
+	e.AddToSlot(parent2, "sidebar", child2) // same slot name, different parent — should be fine
+
+	if e.comps[2].ParentIdx != 0 {
+		t.Errorf("expected child1 parent=0, got %d", e.comps[2].ParentIdx)
+	}
+	if e.comps[3].ParentIdx != 1 {
+		t.Errorf("expected child2 parent=1, got %d", e.comps[3].ParentIdx)
+	}
+}
+
 func TestStart_NoMount(t *testing.T) {
 	e := NewEngine()
 	err := e.Start()

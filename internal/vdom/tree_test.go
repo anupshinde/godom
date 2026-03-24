@@ -3644,6 +3644,90 @@ func TestResolveKeyedForNode_WithIndex(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// resolveSlotNode negative tests
+// ---------------------------------------------------------------------------
+
+func TestResolveSlotNode_EmptyName(t *testing.T) {
+	// <g-slot></g-slot> without a name attribute — SlotExpr is ""
+	html := `<!DOCTYPE html><html><head></head><body><g-slot></g-slot></body></html>`
+	templates, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&struct{}{}),
+		Vars:  make(map[string]any),
+	}
+	nodes := ResolveTree(templates, ctx)
+	found := false
+	for _, n := range nodes {
+		if el, ok := n.(*ElementNode); ok && el.IsSlot {
+			found = true
+			if el.SlotName != "" {
+				t.Errorf("expected empty SlotName for nameless g-slot, got %q", el.SlotName)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected a resolved slot node even without a name")
+	}
+}
+
+func TestResolveSlotNode_MissingFieldInInterpolation(t *testing.T) {
+	// Interpolation references a field that doesn't exist on the state struct.
+	html := `<!DOCTYPE html><html><head></head><body><g-slot name="{{NoSuchField}}"></g-slot></body></html>`
+	templates, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&struct{}{}),
+		Vars:  make(map[string]any),
+	}
+	nodes := ResolveTree(templates, ctx)
+	for _, n := range nodes {
+		if el, ok := n.(*ElementNode); ok && el.IsSlot {
+			// Missing field resolves to nil → fmt.Sprint(nil) = "<nil>"
+			if el.SlotName != "<nil>" {
+				t.Errorf("expected '<nil>' for missing field, got %q", el.SlotName)
+			}
+			return
+		}
+	}
+	t.Error("expected a resolved slot node")
+}
+
+// ---------------------------------------------------------------------------
+// checkDuplicateSlots negative tests
+// ---------------------------------------------------------------------------
+
+func TestCheckDuplicateSlots_EmptyNameNotChecked(t *testing.T) {
+	// Two slots with empty SlotExpr — should NOT trigger duplicate error
+	// because the check requires SlotExpr != ""
+	nodes := []*TemplateNode{
+		{IsSlot: true, SlotExpr: ""},
+		{IsSlot: true, SlotExpr: ""},
+	}
+	if err := checkDuplicateSlots(nodes); err != nil {
+		t.Errorf("expected no error for empty slot names, got: %v", err)
+	}
+}
+
+func TestCheckDuplicateSlots_NestedDuplicate(t *testing.T) {
+	// Duplicate slot names nested inside children should still be caught.
+	inner := &TemplateNode{IsSlot: true, SlotExpr: "sidebar"}
+	outer := &TemplateNode{
+		Tag:      "div",
+		Children: []*TemplateNode{inner},
+	}
+	topLevel := &TemplateNode{IsSlot: true, SlotExpr: "sidebar"}
+	err := checkDuplicateSlots([]*TemplateNode{outer, topLevel})
+	if err == nil {
+		t.Error("expected duplicate error for nested slot with same name")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // resolveFacts with interpolated attribute values
 // ---------------------------------------------------------------------------
 

@@ -346,6 +346,62 @@ func TestExpandComponents_GTagBeforeCustomElement(t *testing.T) {
 	}
 }
 
+func TestExpandComponents_SkipsGTagSelfClosing(t *testing.T) {
+	// Self-closing g-* tags like <g-slot name="x"/> should also be skipped.
+	fsys := fstest.MapFS{}
+	input := `<div><g-slot name="x"/><span>ok</span></div>`
+	result, err := ExpandComponents(input, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result, "g-slot") {
+		t.Errorf("expected g-slot to remain, got: %s", result)
+	}
+	if !strings.Contains(result, "<span>ok</span>") {
+		t.Errorf("expected sibling to remain, got: %s", result)
+	}
+}
+
+func TestExpandComponents_MultipleGTagsBeforeCustomElement(t *testing.T) {
+	// Multiple g-* tags should all be skipped without consuming the expansion budget.
+	fsys := fstest.MapFS{
+		"my-comp.html": {Data: []byte(`<b>hi</b>`)},
+	}
+	input := `<g-slot name="a"></g-slot><g-slot name="b"></g-slot><g-slot name="c"></g-slot><my-comp></my-comp>`
+	result, err := ExpandComponents(input, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// All 3 g-slots should remain
+	if strings.Count(result, "g-slot") != 6 { // 3 open + 3 close tags
+		t.Errorf("expected all 3 g-slots to remain, got: %s", result)
+	}
+	// my-comp should be expanded
+	if !strings.Contains(result, "<b>hi</b>") {
+		t.Errorf("expected my-comp to be expanded, got: %s", result)
+	}
+}
+
+func TestExpandComponents_GTagDoesNotConsumeExpansionBudget(t *testing.T) {
+	// g-* tags use `expansions--` to avoid consuming the budget.
+	// Verify that 10 g-slots + 1 custom element still works (budget = 10 expansions).
+	fsys := fstest.MapFS{
+		"my-comp.html": {Data: []byte(`<em>done</em>`)},
+	}
+	var sb strings.Builder
+	for i := 0; i < 10; i++ {
+		sb.WriteString(fmt.Sprintf(`<g-slot name="s%d"></g-slot>`, i))
+	}
+	sb.WriteString(`<my-comp></my-comp>`)
+	result, err := ExpandComponents(sb.String(), fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result, "<em>done</em>") {
+		t.Errorf("expected my-comp to be expanded despite 10 g-slots, got: %s", result)
+	}
+}
+
 // === Negative tests and edge cases ===
 
 func TestExpandComponents_MaxDepthExhaustion(t *testing.T) {
