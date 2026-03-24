@@ -36,7 +36,8 @@ var godomProto = (function() {
     var VDomMessage = new Type("VDomMessage")
         .add(new Field("type", 1, "string"))
         .add(new Field("patches", 3, "DomPatch", "repeated"))
-        .add(new Field("tree", 5, "bytes"));
+        .add(new Field("tree", 5, "bytes"))
+        .add(new Field("targetNodeId", 6, "int32"));
 
     root.add(VDomMessage);
     root.add(DomPatch);

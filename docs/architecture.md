@@ -188,6 +188,64 @@ Parent struct         ───props───►    Child HTML template
 (state + methods)                     (resolves against parent state)
 ```
 
+### Stateful components
+
+Each component is a self-contained unit: own Go struct, own HTML template, own VDOM tree, own diff cycle. They are like small independent applications that all run inside the same Go process and render through the same bridge.
+
+```
+eng.Mount(layout, ui, "ui/layout/index.html")     // root component
+eng.Mount(counter, ui, "ui/counter/index.html")    // child component
+eng.AddToSlot(layout, "counter", counter)           // place child into parent's slot
+```
+
+Components compose via `<g-slot>` — the parent declares named insertion points, children render into them. The root component provides the full HTML page (with `<body>`). Child components provide HTML fragments. On init, components are sent to the browser in topological order (parents before children). Each child targets a specific VDOM node ID in its parent's tree.
+
+```
+┌─────────────────── Go process ───────────────────┐
+│                                                   │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐          │
+│  │ Layout  │  │ Counter │  │  Clock  │  ...      │
+│  │ struct  │  │ struct  │  │ struct  │           │
+│  │ VDOM    │  │ VDOM    │  │ VDOM    │           │
+│  │ diff    │  │ diff    │  │ diff    │           │
+│  └────┬────┘  └────┬────┘  └────┬────┘           │
+│       │            │            │                 │
+│       └────────────┼────────────┘                 │
+│                    │                              │
+│              shared IDCounter                     │
+│              event routing                        │
+│                    │                              │
+│              ┌─────┴─────┐                        │
+│              │  server   │                        │
+│              └─────┬─────┘                        │
+└────────────────────┼─────────────────────────────┘
+                     │  one WebSocket (or transport)
+                     │
+┌────────────────────┼─────────────────────────────┐
+│  Browser           │                              │
+│              ┌─────┴─────┐                        │
+│              │  bridge   │                        │
+│              │  one      │                        │
+│              │  nodeMap  │                        │
+│              └─────┬─────┘                        │
+│                    │                              │
+│    ┌───────────────┼───────────────┐              │
+│    ▼               ▼               ▼              │
+│  [body]     [slot:counter]   [slot:clock]         │
+│  (layout)   (counter DOM)    (clock DOM)          │
+└───────────────────────────────────────────────────┘
+```
+
+The bridge doesn't know there are multiple components. It sees one `nodeMap`, one WebSocket, and a sequence of init and patch messages — some targeting the body (root), others targeting slot elements via `targetNodeId`. All components share a single `IDCounter` so node IDs are globally unique. When a browser event arrives, the server searches each component's tree to find which one owns the target node ID, and dispatches the event to that component.
+
+Cross-component communication uses Go callbacks wired in `main.go`:
+
+```go
+sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
+```
+
+Components don't know about each other's types — they communicate through function values.
+
 ## The bridge (bridge.js)
 
 The bridge is vanilla JS with no dependencies. It:

@@ -1,0 +1,18 @@
+<div class="overflow-x-auto">
+<table class="w-full text-sm">
+    <thead>
+        <tr class="border-b-2 border-gray-100">
+            <th class="text-left py-2 px-3 text-gray-400 font-medium">Symbol</th>
+            <th class="text-right py-2 px-3 text-gray-400 font-medium">Price</th>
+            <th class="text-right py-2 px-3 text-gray-400 font-medium">Change</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr g-for="stock in Stocks" class="border-b border-gray-50">
+            <td class="py-1.5 px-3 font-semibold" g-text="stock.Symbol">--</td>
+            <td class="py-1.5 px-3 text-right font-mono" g-text="stock.Price">--</td>
+            <td class="py-1.5 px-3 text-right font-mono" g-class:text-green-500="stock.IsUp" g-class:text-red-500="stock.IsDown" g-text="stock.Change">--</td>
+        </tr>
+    </tbody>
+</table>
+</div>

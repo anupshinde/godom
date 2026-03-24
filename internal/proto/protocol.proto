@@ -49,6 +49,7 @@ message VDomMessage {
   string type = 1;                    // "init" or "patch"
   repeated DomPatch patches = 3;      // incremental patches (patch only)
   bytes tree = 5;                     // JSON-encoded tree description (init only)
+  int32 target_node_id = 6;           // VDOM node ID of slot element to render into (multi-component)
 }
 
 // DomPatch describes a single DOM mutation produced by the diff algorithm.

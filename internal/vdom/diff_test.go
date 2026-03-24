@@ -2213,6 +2213,69 @@ func TestDiff_GIfRemovalWithSiblingStyleChange(t *testing.T) {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Slot boundary tests
+// ---------------------------------------------------------------------------
+
+func TestDiffElement_SlotBoundary_SkipsChildDiff(t *testing.T) {
+	// Two slot nodes with different children — diff should NOT produce
+	// child patches because slots are opaque boundaries.
+	old := &ElementNode{
+		NodeBase: NodeBase{ID: 1}, Tag: "div", IsSlot: true, SlotName: "counter",
+		Children: []Node{&TextNode{NodeBase: NodeBase{ID: 2}, Text: "old"}},
+	}
+	new := &ElementNode{
+		NodeBase: NodeBase{ID: 1}, Tag: "div", IsSlot: true, SlotName: "counter",
+		Children: []Node{&TextNode{NodeBase: NodeBase{ID: 3}, Text: "new"}},
+	}
+
+	var patches []Patch
+	diffElement(old, new, &patches)
+
+	// Should produce no patches — slot children are managed by child components
+	for _, p := range patches {
+		if p.Type == PatchRedraw || p.Type == PatchText {
+			t.Errorf("unexpected child patch for slot node: %+v", p)
+		}
+	}
+}
+
+func TestDiffElement_NonSlot_DiffsChildren(t *testing.T) {
+	// Non-slot nodes with different children should produce patches normally.
+	old := &ElementNode{
+		NodeBase: NodeBase{ID: 1}, Tag: "div",
+		Children: []Node{&TextNode{NodeBase: NodeBase{ID: 2}, Text: "old"}},
+	}
+	new := &ElementNode{
+		NodeBase: NodeBase{ID: 1}, Tag: "div",
+		Children: []Node{&TextNode{NodeBase: NodeBase{ID: 2}, Text: "new"}},
+	}
+
+	var patches []Patch
+	diffElement(old, new, &patches)
+
+	found := false
+	for _, p := range patches {
+		if p.Type == PatchText {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected PatchText for non-slot node with changed text")
+	}
+}
+
+func TestIsSlotNode(t *testing.T) {
+	slot := &ElementNode{IsSlot: true}
+	if !IsSlotNode(slot) {
+		t.Error("expected IsSlotNode to return true for slot node")
+	}
+	normal := &ElementNode{IsSlot: false}
+	if IsSlotNode(normal) {
+		t.Error("expected IsSlotNode to return false for normal node")
+	}
+}
+
 func makeDiv(children ...Node) *ElementNode {
 	return &ElementNode{Tag: "div", Children: children}
 }

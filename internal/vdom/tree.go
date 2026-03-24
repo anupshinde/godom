@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -46,6 +47,10 @@ type TemplateNode struct {
 	PluginName string // plugin name from g-plugin:name
 	PluginExpr string // data expression
 
+	// For g-slot nodes
+	IsSlot   bool
+	SlotExpr string // slot name expression (always resolved: "counter" or "slot.Name")
+
 	// StableID is a UUID assigned at parse time to unbound form inputs.
 	// Used to preserve input values across tree rebuilds.
 	StableID string
@@ -72,6 +77,12 @@ type TextPart struct {
 
 // ParseTemplate parses HTML into a template tree.
 func ParseTemplate(htmlStr string) ([]*TemplateNode, error) {
+	// Go's html.Parse doesn't treat custom elements as void/self-closing.
+	// <g-slot name="x"/> is parsed as <g-slot name="x"> (open tag), which
+	// swallows all subsequent siblings as children. Expand to explicit
+	// closing tags so the parser produces correct sibling structure.
+	htmlStr = expandSelfClosingGSlot(htmlStr)
+
 	doc, err := html.Parse(strings.NewReader(htmlStr))
 	if err != nil { // unreachable: html.Parse never errors, but kept as defensive check
 		return nil, fmt.Errorf("parse HTML: %w", err)
@@ -88,7 +99,32 @@ func ParseTemplate(htmlStr string) ([]*TemplateNode, error) {
 			nodes = append(nodes, tn)
 		}
 	}
+	if err := checkDuplicateSlots(nodes); err != nil {
+		return nil, err
+	}
 	return nodes, nil
+}
+
+// checkDuplicateSlots walks the template tree and returns an error if any
+// static slot name appears more than once.
+func checkDuplicateSlots(nodes []*TemplateNode) error {
+	seen := map[string]bool{}
+	var walk func([]*TemplateNode) error
+	walk = func(nodes []*TemplateNode) error {
+		for _, n := range nodes {
+			if n.IsSlot && n.SlotExpr != "" && !strings.Contains(n.SlotExpr, ".") && !strings.Contains(n.SlotExpr, "{") {
+				if seen[n.SlotExpr] {
+					return fmt.Errorf("duplicate <g-slot> name %q in template", n.SlotExpr)
+				}
+				seen[n.SlotExpr] = true
+			}
+			if err := walk(n.Children); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return walk(nodes)
 }
 
 func htmlToTemplate(n *html.Node) *TemplateNode {
@@ -116,6 +152,15 @@ func htmlElementToTemplate(n *html.Node) *TemplateNode {
 
 	if forExpr := getAttrVal(n, "g-for"); forExpr != "" {
 		return parseForTemplate(n, forExpr)
+	}
+
+	// <g-slot name="counter"> — name is always resolved as an expression.
+	// <g-slot name="counter"/> — static name
+	// <g-slot name="{{slot.Name}}"/> — interpolated name from context
+	if tag == "g-slot" {
+		tn := &TemplateNode{IsSlot: true}
+		tn.SlotExpr = getAttrVal(n, "name")
+		return tn
 	}
 
 	pluginName, pluginExpr := extractPluginDirective(n)
@@ -459,6 +504,10 @@ func ResolveTemplateNode(t *TemplateNode, ctx *ResolveContext) []Node {
 		}
 	}
 
+	if t.IsSlot {
+		return []Node{resolveSlotNode(t, ctx)}
+	}
+
 	if t.IsPlugin {
 		return []Node{resolvePluginNode(t, ctx)}
 	}
@@ -493,15 +542,16 @@ func resolveTextNode(t *TemplateNode, ctx *ResolveContext) []Node {
 
 func resolveElementNode(t *TemplateNode, ctx *ResolveContext) Node {
 	id := nextID(ctx)
-	el := &ElementNode{
-		NodeBase:  NodeBase{ID: id},
-		Tag:       t.Tag,
-		Namespace: t.Namespace,
-		Facts:     resolveFacts(t, ctx, id),
-	}
+	facts := resolveFacts(t, ctx, id)
 
 	for _, d := range t.Directives {
 		if d.Type == "text" {
+			el := &ElementNode{
+				NodeBase:  NodeBase{ID: id},
+				Tag:       t.Tag,
+				Namespace: t.Namespace,
+				Facts:     facts,
+			}
 			val := ResolveExpr(d.Expr, ctx)
 			text := fmt.Sprint(val)
 			textID := nextID(ctx)
@@ -513,8 +563,79 @@ func resolveElementNode(t *TemplateNode, ctx *ResolveContext) Node {
 		}
 	}
 
+	// Check if any child template is a keyed g-for. If so, produce a
+	// KeyedElementNode so the diff uses keyed reordering (DOM node moves)
+	// instead of positional patching (in-place updates).
+	if keyedFor := findKeyedFor(t.Children); keyedFor != nil {
+		kel := &KeyedElementNode{
+			NodeBase:  NodeBase{ID: id},
+			Tag:       t.Tag,
+			Namespace: t.Namespace,
+			Facts:     facts,
+		}
+		// Resolve non-for children before the keyed for
+		// and after it as regular nodes isn't supported — keyed element
+		// expects all children to be keyed. So we resolve only the for.
+		kel.Children = resolveKeyedForNode(keyedFor, ctx)
+		return kel
+	}
+
+	el := &ElementNode{
+		NodeBase:  NodeBase{ID: id},
+		Tag:       t.Tag,
+		Namespace: t.Namespace,
+		Facts:     facts,
+	}
 	el.Children = ResolveTree(t.Children, ctx)
 	return el
+}
+
+// findKeyedFor returns the first keyed g-for child template, or nil.
+func findKeyedFor(children []*TemplateNode) *TemplateNode {
+	for _, c := range children {
+		if c.IsFor && c.ForKey != "" {
+			return c
+		}
+	}
+	return nil
+}
+
+// resolveKeyedForNode resolves a g-for with g-key into KeyedChild entries.
+func resolveKeyedForNode(t *TemplateNode, ctx *ResolveContext) []KeyedChild {
+	listVal := ResolveExpr(t.ForList, ctx)
+	rv := reflect.ValueOf(listVal)
+	if !rv.IsValid() || rv.Kind() != reflect.Slice {
+		return nil
+	}
+
+	var children []KeyedChild
+	for i := 0; i < rv.Len(); i++ {
+		item := rv.Index(i).Interface()
+
+		childCtx := &ResolveContext{
+			State:         ctx.State,
+			Vars:          CopyVars(ctx.Vars),
+			IDs:           ctx.IDs,
+			UnboundValues: ctx.UnboundValues,
+			NodeStableIDs: ctx.NodeStableIDs,
+			ForIndices:    append(append([]int{}, ctx.ForIndices...), i),
+		}
+		childCtx.Vars[t.ForItem] = item
+		if t.ForIndex != "" {
+			childCtx.Vars[t.ForIndex] = i
+		}
+
+		key := fmt.Sprint(ResolveExpr(t.ForKey, childCtx))
+
+		for _, bodyTmpl := range t.ForBody {
+			resolved := ResolveTemplateNode(bodyTmpl, childCtx)
+			for _, node := range resolved {
+				children = append(children, KeyedChild{Key: key, Node: node})
+			}
+		}
+	}
+
+	return children
 }
 
 func resolveForNode(t *TemplateNode, ctx *ResolveContext) []Node {
@@ -550,6 +671,25 @@ func resolveForNode(t *TemplateNode, ctx *ResolveContext) []Node {
 	return nodes
 }
 
+func resolveSlotNode(t *TemplateNode, ctx *ResolveContext) Node {
+	id := nextID(ctx)
+
+	// Resolve slot name — supports {{expr}} interpolation like all attributes.
+	// name="counter" → "counter", name="{{slot.Name}}" → resolved value.
+	name := resolveAttrValue(t.SlotExpr, ctx)
+
+	// Create a plain div placeholder. Slot metadata lives on the VDOM node
+	// (IsSlot/SlotName), not in DOM attributes. The bridge targets this node
+	// via its VDOM ID (nodeMap lookup), not via getElementById.
+	el := &ElementNode{
+		NodeBase: NodeBase{ID: id},
+		Tag:      "div",
+		IsSlot:   true,
+		SlotName: name,
+	}
+	return el
+}
+
 func resolvePluginNode(t *TemplateNode, ctx *ResolveContext) Node {
 	id := nextID(ctx)
 	data := ResolveExpr(t.PluginExpr, ctx)
@@ -567,24 +707,43 @@ func resolvePluginNode(t *TemplateNode, ctx *ResolveContext) Node {
 // Facts resolution
 // ---------------------------------------------------------------------------
 
+// resolveAttrValue resolves {{expr}} interpolations in an attribute value.
+// If the value contains no interpolations, it is returned as-is.
+func resolveAttrValue(val string, ctx *ResolveContext) string {
+	if !strings.Contains(val, "{{") {
+		return val
+	}
+	parts := ParseTextInterpolations(val)
+	var b strings.Builder
+	for _, p := range parts {
+		if p.Static {
+			b.WriteString(p.Value)
+		} else {
+			b.WriteString(fmt.Sprint(ResolveExpr(p.Value, ctx)))
+		}
+	}
+	return b.String()
+}
+
 func resolveFacts(t *TemplateNode, ctx *ResolveContext, nodeID int) Facts {
 	var f Facts
 
 	for _, a := range t.Attrs {
+		val := resolveAttrValue(a.Val, ctx)
 		if a.Key == "class" || a.Key == "style" || a.Key == "id" {
 			if f.Props == nil {
 				f.Props = make(map[string]any)
 			}
 			if a.Key == "class" {
-				f.Props["className"] = a.Val
+				f.Props["className"] = val
 			} else {
-				f.Props[a.Key] = a.Val
+				f.Props[a.Key] = val
 			}
 		} else {
 			if f.Attrs == nil {
 				f.Attrs = make(map[string]string)
 			}
-			f.Attrs[a.Key] = a.Val
+			f.Attrs[a.Key] = val
 		}
 	}
 
@@ -1079,4 +1238,14 @@ func findBody(n *html.Node) *html.Node {
 		}
 	}
 	return nil
+}
+
+// gSlotSelfCloseRe matches self-closing <g-slot .../> tags.
+var gSlotSelfCloseRe = regexp.MustCompile(`<g-slot\b([^>]*?)/>`)
+
+// expandSelfClosingGSlot rewrites <g-slot .../> → <g-slot ...></g-slot>
+// so Go's html.Parse treats them as proper sibling elements instead of
+// nesting subsequent tags inside the first unclosed g-slot.
+func expandSelfClosingGSlot(s string) string {
+	return gSlotSelfCloseRe.ReplaceAllString(s, `<g-slot$1></g-slot>`)
 }

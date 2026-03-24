@@ -1,0 +1,13 @@
+<div class="flex md:flex-col h-full">
+    <div class="flex md:flex-col md:px-2 md:py-4 items-center md:items-stretch gap-1 px-2 py-1 w-full">
+        <div class="hidden md:block text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 mb-3">Navigation</div>
+        <div g-for="item in Items" g-key="item.ID"
+             g-click="Navigate(item.ID)"
+             class="flex flex-col md:flex-row items-center gap-1 md:gap-3 px-3 py-2 rounded-lg cursor-pointer text-xs md:text-sm transition-colors shrink-0"
+             g-class:bg-blue-50="item.Active" g-class:text-blue-700="item.Active"
+             g-class:text-gray-600="item.Inactive" g-class:hover:bg-gray-50="item.Inactive">
+            <span g-text="item.Icon">-</span>
+            <span g-text="item.Label">--</span>
+        </div>
+    </div>
+</div>

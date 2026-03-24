@@ -3,6 +3,7 @@ package template
 import (
 	"fmt"
 	"io/fs"
+	"path"
 	"regexp"
 	"strings"
 )
@@ -20,15 +21,31 @@ var gAttrRe = regexp.MustCompile(`(g-[a-z]+(?::[a-z-]+)?)\s*=\s*"([^"]*)"`)
 
 // ExpandComponents takes HTML and recursively replaces custom element tags
 // with the contents of their corresponding HTML files from the filesystem.
-func ExpandComponents(htmlStr string, fsys fs.FS) (string, error) {
-	maxDepth := 10
-	for depth := 0; depth < maxDepth; depth++ {
-		loc := openTagRe.FindStringSubmatchIndex(htmlStr)
+func ExpandComponents(htmlStr string, fsys fs.FS, baseDir string) (string, error) {
+	maxExpansions := 10
+	searchFrom := 0
+	for expansions := 0; expansions < maxExpansions; expansions++ {
+		loc := openTagRe.FindStringSubmatchIndex(htmlStr[searchFrom:])
 		if loc == nil {
 			break
 		}
+		// Adjust indices relative to full string
+		for i := range loc {
+			if loc[i] >= 0 {
+				loc[i] += searchFrom
+			}
+		}
 
 		tagName := htmlStr[loc[2]:loc[3]]
+
+		// Skip g-* tags — these are framework directives, not custom components.
+		if strings.HasPrefix(tagName, "g-") {
+			searchFrom = loc[1]
+			expansions--
+			continue
+		}
+
+		searchFrom = 0
 		var attrs string
 		if loc[4] >= 0 {
 			attrs = strings.TrimSpace(htmlStr[loc[4]:loc[5]])
@@ -51,7 +68,7 @@ func ExpandComponents(htmlStr string, fsys fs.FS) (string, error) {
 		}
 
 		// Load component HTML
-		compHTML, err := fs.ReadFile(fsys, tagName+".html")
+		compHTML, err := fs.ReadFile(fsys, path.Join(baseDir, tagName+".html"))
 		if err != nil {
 			return "", fmt.Errorf("component %q: %w", tagName, err)
 		}

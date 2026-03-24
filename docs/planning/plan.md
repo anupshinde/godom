@@ -11,6 +11,7 @@
 - Watch `.go` and `.html` files, rebuild and restart
 - Browser auto-reconnects and gets fresh state
 - `godom dev` command
+- Consider [Air](https://github.com/air-verse/air) as an external option — needs testing with godom
 
 ### 8.2 Debugging
 - Log state changes to console

@@ -39,8 +39,8 @@ func TestNewEngine(t *testing.T) {
 	if e.plugins == nil {
 		t.Error("expected non-nil plugins map")
 	}
-	if e.comp != nil {
-		t.Error("expected nil comp before Mount")
+	if len(e.comps) != 0 {
+		t.Error("expected empty comps before Mount")
 	}
 }
 
@@ -173,16 +173,17 @@ func TestMount_Valid(t *testing.T) {
 	app := &testApp{Name: "Alice"}
 	e.Mount(app, makeTestFS(), "index.html")
 
-	if e.comp == nil {
-		t.Fatal("expected comp to be set after Mount")
+	if len(e.comps) != 1 {
+		t.Fatal("expected one component after Mount")
 	}
-	if e.comp.HTMLBody == "" {
+	ci := e.comps[0].Info
+	if ci.HTMLBody == "" {
 		t.Error("expected HTMLBody to be set")
 	}
-	if e.comp.VDOMTemplates == nil {
+	if ci.VDOMTemplates == nil {
 		t.Fatal("expected VDOMTemplates to be parsed")
 	}
-	if len(e.comp.VDOMTemplates) == 0 {
+	if len(ci.VDOMTemplates) == 0 {
 		t.Error("expected at least one parsed VDOM template")
 	}
 	if e.staticFS == nil {
@@ -195,8 +196,8 @@ func TestMount_NestedEntryPath(t *testing.T) {
 	app := &testApp{Name: "Alice"}
 	e.Mount(app, makeTestFSNested(), "ui/index.html")
 
-	if e.comp == nil {
-		t.Fatal("expected comp to be set")
+	if len(e.comps) != 1 {
+		t.Fatal("expected one component after Mount")
 	}
 	// staticFS should be the "ui/" subdirectory — verify by reading a file from it
 	if e.staticFS == nil {
@@ -216,12 +217,12 @@ func TestMount_WiresComponentField(t *testing.T) {
 	app := &testApp{Name: "Alice"}
 	e.Mount(app, makeTestFS(), "index.html")
 
-	// After Mount, app.Component.ci should be wired to the same Info as e.comp
+	// After Mount, app.Component.ci should be wired to the same Info as e.comps[0].Info
 	if app.Component.ci == nil {
 		t.Fatal("expected Component.ci to be wired after Mount")
 	}
-	if app.Component.ci != e.comp {
-		t.Error("expected Component.ci to point to the same Info as Engine.comp")
+	if app.Component.ci != e.comps[0].Info {
+		t.Error("expected Component.ci to point to the same Info as Engine.comps[0].Info")
 	}
 }
 
@@ -230,10 +231,11 @@ func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
 	app := &testApp{Name: "Alice"}
 	e.Mount(app, makeTestFS(), "index.html")
 
-	if !strings.Contains(e.comp.HTMLBody, "g-text") {
+	ci := e.comps[0].Info
+	if !strings.Contains(ci.HTMLBody, "g-text") {
 		t.Error("expected HTMLBody to contain template directives")
 	}
-	if !strings.Contains(e.comp.HTMLBody, "g-click") {
+	if !strings.Contains(ci.HTMLBody, "g-click") {
 		t.Error("expected HTMLBody to contain event directive")
 	}
 }
@@ -294,12 +296,13 @@ func TestMount_SetsValueAndType(t *testing.T) {
 	app := &testApp{Name: "Bob", Count: 42}
 	e.Mount(app, makeTestFS(), "index.html")
 
-	// comp.Value should point to the same app instance
-	if e.comp.Value.Pointer() != reflect.ValueOf(app).Pointer() {
-		t.Error("expected comp.Value to point to the original app")
+	ci := e.comps[0].Info
+	// ci.Value should point to the same app instance
+	if ci.Value.Pointer() != reflect.ValueOf(app).Pointer() {
+		t.Error("expected ci.Value to point to the original app")
 	}
-	if e.comp.Typ != reflect.TypeOf(testApp{}) {
-		t.Errorf("expected comp.Typ = testApp, got %v", e.comp.Typ)
+	if ci.Typ != reflect.TypeOf(testApp{}) {
+		t.Errorf("expected ci.Typ = testApp, got %v", ci.Typ)
 	}
 }
 
@@ -328,6 +331,163 @@ func TestMount_InvalidDirective(t *testing.T) {
 	out := runSubprocess(t, "TestMount_InvalidDirective", "TEST_FATAL_MOUNT_BADDIR")
 	if !strings.Contains(out, "NonExistentMethod") {
 		t.Errorf("expected error mentioning NonExistentMethod, got: %s", out)
+	}
+}
+
+// --- AddToSlot ---
+
+type childApp struct {
+	Component
+	Value string
+}
+
+var childHTML = `<!DOCTYPE html><html><head></head><body><span g-text="Value">placeholder</span></body></html>`
+
+func makeChildFS() fstest.MapFS {
+	return fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(childHTML)},
+	}
+}
+
+func TestAddToSlot_Valid(t *testing.T) {
+	e := NewEngine()
+	parent := &testApp{Name: "parent"}
+	child := &childApp{Value: "child"}
+
+	e.Mount(parent, makeTestFS(), "index.html")
+	e.Mount(child, makeChildFS(), "index.html")
+	e.AddToSlot(parent, "sidebar", child)
+
+	if len(e.comps) != 2 {
+		t.Fatalf("expected 2 comps, got %d", len(e.comps))
+	}
+	if e.comps[1].ParentIdx != 0 {
+		t.Errorf("expected child ParentIdx=0, got %d", e.comps[1].ParentIdx)
+	}
+	if e.comps[1].SlotName != "sidebar" {
+		t.Errorf("expected SlotName='sidebar', got %q", e.comps[1].SlotName)
+	}
+}
+
+func TestAddToSlot_UnmountedParent(t *testing.T) {
+	if os.Getenv("TEST_FATAL_ADDSLOT_PARENT") == "1" {
+		e := NewEngine()
+		child := &childApp{Value: "child"}
+		e.Mount(child, makeChildFS(), "index.html")
+		e.AddToSlot(&testApp{}, "sidebar", child) // parent not mounted
+		return
+	}
+	out := runSubprocess(t, "TestAddToSlot_UnmountedParent", "TEST_FATAL_ADDSLOT_PARENT")
+	if !strings.Contains(out, "unmounted parent") {
+		t.Errorf("expected 'unmounted parent' error, got: %s", out)
+	}
+}
+
+func TestAddToSlot_UnmountedChild(t *testing.T) {
+	if os.Getenv("TEST_FATAL_ADDSLOT_CHILD") == "1" {
+		e := NewEngine()
+		parent := &testApp{Name: "parent"}
+		e.Mount(parent, makeTestFS(), "index.html")
+		e.AddToSlot(parent, "sidebar", &childApp{}) // child not mounted
+		return
+	}
+	out := runSubprocess(t, "TestAddToSlot_UnmountedChild", "TEST_FATAL_ADDSLOT_CHILD")
+	if !strings.Contains(out, "unmounted child") {
+		t.Errorf("expected 'unmounted child' error, got: %s", out)
+	}
+}
+
+func TestAddToSlot_DuplicateSlot(t *testing.T) {
+	if os.Getenv("TEST_FATAL_ADDSLOT_DUP") == "1" {
+		e := NewEngine()
+		parent := &testApp{Name: "parent"}
+		child1 := &childApp{Value: "c1"}
+		child2 := &childApp{Value: "c2"}
+
+		e.Mount(parent, makeTestFS(), "index.html")
+		e.Mount(child1, makeChildFS(), "index.html")
+		e.Mount(child2, makeChildFS(), "index.html")
+
+		e.AddToSlot(parent, "sidebar", child1)
+		e.AddToSlot(parent, "sidebar", child2) // duplicate slot
+		return
+	}
+	out := runSubprocess(t, "TestAddToSlot_DuplicateSlot", "TEST_FATAL_ADDSLOT_DUP")
+	if !strings.Contains(out, "already has a component") {
+		t.Errorf("expected 'already has a component' error, got: %s", out)
+	}
+}
+
+func TestMount_MultipleComponents_StaticFSFromFirst(t *testing.T) {
+	e := NewEngine()
+	parent := &testApp{Name: "parent"}
+	child := &childApp{Value: "child"}
+
+	e.Mount(parent, makeTestFSNested(), "ui/index.html")
+	e.Mount(child, makeChildFS(), "index.html")
+
+	// staticFS should be derived from the first Mount call only
+	if e.staticFS == nil {
+		t.Fatal("expected staticFS to be set")
+	}
+	// It should be the "ui/" subdirectory from the first mount
+	data, err := fs.ReadFile(e.staticFS, "style.css")
+	if err != nil {
+		t.Errorf("expected staticFS from first mount, got error: %v", err)
+	}
+	if string(data) != "body{}" {
+		t.Errorf("unexpected content: %q", string(data))
+	}
+}
+
+func TestMount_SecondMountDoesNotOverwriteStaticFS(t *testing.T) {
+	e := NewEngine()
+	parent := &testApp{Name: "parent"}
+	child := &childApp{Value: "child"}
+
+	// First mount with nested FS that has style.css
+	e.Mount(parent, makeTestFSNested(), "ui/index.html")
+
+	// Second mount with a different FS — staticFS must NOT change
+	childFS := fstest.MapFS{
+		"other/index.html": &fstest.MapFile{Data: []byte(childHTML)},
+		"other/other.css":  &fstest.MapFile{Data: []byte("div{}")},
+	}
+	e.Mount(child, childFS, "other/index.html")
+
+	// staticFS should still be from the first mount (ui/ subdir)
+	_, err := fs.ReadFile(e.staticFS, "style.css")
+	if err != nil {
+		t.Error("expected staticFS to still serve first mount's style.css")
+	}
+	// The second mount's file should NOT be accessible via staticFS
+	_, err = fs.ReadFile(e.staticFS, "other.css")
+	if err == nil {
+		t.Error("expected second mount's other.css to NOT be in staticFS")
+	}
+}
+
+func TestAddToSlot_SameSlotDifferentParents(t *testing.T) {
+	// Two different parents can each have a child in the same slot name — no conflict.
+	e := NewEngine()
+	parent1 := &testApp{Name: "p1"}
+	parent2 := &testApp{Name: "p2"}
+	child1 := &childApp{Value: "c1"}
+	child2 := &childApp{Value: "c2"}
+
+	e.Mount(parent1, makeTestFS(), "index.html")
+	e.Mount(parent2, makeTestFS(), "index.html")
+	e.Mount(child1, makeChildFS(), "index.html")
+	e.Mount(child2, makeChildFS(), "index.html")
+
+	e.AddToSlot(parent1, "sidebar", child1)
+	e.AddToSlot(parent2, "sidebar", child2) // same slot name, different parent — should be fine
+
+	if e.comps[2].ParentIdx != 0 {
+		t.Errorf("expected child1 parent=0, got %d", e.comps[2].ParentIdx)
+	}
+	if e.comps[3].ParentIdx != 1 {
+		t.Errorf("expected child2 parent=1, got %d", e.comps[3].ParentIdx)
 	}
 }
 

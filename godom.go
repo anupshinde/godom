@@ -28,15 +28,16 @@ var protocolJS string
 // Engine is the godom runtime. It registers components and plugins,
 // mounts the root component, and starts the server.
 type Engine struct {
-	Port       int    // 0 = random available port
-	Host       string // default "localhost"; set to "0.0.0.0" for network access
-	NoAuth     bool   // disable token auth (default false = auth enabled)
-	Token      string // fixed auth token; empty = generate random token
-	NoBrowser  bool   // don't open browser on start
-	Quiet      bool   // suppress startup output
-	comp    *component.Info
-	plugins map[string][]string // plugin name → JS scripts
-	staticFS   fs.FS                     // embedded UI filesystem for static assets
+	Port      int    // 0 = random available port
+	Host      string // default "localhost"; set to "0.0.0.0" for network access
+	NoAuth    bool   // disable token auth (default false = auth enabled)
+	Token     string // fixed auth token; empty = generate random token
+	NoBrowser bool   // don't open browser on start
+	Quiet     bool   // suppress startup output
+	comps     []*server.MountedComponent // mounted components
+	plugins   map[string][]string        // plugin name → JS scripts
+	staticFS  fs.FS                      // embedded UI filesystem for static assets
+	compIndex map[interface{}]int        // comp pointer → index in comps slice
 }
 
 // Component is embedded in user structs to make them godom components.
@@ -76,7 +77,8 @@ func (c Component) Refresh() {
 // NewEngine creates a new godom Engine.
 func NewEngine() *Engine {
 	return &Engine{
-		plugins: make(map[string][]string),
+		plugins:   make(map[string][]string),
+		compIndex: make(map[interface{}]int),
 	}
 }
 
@@ -87,6 +89,11 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 
 // Mount registers a component struct with an embedded filesystem containing HTML templates.
 // The entryPath is the path to the index.html file within fsys (e.g. "ui/index.html").
+//
+// For single-component apps, call Mount once. For multi-component apps, call
+// Mount for each component and use AddToSlot to place them into parent slots.
+// The root component (no parent) provides the full page HTML; child components
+// provide HTML fragments that render into the parent's <g-slot> placeholders.
 func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 	v := reflect.ValueOf(comp)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
@@ -99,16 +106,18 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 		log.Fatal("godom: mounted struct must embed godom.Component")
 	}
 
-	// Derive the static FS root from the entry path's directory
-	dir := path.Dir(entryPath)
-	if dir == "." {
-		a.staticFS = fsys
-	} else {
-		sub, err := fs.Sub(fsys, dir)
-		if err != nil {
-			log.Fatalf("godom: invalid entry path %q: %v", entryPath, err)
+	// Derive static FS from the first mounted component's entry path.
+	if a.staticFS == nil {
+		dir := path.Dir(entryPath)
+		if dir == "." {
+			a.staticFS = fsys
+		} else {
+			sub, err := fs.Sub(fsys, dir)
+			if err != nil {
+				log.Fatalf("godom: invalid entry path %q: %v", entryPath, err)
+			}
+			a.staticFS = sub
 		}
-		a.staticFS = sub
 	}
 
 	indexHTML, err := fs.ReadFile(fsys, entryPath)
@@ -116,7 +125,7 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 		log.Fatalf("godom: failed to read %s: %v", entryPath, err)
 	}
 
-	composed, err := template.ExpandComponents(string(indexHTML), a.staticFS)
+	composed, err := template.ExpandComponents(string(indexHTML), fsys, path.Dir(entryPath))
 	if err != nil {
 		log.Fatalf("godom: failed to expand components: %v", err)
 	}
@@ -139,12 +148,34 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 
 	ci.Value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
 
-	a.comp = ci
+	idx := len(a.comps)
+	a.comps = append(a.comps, &server.MountedComponent{Info: ci, ParentIdx: -1})
+	a.compIndex[comp] = idx
+}
+
+// AddToSlot registers a child component to render into a named <g-slot> in the
+// parent component's template. Both parent and child must already be mounted.
+func (a *Engine) AddToSlot(parent interface{}, slotName string, child interface{}) {
+	parentIdx, ok := a.compIndex[parent]
+	if !ok {
+		log.Fatal("godom: AddToSlot called with unmounted parent")
+	}
+	childIdx, ok := a.compIndex[child]
+	if !ok {
+		log.Fatal("godom: AddToSlot called with unmounted child")
+	}
+	for i, mc := range a.comps {
+		if i != childIdx && mc.ParentIdx == parentIdx && mc.SlotName == slotName {
+			log.Fatalf("godom: slot %q on this parent already has a component", slotName)
+		}
+	}
+	a.comps[childIdx].ParentIdx = parentIdx
+	a.comps[childIdx].SlotName = slotName
 }
 
 // Start starts the HTTP server, opens the default browser, and blocks forever.
 func (a *Engine) Start() error {
-	if a.comp == nil {
+	if len(a.comps) == 0 {
 		return fmt.Errorf("godom: no component mounted, call Mount() before Start()")
 	}
 
@@ -177,8 +208,8 @@ func (a *Engine) Start() error {
 		a.Quiet = true
 	}
 
-	return server.Run(server.Config{
-		Comp:          a.comp,
+	cfg := server.Config{
+		Comps:         a.comps,
 		Plugins:       a.plugins,
 		StaticFS:      a.staticFS,
 		Port:          a.Port,
@@ -190,7 +221,9 @@ func (a *Engine) Start() error {
 		BridgeJS:      bridgeJS,
 		ProtobufMinJS: protobufMinJS,
 		ProtocolJS:    protocolJS,
-	})
+	}
+
+	return server.Run(cfg)
 }
 
 // embedsComponent checks if a struct type embeds godom.Component.

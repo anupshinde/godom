@@ -3229,3 +3229,554 @@ func TestDeepCopyJSON_UnmarshalError(t *testing.T) {
 		t.Error("expected original value returned on marshal error")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// expandSelfClosingGSlot tests
+// ---------------------------------------------------------------------------
+
+func TestExpandSelfClosingGSlot_Basic(t *testing.T) {
+	input := `<g-slot name="counter"/>`
+	got := expandSelfClosingGSlot(input)
+	want := `<g-slot name="counter"></g-slot>`
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestExpandSelfClosingGSlot_Multiple(t *testing.T) {
+	input := `<g-slot name="a"/><p>hi</p><g-slot name="b"/>`
+	got := expandSelfClosingGSlot(input)
+	if !strings.Contains(got, `<g-slot name="a"></g-slot>`) {
+		t.Errorf("first slot not expanded: %q", got)
+	}
+	if !strings.Contains(got, `<g-slot name="b"></g-slot>`) {
+		t.Errorf("second slot not expanded: %q", got)
+	}
+}
+
+func TestExpandSelfClosingGSlot_AlreadyExplicit(t *testing.T) {
+	input := `<g-slot name="counter"></g-slot>`
+	got := expandSelfClosingGSlot(input)
+	if got != input {
+		t.Errorf("explicit close tag should be unchanged, got %q", got)
+	}
+}
+
+func TestExpandSelfClosingGSlot_NoGSlot(t *testing.T) {
+	input := `<div><span>hello</span></div>`
+	got := expandSelfClosingGSlot(input)
+	if got != input {
+		t.Errorf("no g-slot should be unchanged, got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// g-slot parsing tests
+// ---------------------------------------------------------------------------
+
+func TestParseTemplate_GSlot(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body><div><g-slot name="counter"></g-slot></div></body></html>`
+	nodes, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should have a div with a slot child
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	div := nodes[0]
+	if div.Tag != "div" {
+		t.Fatalf("expected div, got %q", div.Tag)
+	}
+	found := false
+	for _, c := range div.Children {
+		if c.IsSlot {
+			found = true
+			if c.SlotExpr != "counter" {
+				t.Errorf("expected slot name 'counter', got %q", c.SlotExpr)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected to find a slot child in parsed template")
+	}
+}
+
+func TestParseTemplate_GSlotSelfClosing(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body><g-slot name="sidebar"/><p>after</p></body></html>`
+	nodes, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Self-closing g-slot should be a sibling, not swallow <p>
+	foundSlot := false
+	foundP := false
+	for _, n := range nodes {
+		if n.IsSlot && n.SlotExpr == "sidebar" {
+			foundSlot = true
+		}
+		if n.Tag == "p" {
+			foundP = true
+		}
+	}
+	if !foundSlot {
+		t.Error("expected slot node with name 'sidebar'")
+	}
+	if !foundP {
+		t.Error("expected <p> as sibling, not swallowed by slot")
+	}
+}
+
+func TestParseTemplate_DuplicateSlotNames(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body><g-slot name="x"></g-slot><g-slot name="x"></g-slot></body></html>`
+	_, err := ParseTemplate(html)
+	if err == nil {
+		t.Fatal("expected error for duplicate slot names")
+	}
+	if !strings.Contains(err.Error(), "duplicate") {
+		t.Errorf("expected 'duplicate' in error, got: %v", err)
+	}
+}
+
+func TestCheckDuplicateSlots_NoSlots(t *testing.T) {
+	nodes := []*TemplateNode{{Tag: "div"}}
+	if err := checkDuplicateSlots(nodes); err != nil {
+		t.Errorf("expected no error for no slots, got: %v", err)
+	}
+}
+
+func TestCheckDuplicateSlots_DynamicSlotNamesAllowed(t *testing.T) {
+	// Dynamic slot names (containing ".") should not trigger duplicate check
+	nodes := []*TemplateNode{
+		{IsSlot: true, SlotExpr: "slot.Name"},
+		{IsSlot: true, SlotExpr: "slot.Name"},
+	}
+	if err := checkDuplicateSlots(nodes); err != nil {
+		t.Errorf("expected no error for dynamic slot names, got: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// resolveSlotNode tests
+// ---------------------------------------------------------------------------
+
+func TestResolveSlotNode_StaticName(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body><g-slot name="counter"></g-slot></body></html>`
+	templates, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&struct{}{}),
+		Vars:  make(map[string]any),
+	}
+	nodes := ResolveTree(templates, ctx)
+	// Should produce a div element with IsSlot=true
+	found := false
+	for _, n := range nodes {
+		if el, ok := n.(*ElementNode); ok && el.IsSlot {
+			found = true
+			if el.Tag != "div" {
+				t.Errorf("expected tag 'div', got %q", el.Tag)
+			}
+			if el.SlotName != "counter" {
+				t.Errorf("expected slot name 'counter', got %q", el.SlotName)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected a resolved slot node")
+	}
+}
+
+func TestResolveSlotNode_InterpolatedName(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body><g-slot name="{{SlotName}}"></g-slot></body></html>`
+	templates, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type app struct{ SlotName string }
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&app{SlotName: "dynamic"}),
+		Vars:  make(map[string]any),
+	}
+	nodes := ResolveTree(templates, ctx)
+	found := false
+	for _, n := range nodes {
+		if el, ok := n.(*ElementNode); ok && el.IsSlot {
+			found = true
+			if el.SlotName != "dynamic" {
+				t.Errorf("expected slot name 'dynamic', got %q", el.SlotName)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected a resolved slot node with interpolated name")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// resolveAttrValue tests
+// ---------------------------------------------------------------------------
+
+func TestResolveAttrValue_NoInterpolation(t *testing.T) {
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&struct{}{}),
+		Vars:  make(map[string]any),
+	}
+	got := resolveAttrValue("plain", ctx)
+	if got != "plain" {
+		t.Errorf("expected 'plain', got %q", got)
+	}
+}
+
+func TestResolveAttrValue_WithInterpolation(t *testing.T) {
+	type app struct{ Color string }
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&app{Color: "red"}),
+		Vars:  make(map[string]any),
+	}
+	got := resolveAttrValue("bg-{{Color}}", ctx)
+	if got != "bg-red" {
+		t.Errorf("expected 'bg-red', got %q", got)
+	}
+}
+
+func TestResolveAttrValue_MultipleInterpolations(t *testing.T) {
+	type app struct {
+		A string
+		B string
+	}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&app{A: "hello", B: "world"}),
+		Vars:  make(map[string]any),
+	}
+	got := resolveAttrValue("{{A}}-{{B}}", ctx)
+	if got != "hello-world" {
+		t.Errorf("expected 'hello-world', got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// resolveKeyedForNode / findKeyedFor tests
+// ---------------------------------------------------------------------------
+
+func TestFindKeyedFor_NoKeyedChildren(t *testing.T) {
+	children := []*TemplateNode{
+		{Tag: "div"},
+		{IsFor: true, ForKey: ""}, // for without key
+	}
+	if findKeyedFor(children) != nil {
+		t.Error("expected nil for no keyed for children")
+	}
+}
+
+func TestFindKeyedFor_HasKeyedChild(t *testing.T) {
+	keyed := &TemplateNode{IsFor: true, ForKey: "item.ID"}
+	children := []*TemplateNode{{Tag: "div"}, keyed}
+	got := findKeyedFor(children)
+	if got != keyed {
+		t.Error("expected to find the keyed for child")
+	}
+}
+
+func TestResolveKeyedForNode(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body>
+		<ul>
+			<li g-for="todo in Todos" g-key="todo.ID">
+				<span g-text="todo.Text"></span>
+			</li>
+		</ul>
+	</body></html>`
+
+	templates, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type todo struct {
+		ID   int
+		Text string
+	}
+	type app struct {
+		Todos []todo
+	}
+	state := &app{
+		Todos: []todo{
+			{ID: 1, Text: "Buy milk"},
+			{ID: 2, Text: "Write code"},
+		},
+	}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+	}
+
+	nodes := ResolveTree(templates, ctx)
+
+	// The ul should be a KeyedElementNode
+	var kel *KeyedElementNode
+	for _, n := range nodes {
+		if k, ok := n.(*KeyedElementNode); ok && k.Tag == "ul" {
+			kel = k
+			break
+		}
+	}
+	if kel == nil {
+		t.Fatal("expected ul to be a KeyedElementNode")
+	}
+	if len(kel.Children) != 2 {
+		t.Fatalf("expected 2 keyed children, got %d", len(kel.Children))
+	}
+	if kel.Children[0].Key != "1" {
+		t.Errorf("expected key '1', got %q", kel.Children[0].Key)
+	}
+	if kel.Children[1].Key != "2" {
+		t.Errorf("expected key '2', got %q", kel.Children[1].Key)
+	}
+}
+
+func TestResolveKeyedForNode_EmptySlice(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body>
+		<ul><li g-for="x in Items" g-key="x.ID"></li></ul>
+	</body></html>`
+
+	templates, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type item struct{ ID int }
+	type app struct{ Items []item }
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&app{Items: nil}),
+		Vars:  make(map[string]any),
+	}
+
+	nodes := ResolveTree(templates, ctx)
+
+	// With empty list, the ul should be a KeyedElementNode with no children
+	var kel *KeyedElementNode
+	for _, n := range nodes {
+		if k, ok := n.(*KeyedElementNode); ok && k.Tag == "ul" {
+			kel = k
+			break
+		}
+	}
+	if kel == nil {
+		t.Fatal("expected ul to be a KeyedElementNode")
+	}
+	if len(kel.Children) != 0 {
+		t.Errorf("expected 0 keyed children, got %d", len(kel.Children))
+	}
+}
+
+func TestResolveKeyedForNode_NonSliceValue(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body>
+		<ul><li g-for="x in NotASlice" g-key="x"></li></ul>
+	</body></html>`
+
+	templates, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type app struct{ NotASlice string }
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&app{NotASlice: "hello"}),
+		Vars:  make(map[string]any),
+	}
+
+	nodes := ResolveTree(templates, ctx)
+
+	// Non-slice should produce a KeyedElementNode with no children
+	var kel *KeyedElementNode
+	for _, n := range nodes {
+		if k, ok := n.(*KeyedElementNode); ok && k.Tag == "ul" {
+			kel = k
+			break
+		}
+	}
+	if kel == nil {
+		t.Fatal("expected ul to be a KeyedElementNode")
+	}
+	if len(kel.Children) != 0 {
+		t.Errorf("expected 0 keyed children for non-slice, got %d", len(kel.Children))
+	}
+}
+
+func TestResolveKeyedForNode_WithIndex(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body>
+		<ul><li g-for="item, i in Items" g-key="item.ID"><span g-text="i"></span></li></ul>
+	</body></html>`
+
+	templates, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type item struct{ ID int }
+	type app struct{ Items []item }
+	state := &app{Items: []item{{ID: 10}, {ID: 20}}}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+	}
+
+	nodes := ResolveTree(templates, ctx)
+
+	var kel *KeyedElementNode
+	for _, n := range nodes {
+		if k, ok := n.(*KeyedElementNode); ok && k.Tag == "ul" {
+			kel = k
+			break
+		}
+	}
+	if kel == nil {
+		t.Fatal("expected KeyedElementNode")
+	}
+	if len(kel.Children) != 2 {
+		t.Fatalf("expected 2 children, got %d", len(kel.Children))
+	}
+	if kel.Children[0].Key != "10" || kel.Children[1].Key != "20" {
+		t.Errorf("unexpected keys: %q, %q", kel.Children[0].Key, kel.Children[1].Key)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// resolveSlotNode negative tests
+// ---------------------------------------------------------------------------
+
+func TestResolveSlotNode_EmptyName(t *testing.T) {
+	// <g-slot></g-slot> without a name attribute — SlotExpr is ""
+	html := `<!DOCTYPE html><html><head></head><body><g-slot></g-slot></body></html>`
+	templates, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&struct{}{}),
+		Vars:  make(map[string]any),
+	}
+	nodes := ResolveTree(templates, ctx)
+	found := false
+	for _, n := range nodes {
+		if el, ok := n.(*ElementNode); ok && el.IsSlot {
+			found = true
+			if el.SlotName != "" {
+				t.Errorf("expected empty SlotName for nameless g-slot, got %q", el.SlotName)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected a resolved slot node even without a name")
+	}
+}
+
+func TestResolveSlotNode_MissingFieldInInterpolation(t *testing.T) {
+	// Interpolation references a field that doesn't exist on the state struct.
+	html := `<!DOCTYPE html><html><head></head><body><g-slot name="{{NoSuchField}}"></g-slot></body></html>`
+	templates, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&struct{}{}),
+		Vars:  make(map[string]any),
+	}
+	nodes := ResolveTree(templates, ctx)
+	for _, n := range nodes {
+		if el, ok := n.(*ElementNode); ok && el.IsSlot {
+			// Missing field resolves to nil → fmt.Sprint(nil) = "<nil>"
+			if el.SlotName != "<nil>" {
+				t.Errorf("expected '<nil>' for missing field, got %q", el.SlotName)
+			}
+			return
+		}
+	}
+	t.Error("expected a resolved slot node")
+}
+
+// ---------------------------------------------------------------------------
+// checkDuplicateSlots negative tests
+// ---------------------------------------------------------------------------
+
+func TestCheckDuplicateSlots_EmptyNameNotChecked(t *testing.T) {
+	// Two slots with empty SlotExpr — should NOT trigger duplicate error
+	// because the check requires SlotExpr != ""
+	nodes := []*TemplateNode{
+		{IsSlot: true, SlotExpr: ""},
+		{IsSlot: true, SlotExpr: ""},
+	}
+	if err := checkDuplicateSlots(nodes); err != nil {
+		t.Errorf("expected no error for empty slot names, got: %v", err)
+	}
+}
+
+func TestCheckDuplicateSlots_NestedDuplicate(t *testing.T) {
+	// Duplicate slot names nested inside children should still be caught.
+	inner := &TemplateNode{IsSlot: true, SlotExpr: "sidebar"}
+	outer := &TemplateNode{
+		Tag:      "div",
+		Children: []*TemplateNode{inner},
+	}
+	topLevel := &TemplateNode{IsSlot: true, SlotExpr: "sidebar"}
+	err := checkDuplicateSlots([]*TemplateNode{outer, topLevel})
+	if err == nil {
+		t.Error("expected duplicate error for nested slot with same name")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// resolveFacts with interpolated attribute values
+// ---------------------------------------------------------------------------
+
+func TestResolveFacts_InterpolatedClass(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body><div class="bg-{{Color}}">hi</div></body></html>`
+	templates, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type app struct{ Color string }
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&app{Color: "blue"}),
+		Vars:  make(map[string]any),
+	}
+	nodes := ResolveTree(templates, ctx)
+	div := findElement(nodes, "div")
+	if div == nil {
+		t.Fatal("expected div")
+	}
+	className, ok := div.Facts.Props["className"]
+	if !ok {
+		t.Fatal("expected className prop")
+	}
+	if className != "bg-blue" {
+		t.Errorf("expected 'bg-blue', got %q", className)
+	}
+}
+
+func TestResolveFacts_InterpolatedAttr(t *testing.T) {
+	html := `<!DOCTYPE html><html><head></head><body><a href="/user/{{ID}}">link</a></body></html>`
+	templates, err := ParseTemplate(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type app struct{ ID int }
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&app{ID: 42}),
+		Vars:  make(map[string]any),
+	}
+	nodes := ResolveTree(templates, ctx)
+	a := findElement(nodes, "a")
+	if a == nil {
+		t.Fatal("expected <a> element")
+	}
+	href, ok := a.Facts.Attrs["href"]
+	if !ok {
+		t.Fatal("expected href attr")
+	}
+	if href != "/user/42" {
+		t.Errorf("expected '/user/42', got %q", href)
+	}
+}

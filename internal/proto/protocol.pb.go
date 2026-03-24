@@ -362,9 +362,10 @@ func (x *EventCommand) GetMsg() []byte {
 // VDomMessage is the top-level message for the VDOM pipeline.
 type VDomMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`       // "init" or "patch"
-	Patches       []*DomPatch            `protobuf:"bytes,3,rep,name=patches,proto3" json:"patches,omitempty"` // incremental patches (patch only)
-	Tree          []byte                 `protobuf:"bytes,5,opt,name=tree,proto3" json:"tree,omitempty"`       // JSON-encoded tree description (init only)
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`                                        // "init" or "patch"
+	Patches       []*DomPatch            `protobuf:"bytes,3,rep,name=patches,proto3" json:"patches,omitempty"`                                  // incremental patches (patch only)
+	Tree          []byte                 `protobuf:"bytes,5,opt,name=tree,proto3" json:"tree,omitempty"`                                        // JSON-encoded tree description (init only)
+	TargetNodeId  int32                  `protobuf:"varint,6,opt,name=target_node_id,json=targetNodeId,proto3" json:"target_node_id,omitempty"` // VDOM node ID of slot element to render into (multi-component)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -418,6 +419,13 @@ func (x *VDomMessage) GetTree() []byte {
 		return x.Tree
 	}
 	return nil
+}
+
+func (x *VDomMessage) GetTargetNodeId() int32 {
+	if x != nil {
+		return x.TargetNodeId
+	}
+	return 0
 }
 
 // DomPatch describes a single DOM mutation produced by the diff algorithm.
@@ -673,11 +681,12 @@ const file_internal_proto_protocol_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x0e\n" +
 	"\x02on\x18\x02 \x01(\tR\x02on\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\tR\x03key\x12\x10\n" +
-	"\x03msg\x18\x04 \x01(\fR\x03msg\"`\n" +
+	"\x03msg\x18\x04 \x01(\fR\x03msg\"\x86\x01\n" +
 	"\vVDomMessage\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12)\n" +
 	"\apatches\x18\x03 \x03(\v2\x0f.godom.DomPatchR\apatches\x12\x12\n" +
-	"\x04tree\x18\x05 \x01(\fR\x04tree\"\x83\x02\n" +
+	"\x04tree\x18\x05 \x01(\fR\x04tree\x12$\n" +
+	"\x0etarget_node_id\x18\x06 \x01(\x05R\ftargetNodeId\"\x83\x02\n" +
 	"\bDomPatch\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x05R\x06nodeId\x12\x0e\n" +
 	"\x02op\x18\x02 \x01(\tR\x02op\x12\x12\n" +
