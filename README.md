@@ -224,6 +224,50 @@ Split HTML into reusable files. Any HTML file in your embedded filesystem can be
 
 Props are passed with `:propName="expr"` and become template variables in the child HTML. The child's directives resolve against the parent's state.
 
+### Stateful components
+
+For apps with multiple independent pieces of state, each component gets its own Go struct, its own HTML template, and its own VDOM tree. Components compose via `<g-slot>` — the parent declares insertion points, children render into them.
+
+```go
+// Root component owns the page layout
+layout := &Layout{}
+eng.Mount(layout, ui, "ui/layout/index.html")
+
+// Child components mount into named slots
+counter := &Counter{Step: 1}
+eng.Mount(counter, ui, "ui/counter/index.html")
+eng.AddToSlot(layout, "counter", counter)
+```
+
+The parent template declares slots with `<g-slot>`:
+
+```html
+<!-- ui/layout/index.html -->
+<body>
+    <h1>My App</h1>
+    <div class="sidebar"><g-slot name="sidebar" /></div>
+    <div class="main"><g-slot name="counter" /></div>
+</body>
+```
+
+Child templates are HTML fragments (no `<html>`/`<head>`/`<body>`) — they render into the parent's slot:
+
+```html
+<!-- ui/counter/index.html -->
+<div>
+    <span g-text="Count">0</span>
+    <button g-click="Increment">+</button>
+</div>
+```
+
+Each component has its own state, methods, and refresh cycle. Cross-component communication uses Go callbacks:
+
+```go
+sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
+```
+
+See [examples/multi-component/](examples/multi-component/) for a full 9-component demo.
+
 ## API
 
 ### App
@@ -238,6 +282,7 @@ eng.NoBrowser = true                    // Don't auto-open browser
 eng.Quiet = true                        // Suppress startup output
 eng.RegisterPlugin("chartjs", libJS, bridgeJS)   // Register a plugin with one or more JS scripts
 eng.Mount(&MyApp{}, fsys, "ui/index.html")  // Mount root component with embedded filesystem and entry path
+eng.AddToSlot(parent, "slotName", child)    // Place a child component into a parent's <g-slot>
 eng.Start()                                 // Start server, open browser, block forever
 ```
 
@@ -336,6 +381,7 @@ chartjs.Register(eng)  // registers plugin + embeds Chart.js library
 - [examples/stock-ticker/](examples/stock-ticker/) — live stock ticker dashboard with 30 simulated stocks, per-stock tick intervals, table with color-coded gainers/losers, and external CSS via static file serving
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
+- [examples/multi-component/](examples/multi-component/) — 9-component dashboard with stateful components, `<g-slot>` composition, cross-component callbacks, Chart.js plugin, drag-and-drop reorder, goroutine-driven updates
 - [examples/video-player/](examples/video-player/) — video player with Go decoding frames via ffmpeg and rendering on canvas
 
 After cloning the repo (see [Install](#install)), run any example with:
