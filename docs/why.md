@@ -24,11 +24,11 @@ This is not a web framework. There are no API endpoints, no REST, no JSON contra
 
 godom is for local use. This is not a limitation — it's the core assumption that makes everything simpler:
 
-- **Auth built in, not bolted on** — token-based authentication is enabled by default. The token is generated on startup, passed to the browser automatically, and persisted as a cookie. Other users on the same machine or network can't access your app without the token. Disable with `--no-auth` if you don't need it.
+- **Auth built in, not bolted on** — token-based authentication is enabled by default. The token is generated on startup, passed to the browser automatically, and persisted as a cookie. Other users on the same machine or network can't access your app without the token. Disable with `eng.NoAuth = true` or `GODOM_NO_AUTH=1` if you don't need it.
 - **No HTTPS** — localhost doesn't need TLS. For network access, the token protects against unauthorized access; TLS is not in scope.
 - **No deployment ceremony** — `go build` gives you one binary. Run it, the UI appears. Stop it, the UI is gone.
 
-godom also works as a **local network service**. Run the binary on a headless machine with `--no-browser --host=0.0.0.0 --token=my-secret`, and access the UI from any browser on the network. This is useful for home servers, lab machines, Raspberry Pis — anything where you want a UI without a monitor. See [configuration.md](configuration.md) for the full reference.
+godom also works as a **local network service**. Run the binary on a headless machine with `GODOM_NO_BROWSER=1 GODOM_HOST=0.0.0.0 GODOM_TOKEN=my-secret ./myapp`, and access the UI from any browser on the network. This is useful for home servers, lab machines, Raspberry Pis — anything where you want a UI without a monitor. See [configuration.md](configuration.md) for the full reference.
 
 Because state lives in the Go process — not in the browser — you get two things for free:
 
@@ -47,7 +47,7 @@ These aren't things you'd normally get from a web app without explicit sync infr
 | Build toolchain | Node + Electron Forge | Rust + Node + Cargo | Go + Node | `go build` |
 | Binary size | 100MB+ | ~5MB | ~8MB | ~5MB (Go binary only) |
 | Target | Desktop apps | Desktop apps | Desktop apps | Local apps and services |
-| Run as a service | No | No | No | Yes — `--no-browser --host=0.0.0.0` |
+| Run as a service | No | No | No | Yes — `GODOM_NO_BROWSER=1 GODOM_HOST=0.0.0.0` |
 
 The fundamental difference: Wails, Tauri, and Electron all create a **desktop application with an embedded webview**. You still write JavaScript for the frontend. The Go/Rust backend communicates with the JS frontend through bindings.
 

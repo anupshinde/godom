@@ -2,15 +2,16 @@ package godom
 
 import (
 	_ "embed"
-	"flag"
 	"fmt"
 	"io/fs"
 	"log"
 	"os"
 	"path"
 	"reflect"
+	"strconv"
 
 	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/server"
 	"github.com/anupshinde/godom/internal/template"
 	"github.com/anupshinde/godom/internal/vdom"
@@ -28,12 +29,13 @@ var protocolJS string
 // Engine is the godom runtime. It registers components and plugins,
 // mounts the root component, and starts the server.
 type Engine struct {
-	Port      int    // 0 = random available port
-	Host      string // default "localhost"; set to "0.0.0.0" for network access
-	NoAuth    bool   // disable token auth (default false = auth enabled)
-	Token     string // fixed auth token; empty = generate random token
-	NoBrowser bool   // don't open browser on start
-	Quiet     bool   // suppress startup output
+	Port       int    // 0 = random available port
+	Host       string // default "localhost"; set to "0.0.0.0" for network access
+	NoAuth     bool   // disable token auth (default false = auth enabled)
+	Token      string // fixed auth token; empty = generate random token
+	NoBrowser  bool   // don't open browser on start
+	Quiet      bool   // suppress startup output
+	NoGodomEnv bool   // skip reading GODOM_* environment variables for configuration
 	comps     []*server.MountedComponent // mounted components
 	plugins   map[string][]string        // plugin name → JS scripts
 	staticFS  fs.FS                      // embedded UI filesystem for static assets
@@ -179,34 +181,7 @@ func (a *Engine) Start() error {
 		return fmt.Errorf("godom: no component mounted, call Mount() before Start()")
 	}
 
-	// Parse CLI flags using a separate FlagSet to avoid conflicts
-	fs := flag.NewFlagSet("godom", flag.ContinueOnError)
-	flagPort := fs.Int("port", 0, "port to listen on (0 = random)")
-	flagHost := fs.String("host", "localhost", "host to bind to")
-	flagNoAuth := fs.Bool("no-auth", false, "disable token authentication")
-	flagToken := fs.String("token", "", "fixed auth token (default: random)")
-	flagNoBrowser := fs.Bool("no-browser", false, "don't open browser on start")
-	flagQuiet := fs.Bool("quiet", false, "suppress startup output")
-	_ = fs.Parse(os.Args[1:])
-
-	if a.Port == 0 && *flagPort != 0 {
-		a.Port = *flagPort
-	}
-	if a.Host == "" && *flagHost != "localhost" {
-		a.Host = *flagHost
-	}
-	if !a.NoAuth && *flagNoAuth {
-		a.NoAuth = true
-	}
-	if a.Token == "" && *flagToken != "" {
-		a.Token = *flagToken
-	}
-	if !a.NoBrowser && *flagNoBrowser {
-		a.NoBrowser = true
-	}
-	if !a.Quiet && *flagQuiet {
-		a.Quiet = true
-	}
+	a.applyEnv()
 
 	cfg := server.Config{
 		Comps:         a.comps,
@@ -224,6 +199,38 @@ func (a *Engine) Start() error {
 	}
 
 	return server.Run(cfg)
+}
+
+// applyEnv reads GODOM_* environment variables for fields not set in code.
+// Skipped entirely when NoGodomEnv is true.
+func (a *Engine) applyEnv() {
+	if a.NoGodomEnv {
+		return
+	}
+	if a.Port == 0 {
+		if v, err := strconv.Atoi(os.Getenv("GODOM_PORT")); err == nil && v != 0 {
+			a.Port = v
+		}
+	}
+	if a.Host == "" {
+		if v := os.Getenv("GODOM_HOST"); v != "" {
+			a.Host = v
+		}
+	}
+	if !a.NoAuth {
+		a.NoAuth = env.Bool("GODOM_NO_AUTH")
+	}
+	if a.Token == "" {
+		if v := os.Getenv("GODOM_TOKEN"); v != "" {
+			a.Token = v
+		}
+	}
+	if !a.NoBrowser {
+		a.NoBrowser = env.Bool("GODOM_NO_BROWSER")
+	}
+	if !a.Quiet {
+		a.Quiet = env.Bool("GODOM_QUIET")
+	}
 }
 
 // embedsComponent checks if a struct type embeds godom.Component.
