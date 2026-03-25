@@ -16,9 +16,6 @@ var directiveRe = regexp.MustCompile(`g-(text|html|bind|value|click|keydown|mous
 // gForRe matches g-for attributes to extract loop variable names.
 var gForRe = regexp.MustCompile(`g-for\s*=\s*"([^"]*)"`)
 
-// gPropsRe matches g-props attributes to extract prop mappings.
-var gPropsRe = regexp.MustCompile(`g-props\s*=\s*"([^"]*)"`)
-
 // loopVarInfo holds the type info for a loop variable.
 type loopVarInfo struct {
 	itemType reflect.Type // element type of the array/slice
@@ -119,22 +116,6 @@ func collectLoopVars(htmlStr string, ci *component.Info) map[string]*loopVarInfo
 			vars[indexVar] = &loopVarInfo{itemType: reflect.TypeOf(0)}
 		}
 
-		// Collect prop aliases — they map to loop variables
-		propMatches := gPropsRe.FindAllStringSubmatch(htmlStr, -1)
-		for _, pm := range propMatches {
-			props := ParsePropsAttr(pm[1])
-			for propName, parentExpr := range props {
-				if parentExpr == itemVar {
-					vars[propName] = &loopVarInfo{itemType: elemType}
-				} else if parentExpr == indexVar {
-					vars[propName] = &loopVarInfo{itemType: reflect.TypeOf(0)}
-				} else if ci.HasField(parentExpr) {
-					// Prop references a top-level field
-					pf, _ := ci.Typ.FieldByName(parentExpr)
-					vars[propName] = &loopVarInfo{itemType: pf.Type}
-				}
-			}
-		}
 	}
 	return vars
 }

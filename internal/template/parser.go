@@ -13,9 +13,6 @@ import (
 // openTagRe matches the opening tag of a custom element (tag name with hyphen).
 var openTagRe = regexp.MustCompile(`<([a-z][a-z0-9]*-[a-z0-9-]*)(\s[^>]*?)?\s*/?>`)
 
-// propAttrRe matches :propName="expr" attributes on custom elements.
-var propAttrRe = regexp.MustCompile(`:([a-zA-Z][a-zA-Z0-9_]*)\s*=\s*"([^"]*)"`)
-
 // gAttrRe matches g-* attributes (including g-class:done etc.) in an attribute string.
 var gAttrRe = regexp.MustCompile(`(g-[a-z]+(?::[a-z-]+)?)\s*=\s*"([^"]*)"`)
 
@@ -81,31 +78,12 @@ func ExpandComponents(htmlStr string, fsys fs.FS, baseDir string) (string, error
 			if gAttrs != "" {
 				expanded = TransferAttrsToRoot(expanded, gAttrs)
 			}
-
-			// Extract :prop="expr" attributes and encode as g-props on root element
-			propsAttr := ExtractProps(attrs)
-			if propsAttr != "" {
-				expanded = TransferAttrsToRoot(expanded, `g-props="`+propsAttr+`"`)
-			}
 		}
 
 		htmlStr = htmlStr[:loc[0]] + expanded + htmlStr[end:]
 	}
 
 	return htmlStr, nil
-}
-
-// ExtractProps pulls out :prop="expr" attributes and encodes them as "name:expr,name:expr".
-func ExtractProps(attrs string) string {
-	matches := propAttrRe.FindAllStringSubmatch(attrs, -1)
-	if len(matches) == 0 {
-		return ""
-	}
-	var parts []string
-	for _, m := range matches {
-		parts = append(parts, m[1]+":"+m[2])
-	}
-	return strings.Join(parts, ",")
 }
 
 // ExtractGAttrs pulls out g-* attributes (and g-class:* etc.) from an attribute string.
@@ -152,23 +130,6 @@ func ParseForExprParts(expr string) *ForParts {
 		idx = strings.TrimSpace(vars[1])
 	}
 	return &ForParts{Item: item, Index: idx, List: list}
-}
-
-// ParsePropsAttr parses a g-props attribute value like "index:i,todo:todo"
-// into a map of prop name → parent expression.
-func ParsePropsAttr(val string) map[string]string {
-	val = strings.TrimSpace(val)
-	if val == "" {
-		return nil
-	}
-	props := make(map[string]string)
-	for _, pair := range strings.Split(val, ",") {
-		parts := strings.SplitN(pair, ":", 2)
-		if len(parts) == 2 {
-			props[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-		}
-	}
-	return props
 }
 
 // ExprRoot returns the top-level field name from an expression.

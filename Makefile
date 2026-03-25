@@ -5,11 +5,27 @@ build:
 	go build ./...
 
 # Build examples (compile check only)
-# monitor and system-monitor-chartjs have their own go.mod, so they're built separately
+# Some examples have their own go.mod, so they're built separately
 build-examples:
-	go build ./examples/counter ./examples/clock ./examples/todolist ./examples/charts-without-plugin ./examples/solar-system ./examples/drag-demo ./examples/drag-tiles ./examples/progress-bar ./examples/stock-ticker ./examples/sync-demo ./examples/basic-form-builder ./examples/video-player
+	go build ./examples/counter ./examples/clock ./examples/todolist ./examples/charts-without-plugin ./examples/solar-system ./examples/drag-demo ./examples/drag-tiles ./examples/progress-bar ./examples/stock-ticker ./examples/sync-demo ./examples/basic-form-builder ./examples/video-player ./examples/breakout-game ./examples/multi-component ./examples/select-test
 	cd examples/system-monitor && go build .
 	cd examples/system-monitor-chartjs && go build .
+	cd examples/markdown-editor && go build .
+	cd examples/terminal && go build .
+
+# Validate all examples (Mount + directive validation, no server)
+validate-examples:
+	@for d in examples/counter examples/clock examples/todolist examples/charts-without-plugin examples/solar-system examples/drag-demo examples/drag-tiles examples/progress-bar examples/stock-ticker examples/sync-demo examples/basic-form-builder examples/breakout-game examples/multi-component examples/select-test; do \
+		printf "%-25s " "$$(basename $$d)"; \
+		GODOM_VALIDATE_ONLY=1 go run ./$$d 2>&1 && echo "OK" || echo "FAIL"; \
+	done
+	@printf "%-25s " "video-player"; \
+	GODOM_VALIDATE_ONLY=1 go run ./examples/video-player -video /dev/null 2>&1 && echo "OK" || echo "FAIL"
+	@for d in examples/system-monitor examples/system-monitor-chartjs examples/markdown-editor examples/terminal; do \
+		printf "%-25s " "$$(basename $$d)"; \
+		cd $$d && GODOM_VALIDATE_ONLY=1 go run . 2>&1 && echo "OK" || echo "FAIL"; \
+		cd ../..; \
+	done
 
 # Run all tests
 test:

@@ -593,35 +593,6 @@ func TestValidateDirectives_NestedForUnknownField(t *testing.T) {
 	}
 }
 
-// --- collectLoopVars: prop alias to loop var item, index, and top-level field ---
-
-func TestValidateDirectives_PropAliasToLoopVarItem(t *testing.T) {
-	// :todo="todo" maps prop "todo" to the loop item variable
-	html := `<li g-for="todo in Todos"><div g-props="item:todo"></div><span g-text="item.Text"></span></li>`
-	ci := newValTestCI()
-	if err := ValidateDirectives(html, ci); err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestValidateDirectives_PropAliasToLoopVarIndex(t *testing.T) {
-	// :idx="i" maps prop "idx" to the loop index variable
-	html := `<li g-for="todo, i in Todos"><div g-props="idx:i"></div><span g-text="idx"></span></li>`
-	ci := newValTestCI()
-	if err := ValidateDirectives(html, ci); err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestValidateDirectives_PropAliasToTopLevelField(t *testing.T) {
-	// :count="Count" maps prop "count" to a top-level field
-	html := `<li g-for="todo in Todos"><div g-props="count:Count"></div><span g-text="count"></span></li>`
-	ci := newValTestCI()
-	if err := ValidateDirectives(html, ci); err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
 // --- validateForExpr: dotted path through loop variable ---
 
 func TestValidateDirectives_ForDottedPathLoopVar(t *testing.T) {

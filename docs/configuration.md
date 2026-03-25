@@ -68,6 +68,17 @@ Suppress the startup URL and QR code output.
 | Code | `eng.Quiet = true` |
 | Env | `GODOM_QUIET=1` |
 
+### Validate Only
+
+Exit immediately after `Mount()` validation succeeds, without starting the server. Useful for CI checks and pre-commit hooks to catch template errors (unknown fields, invalid directives) without running the full app.
+
+| | Value |
+|---|---|
+| Default | not set (normal startup) |
+| Env | `GODOM_VALIDATE_ONLY=1` |
+
+This is env-only — there is no code-level field. It runs before `applyEnv()` and is not affected by `NoGodomEnv`.
+
 ## Environment variables
 
 godom reads `GODOM_*` environment variables for any setting not already set in code:
@@ -79,6 +90,7 @@ GODOM_NO_AUTH=1
 GODOM_TOKEN=my-secret
 GODOM_NO_BROWSER=1
 GODOM_QUIET=1
+GODOM_VALIDATE_ONLY=1
 ```
 
 Examples:
@@ -87,6 +99,7 @@ Examples:
 GODOM_PORT=8081 ./myapp
 GODOM_HOST=0.0.0.0 GODOM_PORT=8081 ./myapp
 GODOM_NO_BROWSER=1 GODOM_TOKEN=my-secret ./myapp
+GODOM_VALIDATE_ONLY=1 ./myapp   # validate templates and exit
 ```
 
 godom does not parse CLI flags. Your binary owns its flags entirely — there are no flag namespace collisions.

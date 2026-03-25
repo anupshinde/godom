@@ -354,11 +354,11 @@ Split large templates by creating HTML files for sub-components:
 **`ui/index.html`:**
 ```html
 <ul>
-    <todo-item g-for="todo, i in Todos" :todo="todo" :index="i"></todo-item>
+    <todo-item g-for="todo, i in Todos"></todo-item>
 </ul>
 ```
 
-Props are passed via `:prop="expr"` and become variables inside the child template. Methods still resolve on the parent component.
+Custom elements are template includes — directives inside the child HTML resolve against the parent component's state. Loop variables (`todo`, `i`) are available inside the child template.
 
 ---
 
@@ -375,6 +375,16 @@ eng.Quiet = true          // default: false
 ```
 
 Environment variables also work — `GODOM_PORT=8081 GODOM_NO_BROWSER=1 go run .`. Code values take priority over env vars.
+
+### Validate only
+
+Validate templates without starting the server — catches unknown fields, invalid directives, and bad expressions at build time:
+
+```
+GODOM_VALIDATE_ONLY=1 go run .
+```
+
+Exits with code 0 if all `Mount()` validations pass. Useful in CI pipelines and pre-commit hooks.
 
 ### Headless mode
 
