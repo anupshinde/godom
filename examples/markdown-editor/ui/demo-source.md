@@ -35,7 +35,7 @@ log.Fatal(eng.Start())                                 // serve, open browser, b
 `Mount()` does the heavy lifting before any HTTP traffic:
 
 1. **Read the entry HTML** from the embedded filesystem at the given path (e.g., `"ui/index.html"`)
-2. **Expand components** — custom element tags like `<todo-item>` are replaced with the contents of `todo-item.html`. Props (`:todo="todo"`) are encoded as `g-props` attributes
+2. **Expand components** — custom element tags like `<todo-item>` are replaced with the contents of `todo-item.html`. `g-*` attributes from the custom tag are transferred to the component's root element
 3. **Validate directives** — every `g-*` attribute is checked against the component struct via reflection. Unknown fields or methods cause `log.Fatal`. This happens at startup, not at runtime
 4. **Parse templates** — the expanded HTML is parsed into a reusable `[]*vdom.TemplateNode` tree. Directives, text interpolations (`{{expr}}`), `g-for` loops, and plugin bindings are all extracted into structured template nodes. This tree is parsed once and reused on every render
 
@@ -181,11 +181,11 @@ Expression resolution order: boolean literals → loop variables → dotted path
 
 ### Presentational components
 
-An HTML file used as a custom element tag. The parent's state flows in via `:prop="expr"` attributes. No separate Go struct — directives resolve against the parent's state with prop aliases as context variables.
+An HTML file used as a custom element tag. No separate Go struct — directives inside the child template resolve against the parent's state. Loop variables from `g-for` are available inside the child template.
 
 ```
-Parent struct         ───props───►    Child HTML template
-(state + methods)                     (resolves against parent state)
+Parent struct         ──state──►    Child HTML template
+(state + methods)                   (resolves against parent state)
 ```
 
 ### Stateful components

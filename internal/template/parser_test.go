@@ -42,33 +42,6 @@ func TestParseForExprParts_Invalid(t *testing.T) {
 	}
 }
 
-func TestParsePropsAttr(t *testing.T) {
-	props := ParsePropsAttr("index:i,todo:todo")
-	if props["index"] != "i" {
-		t.Errorf("index = %q, want i", props["index"])
-	}
-	if props["todo"] != "todo" {
-		t.Errorf("todo = %q, want todo", props["todo"])
-	}
-}
-
-func TestParsePropsAttr_Empty(t *testing.T) {
-	props := ParsePropsAttr("")
-	if props != nil {
-		t.Errorf("expected nil for empty, got %v", props)
-	}
-}
-
-func TestParsePropsAttr_Whitespace(t *testing.T) {
-	props := ParsePropsAttr(" name : expr , other : val ")
-	if props["name"] != "expr" {
-		t.Errorf("name = %q, want expr", props["name"])
-	}
-	if props["other"] != "val" {
-		t.Errorf("other = %q, want val", props["other"])
-	}
-}
-
 func TestExprRoot(t *testing.T) {
 	tests := []struct {
 		expr string
@@ -88,25 +61,6 @@ func TestExprRoot(t *testing.T) {
 }
 
 // --- Template expansion tests ---
-
-func TestExtractProps(t *testing.T) {
-	tests := []struct {
-		attrs string
-		want  string
-	}{
-		{`:name="item.Name" :index="i"`, "name:item.Name,index:i"},
-		{`:todo="todo"`, "todo:todo"},
-		{`class="foo"`, ""},
-		{``, ""},
-	}
-
-	for _, tt := range tests {
-		got := ExtractProps(tt.attrs)
-		if got != tt.want {
-			t.Errorf("ExtractProps(%q) = %q, want %q", tt.attrs, got, tt.want)
-		}
-	}
-}
 
 func TestExtractGAttrs(t *testing.T) {
 	tests := []struct {
@@ -183,21 +137,6 @@ func TestExpandComponents_WithGAttrs(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_WithProps(t *testing.T) {
-	fsys := fstest.MapFS{
-		"my-item.html": {Data: []byte(`<li>item</li>`)},
-	}
-
-	result, err := ExpandComponents(`<my-item :name="item.Name" :index="i"></my-item>`, fsys, ".")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !strings.Contains(result, "g-props=") {
-		t.Errorf("expected g-props attribute: %s", result)
-	}
-}
-
 func TestExpandComponents_SelfClosing(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-tag.html": {Data: []byte(`<div>content</div>`)},
@@ -259,22 +198,6 @@ func TestExpandComponents_Recursive(t *testing.T) {
 	}
 	if strings.Contains(result, "outer-comp") || strings.Contains(result, "inner-comp") {
 		t.Errorf("custom tags should be replaced, got: %s", result)
-	}
-}
-
-func TestExpandComponents_SelfClosingWithGAttrsAndProps(t *testing.T) {
-	fsys := fstest.MapFS{
-		"my-item.html": {Data: []byte(`<li>item</li>`)},
-	}
-	result, err := ExpandComponents(`<my-item g-text="Name" :val="x" />`, fsys, ".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result, `g-text="Name"`) {
-		t.Errorf("expected g-text transferred, got: %s", result)
-	}
-	if !strings.Contains(result, `g-props="val:x"`) {
-		t.Errorf("expected g-props transferred, got: %s", result)
 	}
 }
 
@@ -428,25 +351,6 @@ func TestExpandComponents_MaxDepthExhaustion(t *testing.T) {
 	}
 }
 
-func TestParsePropsAttr_MalformedPairNoColon(t *testing.T) {
-	// Pair without a colon is skipped — SplitN produces len 1
-	props := ParsePropsAttr("nocolon,valid:value")
-	if props["valid"] != "value" {
-		t.Errorf("valid pair should parse, got: %v", props)
-	}
-	if _, ok := props["nocolon"]; ok {
-		t.Error("pair without colon should be skipped")
-	}
-}
-
-func TestParsePropsAttr_AllMalformed(t *testing.T) {
-	props := ParsePropsAttr("nocolon")
-	// Map is created but empty (not nil)
-	if len(props) != 0 {
-		t.Errorf("expected empty map for all-malformed input, got: %v", props)
-	}
-}
-
 func TestIsLiteral_NegativeNumber(t *testing.T) {
 	// strconv.Atoi("-1") succeeds
 	if !IsLiteral("-1") {
@@ -501,16 +405,6 @@ func TestExtractGAttrs_Empty(t *testing.T) {
 	got := ExtractGAttrs("")
 	if got != "" {
 		t.Errorf("expected empty string for empty attrs, got: %q", got)
-	}
-}
-
-func TestExtractProps_MultipleColonsInValue(t *testing.T) {
-	// :url="item.Host:Port" — the regex should capture the whole value
-	// propAttrRe: `:([a-zA-Z][a-zA-Z0-9_]*)\s*=\s*"([^"]*)"`
-	// "item.Host:Port" doesn't contain quotes so [^"]* matches it all
-	got := ExtractProps(`:url="item.Host:Port"`)
-	if got != "url:item.Host:Port" {
-		t.Errorf("expected url:item.Host:Port, got: %q", got)
 	}
 }
 

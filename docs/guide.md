@@ -354,11 +354,11 @@ Split large templates by creating HTML files for sub-components:
 **`ui/index.html`:**
 ```html
 <ul>
-    <todo-item g-for="todo, i in Todos" :todo="todo" :index="i"></todo-item>
+    <todo-item g-for="todo, i in Todos"></todo-item>
 </ul>
 ```
 
-Props are passed via `:prop="expr"` and become variables inside the child template. Methods still resolve on the parent component.
+Custom elements are template includes — directives inside the child HTML resolve against the parent component's state. Loop variables (`todo`, `i`) are available inside the child template.
 
 ---
 
