@@ -1625,10 +1625,13 @@ func TestResolveExpr_Negation(t *testing.T) {
 		t.Errorf("expected !Done (false) → true, got %v", val2)
 	}
 
-	// !MissingField — missing resolves to nil, !nil should be true
+	// !MissingField — missing field is an error, returns nil.
+	// expr-lang's ! operator requires a bool; undefined variables resolve to nil
+	// which is not a bool, so the expression fails. This surfaces template bugs
+	// rather than silently returning true.
 	val3 := ResolveExpr("!MissingField", ctx)
-	if val3 != true {
-		t.Errorf("expected !MissingField → true, got %v", val3)
+	if val3 != nil {
+		t.Errorf("expected !MissingField → nil (error), got %v", val3)
 	}
 }
 
@@ -1666,13 +1669,14 @@ func TestResolveExpr_ZeroArgMethod(t *testing.T) {
 	state := &testDirectiveState{Name: "test"}
 	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
 
-	val := ResolveExpr("ComputedName", ctx)
+	// Zero-arg methods require parentheses in expr-lang
+	val := ResolveExpr("ComputedName()", ctx)
 	if val != "computed_test" {
 		t.Errorf("expected 'computed_test', got %v", val)
 	}
 
 	// Non-existent method returns nil
-	val2 := ResolveExpr("NoSuchMethod", ctx)
+	val2 := ResolveExpr("NoSuchMethod()", ctx)
 	if val2 != nil {
 		t.Errorf("expected nil for missing method, got %v", val2)
 	}

@@ -1042,23 +1042,18 @@ func BuildExprEnv(ctx *ResolveContext) map[string]any {
 			}
 		}
 
-		// Add zero-arg, single-return methods
+		// Add methods as callable functions in the environment.
+		// Zero-arg methods require parentheses in templates: g-text="ComputedName()"
+		// Methods with args work naturally: g-text="Add(3, 4)"
 		sv := ctx.State
 		st := sv.Type()
 		for i := 0; i < st.NumMethod(); i++ {
 			m := st.Method(i)
-			mt := m.Type
-			// Zero args (besides receiver) and single return
-			if mt.NumIn() == 1 && mt.NumOut() == 1 {
-				name := m.Name
-				// Don't shadow fields
-				if _, exists := env[name]; !exists {
-					// Capture method as a callable function
-					method := sv.Method(i)
-					env[name] = func() any {
-						return method.Call(nil)[0].Interface()
-					}
-				}
+			name := m.Name
+			// Don't shadow fields
+			if _, exists := env[name]; !exists {
+				method := sv.Method(i)
+				env[name] = method.Interface()
 			}
 		}
 	}
@@ -1110,7 +1105,11 @@ func ResolveExpr(exprStr string, ctx *ResolveContext) any {
 
 	env := BuildExprEnv(ctx)
 
-	result, err := expr.Eval(exprStr, env)
+	program, err := expr.Compile(exprStr, expr.Env(env), expr.AllowUndefinedVariables())
+	if err != nil {
+		return nil
+	}
+	result, err := expr.Run(program, env)
 	if err != nil {
 		return nil
 	}
