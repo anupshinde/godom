@@ -62,7 +62,7 @@
     <header>
         <span>Markdown Editor</span>
         <div class="header-actions">
-            <span class="toast" g-show="ShowSaved" g-text="SaveMessage"></span>
+            <span class="toast" g-show="ShowSaved()" g-text="SaveMessage"></span>
             <button class="save-btn" g-click="Save">Save</button>
             <button class="toggle-btn" g-click="ToggleEditor" g-text="ToggleLabel"></button>
         </div>
@@ -75,7 +75,7 @@
         <div class="divider" g-show="EditorOpen"></div>
         <div class="pane preview-pane" g-scroll="OnPreviewScroll" g-prop:_scrollratio="PreviewScroll">
             <div class="pane-label">Preview</div>
-            <div class="preview" g-html="Preview"></div>
+            <div class="preview" g-html="Preview()"></div>
         </div>
     </div>
 </body>
