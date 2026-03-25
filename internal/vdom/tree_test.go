@@ -2245,8 +2245,8 @@ func (s *testCallState) TwoArgs(a, b int) int {
 func TestResolveExpr_MethodNoReturn(t *testing.T) {
 	state := &testCallState{}
 	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
-	// Zero-arg method with no return → callMethod returns nil (wrong sig)
-	val := ResolveExpr("NoReturn", ctx)
+	// Zero-arg method with no return value → returns nil
+	val := ResolveExpr("NoReturn()", ctx)
 	if val != nil {
 		t.Errorf("expected nil for method with no return, got %v", val)
 	}
@@ -2757,17 +2757,16 @@ func TestResolveExpr_CallMethodWithNilArg(t *testing.T) {
 }
 
 func TestResolveExpr_CallMethodWithActualNilArg(t *testing.T) {
-	// Exercises callMethodWithArgs where a resolved arg is nil → reflect.Zero path
+	// TwoArgs expects (int, int) — passing nil args is a type error in expr-lang.
 	s := &testCallState{Name: "test"}
 	ctx := &ResolveContext{
 		State: reflect.ValueOf(s),
 		Vars:  map[string]any{"a": nil, "b": nil},
 		IDs:   &IDCounter{},
 	}
-	// TwoArgs(a, b) where a,b are nil → callMethodWithArgs uses reflect.Zero → int(0)
 	result := ResolveExpr("TwoArgs(a, b)", ctx)
-	if result != 0 {
-		t.Errorf("expected 0 (zero-value int args), got %v", result)
+	if result != nil {
+		t.Errorf("expected nil (type error: nil args for int params), got %v", result)
 	}
 }
 
