@@ -21,9 +21,12 @@
 /examples/terminal/terminal
 /examples/basic-form-builder/basic-form-builder
 /examples/sync-demo/sync-demo
+/examples/breakout-game/breakout-game
 
 # Stray binaries in root
 /color-picker
+/breakout
+/breakout-game
 
 # Test binary
 *.test
