@@ -9,16 +9,16 @@ import (
 // ---------------------------------------------------------------------------
 // Unreachable code — cannot be covered via tests
 //
-// ParseTemplate (tree.go:76-78, 81-83):
+// ParseTemplate:
 //   html.Parse never returns an error — it handles any byte sequence and always
 //   produces a valid tree. It also always synthesizes <html><head><body>, so
 //   findBody never returns nil. Both error-return branches are dead code.
 //
-// htmlToTemplate default branch (tree.go:109-110):
+// htmlToTemplate default branch:
 //   Go's html.Parse only produces TextNode, ElementNode, and CommentNode inside
 //   <body>. The default case can never be reached through ParseTemplate.
 //
-// DeepCopyJSON unmarshal error (tree.go:968-969):
+// DeepCopyJSON unmarshal error:
 //   json.Marshal succeeding guarantees the output is valid JSON, so
 //   json.Unmarshal into any will never fail on those same bytes.
 // ---------------------------------------------------------------------------
@@ -3785,6 +3785,23 @@ func TestCheckDuplicateSlots_NestedDuplicate(t *testing.T) {
 	err := checkDuplicateSlots([]*TemplateNode{outer, topLevel})
 	if err == nil {
 		t.Error("expected duplicate error for nested slot with same name")
+	}
+}
+
+func TestCheckDuplicateSlots_NestedDuplicateErrorPropagates(t *testing.T) {
+	// When a duplicate is found inside a child walk, the error must
+	// propagate up through the parent's walk (covers line 121-123).
+	topSlot := &TemplateNode{IsSlot: true, SlotExpr: "sidebar"}
+	nestedSlot := &TemplateNode{IsSlot: true, SlotExpr: "sidebar"}
+	wrapper := &TemplateNode{
+		Tag:      "div",
+		Children: []*TemplateNode{nestedSlot},
+	}
+	// topSlot is processed first (marks "sidebar" as seen), then wrapper's
+	// child walk finds "sidebar" again → error returned from child walk.
+	err := checkDuplicateSlots([]*TemplateNode{topSlot, wrapper})
+	if err == nil {
+		t.Error("expected duplicate error propagated from child walk")
 	}
 }
 
