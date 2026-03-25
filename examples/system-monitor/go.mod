@@ -3,11 +3,12 @@ module github.com/anupshinde/godom/examples/system-monitor
 go 1.25.6
 
 require (
-	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/anupshinde/godom v0.0.0
+	github.com/shirou/gopsutil/v3 v3.24.5
 )
 
 require (
+	github.com/expr-lang/expr v1.17.8 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
