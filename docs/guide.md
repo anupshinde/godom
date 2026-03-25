@@ -396,11 +396,35 @@ The `ChartData` field is any struct or map that serializes to a valid Chart.js c
 
 See [plugins.md](plugins.md) for writing your own plugins, and [javascript-libraries.md](javascript-libraries.md) for using JS libraries without creating a reusable plugin.
 
+> **Tip:** Not everything needs Go or a plugin. For purely browser-side micro-interactions like scroll sync, focus management, or animations, a plain `<script>` tag in your template is simpler and has zero latency. See [When to use plain JavaScript](javascript-libraries.md#when-to-use-plain-javascript).
+
 ---
 
 ## Multi-Tab Sync
 
 Open your app in two browser tabs. Type in one — both update instantly. godom broadcasts patches to all connected clients. State is always consistent because it lives in one place: your Go struct.
+
+---
+
+## Hot Reload
+
+godom doesn't include a built-in file watcher. Use [Air](https://github.com/air-verse/air) for automatic rebuild and restart during development:
+
+```
+go install github.com/air-verse/air@latest
+```
+
+Create `.air.toml` in your project root:
+
+```toml
+[build]
+  cmd = "go build -o ./tmp/main ."
+  bin = "tmp/main"
+  include_ext = ["go", "html", "css"]
+  exclude_dir = ["vendor", ".git", "tmp"]
+```
+
+Then run `air` instead of `go run .`. When you save a `.go` or `.html` file, Air rebuilds and restarts the binary. The browser reconnects automatically — godom's bridge handles WebSocket reconnection out of the box.
 
 ---
 

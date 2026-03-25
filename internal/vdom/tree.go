@@ -58,8 +58,8 @@ type TemplateNode struct {
 
 // Directive represents a single g-* directive on an element.
 type Directive struct {
-	Type string // "text", "bind", "value", "checked", "if", "show", "hide", "class", "attr", "style",
-	           // "click", "keydown", "mousedown", "mousemove", "mouseup", "wheel", "drop",
+	Type string // "text", "html", "bind", "value", "checked", "if", "show", "hide", "class", "attr", "style", "prop",
+	           // "click", "keydown", "mousedown", "mousemove", "mouseup", "wheel", "scroll", "drop",
 	           // "draggable", "dropzone"
 	Name string // modifier name: class name, attr name, style property, key filter, etc.
 	Expr string // expression: field name, method call, etc.
@@ -250,6 +250,8 @@ func extractAttrsAndDirectives(n *html.Node) ([]html.Attribute, []Directive) {
 
 		case a.Key == "g-text":
 			dirs = append(dirs, Directive{Type: "text", Expr: a.Val})
+		case a.Key == "g-html":
+			dirs = append(dirs, Directive{Type: "html", Expr: a.Val})
 		case a.Key == "g-bind":
 			dirs = append(dirs, Directive{Type: "bind", Expr: a.Val})
 		case a.Key == "g-value":
@@ -269,6 +271,8 @@ func extractAttrsAndDirectives(n *html.Node) ([]html.Attribute, []Directive) {
 			dirs = append(dirs, Directive{Type: "attr", Name: a.Key[len("g-attr:"):], Expr: a.Val})
 		case strings.HasPrefix(a.Key, "g-style:"):
 			dirs = append(dirs, Directive{Type: "style", Name: a.Key[len("g-style:"):], Expr: a.Val})
+		case strings.HasPrefix(a.Key, "g-prop:"):
+			dirs = append(dirs, Directive{Type: "prop", Name: kebabToCamel(a.Key[len("g-prop:"):]), Expr: a.Val})
 
 		case a.Key == "g-click":
 			dirs = append(dirs, Directive{Type: "click", Expr: a.Val})
@@ -293,6 +297,8 @@ func extractAttrsAndDirectives(n *html.Node) ([]html.Attribute, []Directive) {
 			dirs = append(dirs, Directive{Type: "mouseup", Expr: a.Val})
 		case a.Key == "g-wheel":
 			dirs = append(dirs, Directive{Type: "wheel", Expr: a.Val})
+		case a.Key == "g-scroll":
+			dirs = append(dirs, Directive{Type: "scroll", Expr: a.Val})
 		case a.Key == "g-drop" || strings.HasPrefix(a.Key, "g-drop:"):
 			group := ""
 			if strings.HasPrefix(a.Key, "g-drop:") {
@@ -460,8 +466,10 @@ func (ctx *ResolveContext) addBinding(expr string, nodeID int, kind, prop string
 	}
 	ctx.Bindings[bindKey] = append(ctx.Bindings[bindKey], Binding{NodeID: nodeID, Kind: kind, Prop: prop, Expr: expr})
 
-	// Build reverse lookup for input bindings (g-bind, g-value, g-checked)
-	if kind == "bind" || kind == "prop" {
+	// Build reverse lookup for input bindings (g-bind, g-value, g-checked).
+	// Only form-input properties ("value", "checked") participate —
+	// arbitrary g-prop: bindings (e.g. scrollTop) are Go→browser only.
+	if kind == "bind" || (kind == "prop" && (prop == "value" || prop == "checked")) {
 		if ctx.InputBindings == nil {
 			ctx.InputBindings = make(map[int]InputBinding)
 		}
@@ -575,6 +583,22 @@ func resolveElementNode(t *TemplateNode, ctx *ResolveContext) Node {
 			textID := nextID(ctx)
 			el.Children = []Node{&TextNode{NodeBase: NodeBase{ID: textID}, Text: text}}
 			ctx.addBinding(d.Expr, textID, "text", "")
+			return el
+		}
+		if d.Type == "html" {
+			val := ResolveExpr(d.Expr, ctx)
+			html := fmt.Sprint(val)
+			if facts.Props == nil {
+				facts.Props = make(map[string]any)
+			}
+			facts.Props["innerHTML"] = html
+			el := &ElementNode{
+				NodeBase:  NodeBase{ID: id},
+				Tag:       t.Tag,
+				Namespace: t.Namespace,
+				Facts:     facts,
+			}
+			ctx.addBinding(d.Expr, id, "prop", "innerHTML")
 			return el
 		}
 	}
@@ -845,7 +869,15 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext, nodeID int) Facts {
 			f.Styles[d.Name] = fmt.Sprint(val)
 			ctx.addBinding(d.Expr, nodeID, "style", d.Name)
 
-		case "click", "mousedown", "mousemove", "mouseup", "wheel":
+		case "prop":
+			val := ResolveExpr(d.Expr, ctx)
+			if f.Props == nil {
+				f.Props = make(map[string]any)
+			}
+			f.Props[d.Name] = val
+			ctx.addBinding(d.Expr, nodeID, "prop", d.Name)
+
+		case "click", "mousedown", "mousemove", "mouseup", "wheel", "scroll":
 			method, args := ParseMethodCall(d.Expr)
 			if f.Events == nil {
 				f.Events = make(map[string]EventHandler)
@@ -1205,6 +1237,19 @@ func IsTruthy(val any) bool {
 			return true
 		}
 	}
+}
+
+// kebabToCamel converts kebab-case to camelCase (e.g. "scroll-top" → "scrollTop").
+// HTML parsers lowercase attribute names, so g-prop:scrollTop arrives as g-prop:scrolltop.
+// Authors write g-prop:scroll-top and this converts it to the correct DOM property name.
+func kebabToCamel(s string) string {
+	parts := strings.Split(s, "-")
+	for i := 1; i < len(parts); i++ {
+		if len(parts[i]) > 0 {
+			parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
+		}
+	}
+	return strings.Join(parts, "")
 }
 
 // CopyVars creates a shallow copy of a variable map.

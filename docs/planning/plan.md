@@ -7,13 +7,7 @@
 
 ## Layer 8: Developer Experience
 
-### 8.1 Hot reload
-- Watch `.go` and `.html` files, rebuild and restart
-- Browser auto-reconnects and gets fresh state
-- `godom dev` command
-- Consider [Air](https://github.com/air-verse/air) as an external option — needs testing with godom
-
-### 8.2 Debugging
+### 8.1 Debugging
 - Log state changes to console
 - Element inspector showing Go field bindings
 - Clear error messages for missing methods, bad expressions, etc.
@@ -36,5 +30,4 @@ Not urgent while godom targets single-user local apps, but required before any m
 
 ## Open Questions
 
-- **Persistence:** Optional state save to disk?
 - **Testing:** How to test components without a browser? (Unit tests exist for parsing, rendering, validation, diffing, and merging — but no integration tests yet)

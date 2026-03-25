@@ -410,7 +410,7 @@ go build -o counter ./examples/counter
 
 ## Design principles
 
-- **Minimal JavaScript** — the JS bridge is injected automatically. For most apps, you write zero JS. When you need a JS library (charts, maps, editors), the plugin system bridges Go data to it with a thin adapter
+- **Minimal JavaScript** — the JS bridge is injected automatically. For most apps, you write zero JS. When you need a JS library (charts, maps, editors), the plugin system bridges Go data to it with a thin adapter. For purely browser-side micro-interactions (scroll sync, focus, animations), a plain `<script>` tag in your template works — see [docs/javascript-libraries.md](docs/javascript-libraries.md#when-to-use-plain-javascript)
 - **Thin bridge** — the JS bridge builds the DOM from a tree description on init and applies minimal patches on updates. It does not evaluate expressions, resolve data, diff state, or make decisions. Go builds a virtual DOM tree, diffs it, and sends patches as binary Protocol Buffers over WebSocket. This means all logic is testable in Go, the bridge stays in sync with framework semantics, and debugging stays in one language. Plugins extend the bridge to delegate rendering to JS libraries when needed. `g-bind` fires on every keystroke with no debounce, keeping two-way binding instant (see [docs/transport.md](docs/transport.md) for why this matters)
 - **State in Go** — the browser is a rendering engine, not the source of truth
 - **Fail fast** — all directives validated at startup against your struct
