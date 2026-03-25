@@ -175,7 +175,7 @@ The template system is a two-phase pipeline:
 1. **Parse once** (`ParseTemplate`) — HTML with `g-*` directives is parsed into `[]*TemplateNode`. This happens at `Mount()` time and the result is reused
 2. **Resolve per render** (`ResolveTree`) — the template tree is evaluated against the current component state, producing concrete `[]Node` with resolved values, unrolled loops, evaluated conditionals, and assigned IDs
 
-Expression resolution order: boolean literals → loop variables → dotted paths on loop variables → struct fields.
+Expression resolution uses a fast path for simple expressions (field access, dotted paths, loop variables, negation, zero-arg methods) via direct reflection. Complex expressions with comparisons (`==`, `!=`, `<`, `>`, `<=`, `>=`) and logical operators (`and`, `or`, `not`) are evaluated by [expr-lang/expr](https://github.com/expr-lang/expr) with compiled program caching.
 
 ## Component model
 

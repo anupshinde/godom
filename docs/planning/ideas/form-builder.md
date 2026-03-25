@@ -136,7 +136,7 @@ Building this example drove the implementation of nested `g-for` support in the 
 
 ### Lessons learned
 
-1. **godom doesn't support expression comparisons** — can't do `g-show="field.Type == 'text'"`. Workaround: boolean type flags on the struct (`IsText`, `IsSelect`, etc.). This is a deliberate simplicity choice, not a bug.
+1. **~~godom doesn't support expression comparisons~~** — now supported: `g-show="field.Type == 'text'"` works directly. Comparisons (`==`, `!=`, `<`, `>`, `<=`, `>=`) and logical operators (`and`, `or`, `not`) are evaluated by [expr-lang/expr](https://github.com/expr-lang/expr). The boolean type flag workaround (`IsText`, `IsSelect`, etc.) is no longer needed.
 
 2. **g-show negation doesn't work as expected** — godom's init render sends explicit `display` commands for all `g-show` bindings, so "default visible, hide when truthy" breaks. Workaround: use two explicit boolean fields that are inverses of each other (`HasFields` / `ShowEmpty`), both with `style="display:none"`.
 

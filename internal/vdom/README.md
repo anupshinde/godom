@@ -405,12 +405,22 @@ This produces a concrete `[]Node` tree where:
 
 ### Expression resolution
 
-`ResolveExpr(expr, ctx)` resolves expressions in this order:
+`ResolveExpr(expr, ctx)` resolves expressions using a two-tier approach:
 
-1. **Boolean literals**: `"true"` → `true`, `"false"` → `false`
-2. **Loop variables**: If `expr` matches a key in `ctx.Vars`, return that value
-3. **Dotted paths on loop variables**: `"todo.Text"` → look up `todo` in `Vars`, then resolve `Text` field via reflection
-4. **Struct fields**: Fall back to `ctx.State.FieldByName(expr)` — supports dotted paths like `"Address.City"`
+**Fast path** (direct reflection — used for the majority of expressions):
+1. **Simple fields**: `"Score"` → `ctx.State.FieldByName("Score")`
+2. **Loop variables**: `"todo"` → `ctx.Vars["todo"]`
+3. **Dotted paths**: `"todo.Text"` → loop variable lookup + field walk via reflection
+4. **Negation**: `"!Visible"` → fast path + `IsTruthy` inversion
+5. **Zero-arg methods**: `"Summary()"` → `ctx.State.MethodByName("Summary").Call(nil)`
+6. **Bracket map access**: `"Inputs[key]"` → direct map index lookup
+
+**expr-lang path** (for expressions with operators):
+- Comparisons: `"Status == 'active'"`, `"Count > 0"`, `"Score >= Threshold"`
+- Logical operators: `"IsAdmin and IsActive"`, `"not Done"`, `"A or B"`
+- Powered by [expr-lang/expr](https://github.com/expr-lang/expr)
+
+Compiled expr-lang programs are cached (`sync.Map` keyed by expression string). The base environment (struct fields + methods) is built once per render and shared across all expressions. See expr-lang docs for the full expression syntax.
 
 ### Text interpolation
 

@@ -141,12 +141,19 @@ Directives are `g-*` attributes on HTML elements that bind them to your Go state
 <!-- Negation -->
 <div g-if="!HasItems">No items yet.</div>
 
+<!-- Comparisons and logical operators -->
+<div g-if="Status == 'active'">Active user</div>
+<div g-show="Count > 0">Has items</div>
+<div g-if="Score >= Threshold and IsVerified">Qualified</div>
+
 <!-- Hide with display:none (stays in DOM) -->
 <div g-show="IsVisible">...</div>
 <div g-hide="IsVisible">...</div>
 ```
 
 **Truthiness:** `nil`, `false`, `0`, `""`, empty slice/map are falsy. Everything else is truthy.
+
+**Expressions:** Directives support comparisons (`==`, `!=`, `<`, `>`, `<=`, `>=`) and logical operators (`and`, `or`, `not`). Powered by [expr-lang/expr](https://github.com/expr-lang/expr) — see their docs for the full expression syntax.
 
 ### Loops
 
@@ -256,6 +263,14 @@ Directives accept expressions that reference your struct:
 | `"literal"` | String literal |
 | `42` | Number literal |
 | `true` / `false` | Boolean literals |
+| `Status == 'active'` | String comparison |
+| `Count > 0` | Numeric comparison |
+| `Score >= Threshold` | Field-to-field comparison |
+| `IsAdmin and IsActive` | Logical AND |
+| `not Done` | Logical NOT |
+| `ComputedName()` | Zero-arg method call |
+
+Complex expressions (comparisons, logical operators) are evaluated by [expr-lang/expr](https://github.com/expr-lang/expr). See their documentation for the full expression syntax. Note: use `and`/`or`/`not` (not `&&`/`||`/`!` for multi-term logic), and single quotes for strings in HTML attributes (`'active'` not `"active"`).
 
 ---
 
