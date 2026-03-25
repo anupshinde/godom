@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
-	"strconv"
 	"strings"
 
+	"sync"
+
+	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -440,6 +443,10 @@ type ResolveContext struct {
 	UnboundValues map[string]any    // stableKey → stored value (passed in from component.Info)
 	NodeStableIDs map[int]string    // nodeID → stableKey (built during resolve, read by server)
 	ForIndices    []int             // current g-for loop index stack (for composite stable keys)
+
+	// baseEnv is the expr-lang environment built from struct fields + methods.
+	// Built once per render on first use, reused for every ResolveExpr call.
+	baseEnv map[string]any
 }
 
 // addBinding records a dependency from a field expression to a node.
@@ -659,6 +666,7 @@ func resolveKeyedForNode(t *TemplateNode, ctx *ResolveContext) []KeyedChild {
 			UnboundValues: ctx.UnboundValues,
 			NodeStableIDs: ctx.NodeStableIDs,
 			ForIndices:    append(append([]int{}, ctx.ForIndices...), i),
+			baseEnv:       ctx.baseEnv, // share parent's cached base env
 		}
 		childCtx.Vars[t.ForItem] = item
 		if t.ForIndex != "" {
@@ -696,6 +704,7 @@ func resolveForNode(t *TemplateNode, ctx *ResolveContext) []Node {
 			UnboundValues: ctx.UnboundValues,
 			NodeStableIDs: ctx.NodeStableIDs,
 			ForIndices:    append(append([]int{}, ctx.ForIndices...), i),
+			baseEnv:       ctx.baseEnv, // share parent's cached base env
 		}
 		childCtx.Vars[t.ForItem] = item
 		if t.ForIndex != "" {
@@ -1009,65 +1018,253 @@ func unboundKey(stableID string, forIndices []int) string {
 // Expression resolution
 // ---------------------------------------------------------------------------
 
-// ResolveExpr resolves an expression string against the context.
-// It tries fields first, then zero-arg single-return methods.
-// Supports leading ! for boolean negation.
-func ResolveExpr(expr string, ctx *ResolveContext) any {
-	expr = strings.TrimSpace(expr)
+// BuildExprEnv constructs the environment map for expr-lang evaluation.
+// It includes all exported struct fields, zero-arg single-return methods,
+// and any loop variables from the context.
+// buildBaseEnv builds the expr-lang environment from struct fields and methods.
+// Called once per render and cached on the ResolveContext.
+func buildBaseEnv(ctx *ResolveContext) map[string]any {
+	env := make(map[string]any)
 
-	// Boolean negation: !Expr
-	if strings.HasPrefix(expr, "!") {
-		inner := strings.TrimSpace(expr[1:])
-		val := ResolveExpr(inner, ctx)
-		return !IsTruthy(val)
-	}
-
-	// String literal: 'hello' → "hello"
-	if len(expr) >= 2 && expr[0] == '\'' && expr[len(expr)-1] == '\'' {
-		return expr[1 : len(expr)-1]
-	}
-
-	if expr == "true" {
-		return true
-	}
-	if expr == "false" {
-		return false
-	}
-
-	// Numeric literal: 42, 3.14
-	if len(expr) > 0 && (expr[0] >= '0' && expr[0] <= '9' || expr[0] == '-') {
-		if i, err := strconv.ParseInt(expr, 10, 64); err == nil {
-			return i
+	v := ctx.State
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			break
 		}
-		if f, err := strconv.ParseFloat(expr, 64); err == nil {
-			return f
-		}
+		v = v.Elem()
 	}
-
-	// Method call with args: Method(arg1, arg2)
-	if strings.Contains(expr, "(") {
-		method, argExprs := ParseMethodCall(expr)
-		resolved := resolveArgs(argExprs, ctx)
-		return callMethodWithArgs(ctx.State, method, resolved)
-	}
-
-	if ctx.Vars != nil {
-		if val, ok := ctx.Vars[expr]; ok {
-			return val
+	if v.Kind() == reflect.Struct {
+		t := v.Type()
+		for i := 0; i < t.NumField(); i++ {
+			f := t.Field(i)
+			if f.IsExported() {
+				fv := v.Field(i)
+				for fv.Kind() == reflect.Ptr {
+					if fv.IsNil() {
+						break
+					}
+					fv = fv.Elem()
+				}
+				if fv.IsValid() {
+					env[f.Name] = fv.Interface()
+				}
+			}
 		}
-		if dotIdx := strings.Index(expr, "."); dotIdx != -1 {
-			root := expr[:dotIdx]
-			if val, ok := ctx.Vars[root]; ok {
-				return resolveFieldPath(val, expr[dotIdx+1:])
+
+		// Add methods as callable functions.
+		// Methods are bound to the receiver pointer, so they see current state.
+		sv := ctx.State
+		st := sv.Type()
+		for i := 0; i < st.NumMethod(); i++ {
+			m := st.Method(i)
+			name := m.Name
+			if _, exists := env[name]; !exists {
+				method := sv.Method(i)
+				env[name] = method.Interface()
 			}
 		}
 	}
 
-	// Try field first, then method.
-	if val := resolveStructField(ctx.State, expr); val != nil {
-		return val
+	return env
+}
+
+// BuildExprEnv returns the expr-lang environment for the current context.
+// The base env (struct fields + methods) is built once per render and cached.
+// Loop variables are merged on top each call.
+func BuildExprEnv(ctx *ResolveContext) map[string]any {
+	if ctx.baseEnv == nil {
+		ctx.baseEnv = buildBaseEnv(ctx)
 	}
-	return callMethod(ctx.State, expr)
+
+	// No loop variables — return base env directly (hot path for non-loop expressions)
+	if len(ctx.Vars) == 0 {
+		return ctx.baseEnv
+	}
+
+	// Merge loop variables on top of base env
+	env := make(map[string]any, len(ctx.baseEnv)+len(ctx.Vars))
+	for k, v := range ctx.baseEnv {
+		env[k] = v
+	}
+	for k, v := range ctx.Vars {
+		env[k] = v
+	}
+	return env
+}
+
+// exprCache caches compiled expr-lang programs keyed by expression string.
+// Expression strings are fixed at template parse time, so each unique expression
+// is compiled once and reused on every render.
+var exprCache sync.Map // map[string]*vm.Program
+
+// isSimpleExpr returns true for expressions that can be resolved with direct
+// reflection instead of expr-lang: identifiers ("Score"), dotted paths
+// ("brick.Left"), and negated versions ("!Visible"). These make up the vast
+// majority of expressions in typical templates and are much faster to resolve.
+func isSimpleExpr(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '.' || c == '!' {
+			continue
+		}
+		return false
+	}
+	return len(s) > 0
+}
+
+// resolveSimpleExpr resolves a simple field/variable expression using direct
+// reflection. Returns (value, true) on success, (nil, false) if the expression
+// can't be resolved on the fast path.
+func resolveSimpleExpr(exprStr string, ctx *ResolveContext) (any, bool) {
+	negated := false
+	if exprStr[0] == '!' {
+		negated = true
+		exprStr = exprStr[1:]
+		if exprStr == "" {
+			return nil, false
+		}
+	}
+
+	var val any
+	root := exprStr
+	if dotIdx := strings.IndexByte(exprStr, '.'); dotIdx != -1 {
+		root = exprStr[:dotIdx]
+	}
+
+	// Check loop variables first (they shadow struct fields)
+	if ctx.Vars != nil {
+		if lv, exists := ctx.Vars[root]; exists {
+			if root == exprStr {
+				val = lv
+			} else {
+				val = resolveFieldPath(lv, exprStr[len(root)+1:])
+			}
+			if negated {
+				return !IsTruthy(val), true
+			}
+			return val, true
+		}
+	}
+
+	// Try struct field
+	result := resolveStructField(ctx.State, exprStr)
+	if result != nil {
+		if negated {
+			return !IsTruthy(result), true
+		}
+		return result, true
+	}
+
+	// Not found — let caller decide (may be a method call, literal, etc.)
+	return nil, false
+}
+
+// ResolveExpr resolves an expression string against the context.
+// Simple field/variable access uses direct reflection (fast path).
+// Complex expressions (comparisons, operators, function calls) use expr-lang.
+func ResolveExpr(exprStr string, ctx *ResolveContext) any {
+	exprStr = strings.TrimSpace(exprStr)
+	if exprStr == "" {
+		return nil
+	}
+
+	// Fast path: simple field or dotted path (e.g. "Score", "brick.Left", "!Visible").
+	// This covers the vast majority of expressions and avoids expr-lang overhead.
+	if isSimpleExpr(exprStr) {
+		if val, ok := resolveSimpleExpr(exprStr, ctx); ok {
+			return val
+		}
+	}
+
+	// Fast path: zero-arg method call like "ComputedName()" or "!ShowSaved()".
+	inner := exprStr
+	methodNegated := false
+	if inner[0] == '!' {
+		methodNegated = true
+		inner = inner[1:]
+	}
+	if len(inner) > 2 && inner[len(inner)-2:] == "()" && isSimpleExpr(inner[:len(inner)-2]) {
+		name := inner[:len(inner)-2]
+		if result := callMethod(ctx.State, name); result != nil {
+			if methodNegated {
+				return !IsTruthy(result)
+			}
+			return result
+		}
+	}
+
+	// Convert single-quoted strings to double-quoted for expr-lang.
+	exprStr = convertQuotes(exprStr)
+
+	// Handle bracket map access: "Field[key]" — expr-lang uses different syntax
+	// so we resolve these directly.
+	if field, key, ok := ParseMapAccess(exprStr); ok {
+		val := resolveStructField(ctx.State, field+"["+key+"]")
+		if val != nil {
+			return val
+		}
+		if ctx.Vars != nil {
+			if lv, exists := ctx.Vars[field]; exists {
+				rv := reflect.ValueOf(lv)
+				for rv.Kind() == reflect.Ptr {
+					rv = rv.Elem()
+				}
+				if rv.Kind() == reflect.Map {
+					mapVal := rv.MapIndex(reflect.ValueOf(key))
+					if mapVal.IsValid() {
+						return mapVal.Interface()
+					}
+				}
+			}
+		}
+		return ""
+	}
+
+	env := BuildExprEnv(ctx)
+
+	// Look up cached compiled program, or compile and cache on first use.
+	var program *vm.Program
+	if cached, ok := exprCache.Load(exprStr); ok {
+		program = cached.(*vm.Program)
+	} else {
+		compiled, err := expr.Compile(exprStr, expr.Env(env), expr.AllowUndefinedVariables())
+		if err != nil {
+			return nil
+		}
+		program = compiled
+		exprCache.Store(exprStr, program)
+	}
+
+	result, err := expr.Run(program, env)
+	if err != nil {
+		return nil
+	}
+	return result
+}
+
+// convertQuotes converts single-quoted strings to double-quoted for expr-lang.
+// 'hello' → "hello", but leaves strings without matching quotes unchanged.
+func convertQuotes(s string) string {
+	// Simple case: entire expression is a single-quoted string
+	if len(s) >= 2 && s[0] == '\'' && s[len(s)-1] == '\'' && !strings.Contains(s[1:len(s)-1], "'") {
+		return "\"" + s[1:len(s)-1] + "\""
+	}
+	// Complex case: expression contains single-quoted strings mixed with operators
+	// e.g., "Status == 'active'" → "Status == \"active\""
+	if strings.Contains(s, "'") {
+		var b strings.Builder
+		inQuote := false
+		for i := 0; i < len(s); i++ {
+			if s[i] == '\'' {
+				b.WriteByte('"')
+				inQuote = !inQuote
+			} else {
+				b.WriteByte(s[i])
+			}
+		}
+		return b.String()
+	}
+	return s
 }
 
 // callMethod calls a zero-arg, single-return method on v by name.

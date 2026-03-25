@@ -8,3 +8,5 @@ require (
 	golang.org/x/net v0.52.0
 	google.golang.org/protobuf v1.36.11
 )
+
+require github.com/expr-lang/expr v1.17.8 // indirect

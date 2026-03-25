@@ -1562,9 +1562,9 @@ func TestResolveExpr_NumericLiterals(t *testing.T) {
 		expr string
 		want any
 	}{
-		{"42", int64(42)},
-		{"0", int64(0)},
-		{"-7", int64(-7)},
+		{"42", 42},
+		{"0", 0},
+		{"-7", -7},
 		{"3.14", float64(3.14)},
 		{"-0.5", float64(-0.5)},
 	}
@@ -1577,14 +1577,14 @@ func TestResolveExpr_NumericLiterals(t *testing.T) {
 
 	// Negative: things that look numeric but aren't must not resolve as numbers.
 	negatives := []string{
-		"42abc",  // trailing letters
-		"-",      // just a minus sign
-		"--5",    // double minus
+		"42abc", // trailing letters
+		"-",     // just a minus sign
+		// "--5" is valid in expr-lang: double negation -(-(5)) = 5
 	}
 	for _, expr := range negatives {
 		v := ResolveExpr(expr, ctx)
 		switch v.(type) {
-		case int64, float64:
+		case int, int64, float64:
 			t.Errorf("ResolveExpr(%q) = %v (%T), should not resolve as numeric literal", expr, v, v)
 		}
 	}
@@ -1625,10 +1625,13 @@ func TestResolveExpr_Negation(t *testing.T) {
 		t.Errorf("expected !Done (false) → true, got %v", val2)
 	}
 
-	// !MissingField — missing resolves to nil, !nil should be true
+	// !MissingField — missing field is an error, returns nil.
+	// expr-lang's ! operator requires a bool; undefined variables resolve to nil
+	// which is not a bool, so the expression fails. This surfaces template bugs
+	// rather than silently returning true.
 	val3 := ResolveExpr("!MissingField", ctx)
-	if val3 != true {
-		t.Errorf("expected !MissingField → true, got %v", val3)
+	if val3 != nil {
+		t.Errorf("expected !MissingField → nil (error), got %v", val3)
 	}
 }
 
@@ -1666,13 +1669,14 @@ func TestResolveExpr_ZeroArgMethod(t *testing.T) {
 	state := &testDirectiveState{Name: "test"}
 	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
 
-	val := ResolveExpr("ComputedName", ctx)
+	// Zero-arg methods require parentheses in expr-lang
+	val := ResolveExpr("ComputedName()", ctx)
 	if val != "computed_test" {
 		t.Errorf("expected 'computed_test', got %v", val)
 	}
 
 	// Non-existent method returns nil
-	val2 := ResolveExpr("NoSuchMethod", ctx)
+	val2 := ResolveExpr("NoSuchMethod()", ctx)
 	if val2 != nil {
 		t.Errorf("expected nil for missing method, got %v", val2)
 	}
@@ -2241,8 +2245,8 @@ func (s *testCallState) TwoArgs(a, b int) int {
 func TestResolveExpr_MethodNoReturn(t *testing.T) {
 	state := &testCallState{}
 	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
-	// Zero-arg method with no return → callMethod returns nil (wrong sig)
-	val := ResolveExpr("NoReturn", ctx)
+	// Zero-arg method with no return value → returns nil
+	val := ResolveExpr("NoReturn()", ctx)
 	if val != nil {
 		t.Errorf("expected nil for method with no return, got %v", val)
 	}
@@ -2753,17 +2757,16 @@ func TestResolveExpr_CallMethodWithNilArg(t *testing.T) {
 }
 
 func TestResolveExpr_CallMethodWithActualNilArg(t *testing.T) {
-	// Exercises callMethodWithArgs where a resolved arg is nil → reflect.Zero path
+	// TwoArgs expects (int, int) — passing nil args is a type error in expr-lang.
 	s := &testCallState{Name: "test"}
 	ctx := &ResolveContext{
 		State: reflect.ValueOf(s),
 		Vars:  map[string]any{"a": nil, "b": nil},
 		IDs:   &IDCounter{},
 	}
-	// TwoArgs(a, b) where a,b are nil → callMethodWithArgs uses reflect.Zero → int(0)
 	result := ResolveExpr("TwoArgs(a, b)", ctx)
-	if result != 0 {
-		t.Errorf("expected 0 (zero-value int args), got %v", result)
+	if result != nil {
+		t.Errorf("expected nil (type error: nil args for int params), got %v", result)
 	}
 }
 
@@ -2881,6 +2884,96 @@ func TestResolveExpr_MapBracketMissingKey(t *testing.T) {
 	val := ResolveExpr("ChartData[missing]", ctx)
 	if val != "" {
 		t.Errorf("expected empty string, got %v", val)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// expr-lang path tests — expressions with operators that bypass the fast path
+// ---------------------------------------------------------------------------
+
+func TestResolveExpr_StringComparison(t *testing.T) {
+	state := &testDirectiveState{Name: "Alice"}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+
+	if ResolveExpr("Name == 'Alice'", ctx) != true {
+		t.Error("expected Name == 'Alice' → true")
+	}
+	if ResolveExpr("Name == 'Bob'", ctx) != false {
+		t.Error("expected Name == 'Bob' → false")
+	}
+	if ResolveExpr("Name != 'Bob'", ctx) != true {
+		t.Error("expected Name != 'Bob' → true")
+	}
+}
+
+func TestResolveExpr_NumericComparison(t *testing.T) {
+	state := &testDirectiveState{Count: 5}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+
+	tests := []struct {
+		expr string
+		want bool
+	}{
+		{"Count > 0", true},
+		{"Count > 10", false},
+		{"Count >= 5", true},
+		{"Count < 10", true},
+		{"Count <= 5", true},
+		{"Count == 5", true},
+		{"Count != 5", false},
+	}
+	for _, tt := range tests {
+		got := ResolveExpr(tt.expr, ctx)
+		if got != tt.want {
+			t.Errorf("ResolveExpr(%q) = %v, want %v", tt.expr, got, tt.want)
+		}
+	}
+}
+
+func TestResolveExpr_LogicalOperators(t *testing.T) {
+	state := &testDirectiveState{Visible: true, Done: false, Count: 3}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+
+	tests := []struct {
+		expr string
+		want bool
+	}{
+		{"Visible and not Done", true},
+		{"Visible and Done", false},
+		{"Visible or Done", true},
+		{"not Visible", false},
+		{"Count > 0 and Visible", true},
+		{"Count > 10 or Done", false},
+	}
+	for _, tt := range tests {
+		got := ResolveExpr(tt.expr, ctx)
+		if got != tt.want {
+			t.Errorf("ResolveExpr(%q) = %v, want %v", tt.expr, got, tt.want)
+		}
+	}
+}
+
+func TestResolveExpr_LoopVarComparison(t *testing.T) {
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  map[string]any{"status": "active", "score": 85},
+	}
+
+	if ResolveExpr("status == 'active'", ctx) != true {
+		t.Error("expected status == 'active' → true")
+	}
+	if ResolveExpr("score >= 80", ctx) != true {
+		t.Error("expected score >= 80 → true")
+	}
+}
+
+func TestResolveExpr_FieldToFieldComparison(t *testing.T) {
+	state := &testDirectiveState{Count: 5, Visible: true, Done: true}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+
+	if ResolveExpr("Visible == Done", ctx) != true {
+		t.Error("expected Visible == Done → true (both true)")
 	}
 }
 
