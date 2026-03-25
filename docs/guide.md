@@ -396,6 +396,8 @@ The `ChartData` field is any struct or map that serializes to a valid Chart.js c
 
 See [plugins.md](plugins.md) for writing your own plugins, and [javascript-libraries.md](javascript-libraries.md) for using JS libraries without creating a reusable plugin.
 
+> **Tip:** Not everything needs Go or a plugin. For purely browser-side micro-interactions like scroll sync, focus management, or animations, a plain `<script>` tag in your template is simpler and has zero latency. See [When to use plain JavaScript](javascript-libraries.md#when-to-use-plain-javascript).
+
 ---
 
 ## Multi-Tab Sync

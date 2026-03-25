@@ -4,6 +4,19 @@ godom is designed so that most apps need no JavaScript at all — your state, lo
 
 But some things are better left to JS libraries that already exist — charts, maps, rich text editors, syntax highlighters. Reimplementing Chart.js or Leaflet in Go would be pointless. For these cases, godom provides a way to bridge Go data to any JS library while keeping Go as the source of truth.
 
+### When to use plain JavaScript
+
+Not everything needs to go through Go. For purely browser-side DOM manipulation that doesn't involve your app's state, a `<script>` tag in your HTML template is simpler and has zero latency. Good candidates:
+
+- **Scroll synchronization** — syncing scroll positions between two panes requires reading live element dimensions (`scrollHeight`, `clientHeight`) that only the browser knows. A few lines of JS handles this instantly, while the Go round-trip adds complexity for no benefit. See `examples/markdown-editor/` for discussion.
+- **Focus management** — programmatically focusing an input after a transition
+- **CSS animations** — triggering or coordinating animations based on DOM state
+- **Clipboard operations** — reading from or writing to the clipboard
+
+These coexist with godom without conflict — just add a `<script>` tag to your template. Use Go for state, logic, and rendering. Use JS for browser micro-interactions that don't need state.
+
+### When to use a JS library
+
 You write a small JS adapter that receives data from your Go struct, and the framework handles serialization and lifecycle. There are two approaches:
 
 | Approach | When to use | Example |
