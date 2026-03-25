@@ -376,6 +376,16 @@ eng.Quiet = true          // default: false
 
 Environment variables also work — `GODOM_PORT=8081 GODOM_NO_BROWSER=1 go run .`. Code values take priority over env vars.
 
+### Validate only
+
+Validate templates without starting the server — catches unknown fields, invalid directives, and bad expressions at build time:
+
+```
+GODOM_VALIDATE_ONLY=1 go run .
+```
+
+Exits with code 0 if all `Mount()` validations pass. Useful in CI pipelines and pre-commit hooks.
+
 ### Headless mode
 
 Run on a server or Raspberry Pi without a local browser:

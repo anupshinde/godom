@@ -176,9 +176,18 @@ func (a *Engine) AddToSlot(parent interface{}, slotName string, child interface{
 }
 
 // Start starts the HTTP server, opens the default browser, and blocks forever.
+// If GODOM_VALIDATE_ONLY=1 is set, Start() returns immediately after Mount() validation
+// succeeds — useful for CI and pre-commit checks.
 func (a *Engine) Start() error {
 	if len(a.comps) == 0 {
 		return fmt.Errorf("godom: no component mounted, call Mount() before Start()")
+	}
+
+	if env.Bool("GODOM_VALIDATE_ONLY") {
+		if !a.Quiet {
+			fmt.Println("godom: validation passed")
+		}
+		os.Exit(0)
 	}
 
 	a.applyEnv()

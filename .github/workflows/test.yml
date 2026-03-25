@@ -27,3 +27,6 @@ jobs:
 
       - name: Build examples
         run: make build-examples
+
+      - name: Validate examples
+        run: make validate-examples
