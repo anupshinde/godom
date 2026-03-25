@@ -226,6 +226,22 @@ func validateFieldExpr(expr string, ci *component.Info, loopVars map[string]*loo
 		return nil
 	}
 
+	// Expressions containing operators are handled by expr-lang at runtime.
+	// Skip validation here — expr-lang will report errors if invalid.
+	if containsOperator(expr) {
+		return nil
+	}
+
+	// Expressions with parentheses are method calls — validate the method name.
+	// Handles "Summary()" (zero-arg) and "Add(3, 4)" (with args).
+	if parenIdx := strings.Index(expr, "("); parenIdx != -1 {
+		methodName := expr[:parenIdx]
+		if ci.HasMethod(methodName) {
+			return nil
+		}
+		return fmt.Errorf("directive references unknown method %q (expression: %q) on %s", methodName, expr, ci.Typ.Name())
+	}
+
 	parts := strings.Split(expr, ".")
 	root := parts[0]
 
@@ -264,6 +280,28 @@ func validateFieldExpr(expr string, ci *component.Info, loopVars map[string]*loo
 	}
 
 	return fmt.Errorf("directive references unknown field or method %q (expression: %q) on %s", root, expr, ci.Typ.Name())
+}
+
+// containsOperator returns true if the expression contains comparison or
+// logical operators, indicating it should be handled by expr-lang.
+func containsOperator(expr string) bool {
+	// Check for comparison operators
+	for _, op := range []string{"==", "!=", ">=", "<=", ">", "<"} {
+		if strings.Contains(expr, op) {
+			return true
+		}
+	}
+	// Check for logical keyword operators (word boundaries via spaces)
+	for _, kw := range []string{" and ", " or ", " not "} {
+		if strings.Contains(expr, kw) {
+			return true
+		}
+	}
+	// "not " at the start
+	if strings.HasPrefix(expr, "not ") {
+		return true
+	}
+	return false
 }
 
 // validateTypePath walks a dotted path through struct types.
