@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
-	"strconv"
 	"strings"
 
+	"github.com/expr-lang/expr"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -1009,65 +1009,137 @@ func unboundKey(stableID string, forIndices []int) string {
 // Expression resolution
 // ---------------------------------------------------------------------------
 
-// ResolveExpr resolves an expression string against the context.
-// It tries fields first, then zero-arg single-return methods.
-// Supports leading ! for boolean negation.
-func ResolveExpr(expr string, ctx *ResolveContext) any {
-	expr = strings.TrimSpace(expr)
+// BuildExprEnv constructs the environment map for expr-lang evaluation.
+// It includes all exported struct fields, zero-arg single-return methods,
+// and any loop variables from the context.
+func BuildExprEnv(ctx *ResolveContext) map[string]any {
+	env := make(map[string]any)
 
-	// Boolean negation: !Expr
-	if strings.HasPrefix(expr, "!") {
-		inner := strings.TrimSpace(expr[1:])
-		val := ResolveExpr(inner, ctx)
-		return !IsTruthy(val)
-	}
-
-	// String literal: 'hello' → "hello"
-	if len(expr) >= 2 && expr[0] == '\'' && expr[len(expr)-1] == '\'' {
-		return expr[1 : len(expr)-1]
-	}
-
-	if expr == "true" {
-		return true
-	}
-	if expr == "false" {
-		return false
-	}
-
-	// Numeric literal: 42, 3.14
-	if len(expr) > 0 && (expr[0] >= '0' && expr[0] <= '9' || expr[0] == '-') {
-		if i, err := strconv.ParseInt(expr, 10, 64); err == nil {
-			return i
+	// Add struct fields
+	v := ctx.State
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			break
 		}
-		if f, err := strconv.ParseFloat(expr, 64); err == nil {
-			return f
-		}
+		v = v.Elem()
 	}
-
-	// Method call with args: Method(arg1, arg2)
-	if strings.Contains(expr, "(") {
-		method, argExprs := ParseMethodCall(expr)
-		resolved := resolveArgs(argExprs, ctx)
-		return callMethodWithArgs(ctx.State, method, resolved)
-	}
-
-	if ctx.Vars != nil {
-		if val, ok := ctx.Vars[expr]; ok {
-			return val
+	if v.Kind() == reflect.Struct {
+		t := v.Type()
+		for i := 0; i < t.NumField(); i++ {
+			f := t.Field(i)
+			if f.IsExported() {
+				fv := v.Field(i)
+				// Dereference pointers
+				for fv.Kind() == reflect.Ptr {
+					if fv.IsNil() {
+						break
+					}
+					fv = fv.Elem()
+				}
+				if fv.IsValid() {
+					env[f.Name] = fv.Interface()
+				}
+			}
 		}
-		if dotIdx := strings.Index(expr, "."); dotIdx != -1 {
-			root := expr[:dotIdx]
-			if val, ok := ctx.Vars[root]; ok {
-				return resolveFieldPath(val, expr[dotIdx+1:])
+
+		// Add zero-arg, single-return methods
+		sv := ctx.State
+		st := sv.Type()
+		for i := 0; i < st.NumMethod(); i++ {
+			m := st.Method(i)
+			mt := m.Type
+			// Zero args (besides receiver) and single return
+			if mt.NumIn() == 1 && mt.NumOut() == 1 {
+				name := m.Name
+				// Don't shadow fields
+				if _, exists := env[name]; !exists {
+					// Capture method as a callable function
+					method := sv.Method(i)
+					env[name] = func() any {
+						return method.Call(nil)[0].Interface()
+					}
+				}
 			}
 		}
 	}
 
-	// Try field first, then method.
-	if val := resolveStructField(ctx.State, expr); val != nil {
-		return val
+	// Add loop variables (these shadow struct fields, matching prior behavior)
+	for k, v := range ctx.Vars {
+		env[k] = v
 	}
-	return callMethod(ctx.State, expr)
+
+	return env
+}
+
+// ResolveExpr resolves an expression string against the context using expr-lang.
+// Supports field access, method calls, comparisons, logical operators, and literals.
+func ResolveExpr(exprStr string, ctx *ResolveContext) any {
+	exprStr = strings.TrimSpace(exprStr)
+	if exprStr == "" {
+		return nil
+	}
+
+	// Convert single-quoted strings to double-quoted for expr-lang.
+	// godom templates use 'hello' (HTML-friendly), expr-lang uses "hello".
+	exprStr = convertQuotes(exprStr)
+
+	// Handle bracket map access: "Field[key]" — expr-lang uses different syntax
+	// so we resolve these directly.
+	if field, key, ok := ParseMapAccess(exprStr); ok {
+		val := resolveStructField(ctx.State, field+"["+key+"]")
+		if val != nil {
+			return val
+		}
+		// Also check loop vars
+		if ctx.Vars != nil {
+			if lv, exists := ctx.Vars[field]; exists {
+				rv := reflect.ValueOf(lv)
+				for rv.Kind() == reflect.Ptr {
+					rv = rv.Elem()
+				}
+				if rv.Kind() == reflect.Map {
+					mapVal := rv.MapIndex(reflect.ValueOf(key))
+					if mapVal.IsValid() {
+						return mapVal.Interface()
+					}
+				}
+			}
+		}
+		return ""
+	}
+
+	env := BuildExprEnv(ctx)
+
+	result, err := expr.Eval(exprStr, env)
+	if err != nil {
+		return nil
+	}
+	return result
+}
+
+// convertQuotes converts single-quoted strings to double-quoted for expr-lang.
+// 'hello' → "hello", but leaves strings without matching quotes unchanged.
+func convertQuotes(s string) string {
+	// Simple case: entire expression is a single-quoted string
+	if len(s) >= 2 && s[0] == '\'' && s[len(s)-1] == '\'' && !strings.Contains(s[1:len(s)-1], "'") {
+		return "\"" + s[1:len(s)-1] + "\""
+	}
+	// Complex case: expression contains single-quoted strings mixed with operators
+	// e.g., "Status == 'active'" → "Status == \"active\""
+	if strings.Contains(s, "'") {
+		var b strings.Builder
+		inQuote := false
+		for i := 0; i < len(s); i++ {
+			if s[i] == '\'' {
+				b.WriteByte('"')
+				inQuote = !inQuote
+			} else {
+				b.WriteByte(s[i])
+			}
+		}
+		return b.String()
+	}
+	return s
 }
 
 // callMethod calls a zero-arg, single-return method on v by name.

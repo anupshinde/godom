@@ -1562,9 +1562,9 @@ func TestResolveExpr_NumericLiterals(t *testing.T) {
 		expr string
 		want any
 	}{
-		{"42", int64(42)},
-		{"0", int64(0)},
-		{"-7", int64(-7)},
+		{"42", 42},
+		{"0", 0},
+		{"-7", -7},
 		{"3.14", float64(3.14)},
 		{"-0.5", float64(-0.5)},
 	}
@@ -1577,14 +1577,14 @@ func TestResolveExpr_NumericLiterals(t *testing.T) {
 
 	// Negative: things that look numeric but aren't must not resolve as numbers.
 	negatives := []string{
-		"42abc",  // trailing letters
-		"-",      // just a minus sign
-		"--5",    // double minus
+		"42abc", // trailing letters
+		"-",     // just a minus sign
+		// "--5" is valid in expr-lang: double negation -(-(5)) = 5
 	}
 	for _, expr := range negatives {
 		v := ResolveExpr(expr, ctx)
 		switch v.(type) {
-		case int64, float64:
+		case int, int64, float64:
 			t.Errorf("ResolveExpr(%q) = %v (%T), should not resolve as numeric literal", expr, v, v)
 		}
 	}
