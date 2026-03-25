@@ -631,7 +631,7 @@
         var latestDomEvent = null;
 
         el.addEventListener(eventType, function(domEvent) {
-            if (ev.key && domEvent.key !== ev.key) return;
+            if (ev.key && domEvent.key !== ev.key && domEvent.code !== ev.key) return;
             if (isThrottled) {
                 latestDomEvent = domEvent;
                 if (pendingFrame) return;

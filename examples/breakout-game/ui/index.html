@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Breakout</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+        }
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: #f0f0f0;
+            letter-spacing: 0.1em;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 3rem;
+            margin-bottom: 0.8rem;
+        }
+        .stat {
+            font-size: 1.3rem;
+            color: #aaa;
+        }
+        .stat span {
+            color: #fff;
+            font-weight: 600;
+            font-size: 1.6rem;
+        }
+        .lives { color: #e74c3c; font-size: 1.6rem; letter-spacing: 2px; }
+
+        /* ── Game view ── */
+        .game-wrapper {
+            /*
+             * Scale the 600x500 game area to fill available viewport.
+             * Leave room for header (~80px) and controls (~100px).
+             * Pick the smaller of width-fit or height-fit.
+             */
+            --sw: calc((100vw - 40px) / 1024);
+            --sh: calc((100vh - 200px) / 768);
+            --scale: min(var(--sw), var(--sh), 1.5);
+            width: calc(1024px * var(--scale));
+            height: calc(768px * var(--scale));
+        }
+        .game-area {
+            position: relative;
+            width: 1024px;
+            height: 768px;
+            background: #16213e;
+            border: 2px solid #0f3460;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: none;
+            transform: scale(var(--scale));
+            transform-origin: top center;
+        }
+        .ball {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(255,255,255,0.6);
+            transition: opacity 0.15s;
+        }
+        .ball-hidden { opacity: 0; }
+        .ball-ready {
+            background: #5dade2;
+            box-shadow: 0 0 12px rgba(93,173,226,0.6);
+            opacity: 0.7;
+        }
+        .paddle {
+            position: absolute;
+            top: 738px;
+            width: 120px;
+            height: 14px;
+            background: linear-gradient(to bottom, #5dade2, #2e86c1);
+            border-radius: 6px;
+            box-shadow: 0 0 10px rgba(93,173,226,0.4);
+        }
+        /* Death line */
+        .death-line {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(to right,
+                transparent 0%, rgba(231,76,60,0.3) 20%,
+                rgba(231,76,60,0.6) 50%,
+                rgba(231,76,60,0.3) 80%, transparent 100%);
+        }
+        /* Impact flash */
+        .impact {
+            position: absolute;
+            bottom: 0;
+            width: 60px;
+            height: 40px;
+            pointer-events: none;
+            background: radial-gradient(ellipse at bottom center,
+                rgba(231,76,60,0.8) 0%,
+                rgba(231,76,60,0.4) 30%,
+                rgba(255,160,60,0.2) 60%,
+                transparent 100%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .impact-show {
+            opacity: 1;
+            animation: impact-pulse 0.4s ease-out forwards;
+        }
+        @keyframes impact-pulse {
+            0% { transform: scaleY(0.3) scaleX(0.5); opacity: 1; }
+            40% { transform: scaleY(1.3) scaleX(1.3); opacity: 0.7; }
+            100% { transform: scaleY(1) scaleX(1); opacity: 0; }
+        }
+        .brick {
+            position: absolute;
+            border-radius: 3px;
+            box-shadow: inset 0 -2px 0 rgba(0,0,0,0.2);
+        }
+        .message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(255,255,255,0.5);
+            pointer-events: none;
+        }
+        .controls {
+            display: flex;
+            gap: 0.8rem;
+            margin-top: 1rem;
+        }
+        .controls button, .mode-toggle {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #aaa;
+            padding: 0.6rem 1.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+        .controls button:hover, .mode-toggle:hover {
+            background: rgba(255,255,255,0.15);
+            color: #ddd;
+        }
+        .hint {
+            color: #444;
+            font-size: 0.75rem;
+            margin-top: 0.8rem;
+        }
+
+        /* ── Controller view ── */
+        .controller {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+            width: 100%;
+            max-width: 400px;
+            padding: 1rem;
+        }
+        .controller .score-display {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #fff;
+        }
+        .controller .lives-display {
+            font-size: 1.5rem;
+            color: #e74c3c;
+            letter-spacing: 4px;
+        }
+        .dpad {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+        .dpad button {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.06);
+            color: #fff;
+            font-size: 2.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        .dpad button:active {
+            background: rgba(93,173,226,0.3);
+            border-color: #5dade2;
+            box-shadow: 0 0 20px rgba(93,173,226,0.4);
+        }
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+        }
+        .action-buttons button {
+            padding: 0.8rem 2rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.06);
+            color: #ccc;
+            font-size: 1rem;
+            font-family: inherit;
+            font-weight: 600;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        .action-buttons button:active {
+            background: rgba(255,255,255,0.15);
+        }
+        .tilt-display {
+            font-size: 0.85rem;
+            color: #666;
+            font-variant-numeric: tabular-nums;
+        }
+        /* Landscape controller — rotated 90° for sideways phone */
+        .landscape-ctrl {
+            justify-content: center;
+            max-width: none;
+            width: 90%;
+            transform: rotate(90deg);
+            transform-origin: center center;
+            position: relative;
+        }
+        .landscape-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            height: 2px;
+            background: linear-gradient(to right,
+                transparent 0%, rgba(231,76,60,0.2) 15%,
+                rgba(231,76,60,0.4) 50%,
+                rgba(231,76,60,0.2) 85%, transparent 100%);
+            pointer-events: none;
+        }
+        .landscape-ctrl > * {
+            position: relative;
+            z-index: 1;
+        }
+        .tilt-bar {
+            width: 100%;
+            height: 40px;
+            background: linear-gradient(to bottom,
+                #1a5c2a 0%,
+                #237a36 15%,
+                #1e6e30 50%,
+                #195a28 85%,
+                #144d20 100%);
+            border-radius: 20px;
+            position: relative;
+            touch-action: none;
+            border: 2px solid rgba(255,255,255,0.12);
+            box-shadow:
+                inset 0 3px 6px rgba(0,0,0,0.5),
+                inset 0 -2px 4px rgba(255,255,255,0.08),
+                0 2px 8px rgba(0,0,0,0.4);
+            overflow: hidden;
+        }
+        /* Glass highlight — bright curved streak across top */
+        .tilt-bar::before {
+            content: "";
+            position: absolute;
+            top: 3px;
+            left: 5%;
+            right: 5%;
+            height: 35%;
+            background: linear-gradient(to bottom,
+                rgba(255,255,255,0.35) 0%,
+                rgba(255,255,255,0.08) 100%);
+            border-radius: 20px;
+            pointer-events: none;
+        }
+        /* Center graduation marks */
+        .tilt-bar::after {
+            content: "";
+            position: absolute;
+            top: 20%;
+            bottom: 20%;
+            left: calc(50% - 0.5px);
+            width: 1.5px;
+            background: rgba(255,255,255,0.3);
+            pointer-events: none;
+            box-shadow:
+                -8px 0 0 rgba(255,255,255,0.15),
+                8px 0 0 rgba(255,255,255,0.15),
+                -16px 0 0 rgba(255,255,255,0.08),
+                16px 0 0 rgba(255,255,255,0.08);
+        }
+        .tilt-indicator {
+            position: absolute;
+            top: 50%;
+            width: 36px;
+            height: 26px;
+            background: radial-gradient(ellipse at 40% 35%,
+                rgba(255,255,255,0.85) 0%,
+                rgba(200,255,200,0.4) 35%,
+                rgba(150,230,150,0.15) 65%,
+                transparent 100%);
+            border-radius: 50%;
+            border: 1.5px solid rgba(255,255,255,0.35);
+            box-shadow:
+                0 0 8px rgba(255,255,255,0.15),
+                inset 0 1px 3px rgba(255,255,255,0.3),
+                inset 0 -1px 2px rgba(0,0,0,0.15);
+            transform: translate(-50%, -50%);
+            transition: left 0.08s linear;
+        }
+        .mode-toggle {
+            margin-top: 0.5rem;
+        }
+
+        /* ── Mode switching ── */
+        /* Default: game visible, controller hidden */
+        .game-view { display: contents; }
+        .controller { display: none; }
+
+        /* On small screens, auto-switch to controller */
+        @media (max-width: 700px) {
+            .game-view { display: none; }
+            .controller { display: flex; }
+        }
+
+        /* Manual toggle overrides */
+        body.force-controller .game-view { display: none; }
+        body.force-controller .controller { display: flex; }
+        body.force-game .game-view { display: contents; }
+        body.force-game .controller { display: none; }
+    </style>
+</head>
+<body tabindex="0" g-keydown="ArrowLeft:MoveLeft;ArrowRight:MoveRight;Space:PauseToggle;p:PauseToggle">
+    <h1 g-hide="Landscape">BREAKOUT</h1>
+    <div class="header" g-hide="Landscape">
+        <div class="stat">Score: <span g-text="Score">0</span></div>
+        <div class="stat">Lives: <span class="lives" g-text="Lives">3</span></div>
+    </div>
+
+    <!-- ── Game view ── -->
+    <div class="game-view">
+        <div class="game-wrapper">
+            <div class="game-area" tabindex="0" g-mousemove="MouseMove" g-keydown="ArrowLeft:MoveLeft;ArrowRight:MoveRight;Space:PauseToggle;p:PauseToggle">
+                <div g-for="brick in Bricks"
+                     class="brick"
+                     g-style:left="brick.Left"
+                     g-style:top="brick.Top"
+                     g-style:width="brick.Width"
+                     g-style:height="brick.Height"
+                     g-style:background="brick.Color"
+                     g-show="brick.Visible">
+                </div>
+                <div class="ball"
+                     g-class:ball-hidden="BallHidden"
+                     g-class:ball-ready="BallReady"
+                     g-style:left="BallLeft"
+                     g-style:top="BallTop">
+                </div>
+                <div class="paddle" g-style:left="PaddleLeft"></div>
+                <div class="death-line"></div>
+                <div class="impact"
+                     g-class:impact-show="ImpactShow"
+                     g-style:left="ImpactLeft">
+                </div>
+                <div class="message" g-show="Message" g-text="Message"></div>
+            </div>
+        </div>
+        <div class="controls">
+            <button g-click="StartGame">START</button>
+            <button g-click="PauseToggle">PAUSE</button>
+        </div>
+        <p class="hint">Move mouse to control paddle — Arrow keys also work — Space/P to pause</p>
+        <button class="mode-toggle" onclick="document.body.classList.remove('force-game');document.body.classList.add('force-controller');">Switch to Controller</button>
+    </div>
+
+    <!-- ── Controller view ── -->
+    <div class="controller" g-class:landscape-ctrl="Landscape">
+        <div class="score-display" g-hide="Landscape" g-text="Score">0</div>
+        <div class="lives-display" g-hide="Landscape" g-text="Lives">3</div>
+        <div class="tilt-display" g-hide="Landscape" g-show="Tilt">Tilt: <span g-text="Tilt"></span>°</div>
+        <div class="dpad" g-hide="Landscape">
+            <button g-click="MoveLeft">&#9664;</button>
+            <button g-click="MoveRight">&#9654;</button>
+        </div>
+        <div class="landscape-line" g-show="Landscape"></div>
+        <div class="tilt-bar" g-show="Landscape">
+            <div class="tilt-indicator" g-style:left="TiltPct"></div>
+        </div>
+        <div class="action-buttons">
+            <button g-click="StartGame">START</button>
+            <button g-click="PauseToggle">PAUSE</button>
+            <button g-click="GyroToggle" g-text="GyroBtn">GYRO: OFF</button>
+        </div>
+        <button class="mode-toggle" g-hide="Landscape" onclick="document.body.classList.remove('force-controller');document.body.classList.add('force-game');">Switch to Game</button>
+    </div>
+
+    <!-- Hidden elements for gyroscope and sound bridges -->
+    <input id="gyro-input" g-bind="Tilt" style="position:absolute;opacity:0;pointer-events:none;">
+    <input id="controller-input" g-bind="ControllerActive" style="position:absolute;opacity:0;pointer-events:none;">
+    <span id="gyro-mode" g-text="GyroMode" style="display:none;">off</span>
+    <span id="controller-flag" g-text="ControllerActive" style="display:none;"></span>
+    <span id="sound-event" g-text="SoundEvent" style="display:none;"></span>
+</body>
+</html>
