@@ -3389,27 +3389,27 @@ func TestDeepCopyJSON_UnmarshalError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestExpandSelfClosingGSlot_Basic(t *testing.T) {
-	input := `<g-slot name="counter"/>`
+	input := `<g-slot instance="counter"/>`
 	got := expandSelfClosingGSlot(input)
-	want := `<g-slot name="counter"></g-slot>`
+	want := `<g-slot instance="counter"></g-slot>`
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
 func TestExpandSelfClosingGSlot_Multiple(t *testing.T) {
-	input := `<g-slot name="a"/><p>hi</p><g-slot name="b"/>`
+	input := `<g-slot instance="a"/><p>hi</p><g-slot instance="b"/>`
 	got := expandSelfClosingGSlot(input)
-	if !strings.Contains(got, `<g-slot name="a"></g-slot>`) {
+	if !strings.Contains(got, `<g-slot instance="a"></g-slot>`) {
 		t.Errorf("first slot not expanded: %q", got)
 	}
-	if !strings.Contains(got, `<g-slot name="b"></g-slot>`) {
+	if !strings.Contains(got, `<g-slot instance="b"></g-slot>`) {
 		t.Errorf("second slot not expanded: %q", got)
 	}
 }
 
 func TestExpandSelfClosingGSlot_AlreadyExplicit(t *testing.T) {
-	input := `<g-slot name="counter"></g-slot>`
+	input := `<g-slot instance="counter"></g-slot>`
 	got := expandSelfClosingGSlot(input)
 	if got != input {
 		t.Errorf("explicit close tag should be unchanged, got %q", got)
@@ -3429,7 +3429,7 @@ func TestExpandSelfClosingGSlot_NoGSlot(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestParseTemplate_GSlot(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body><div><g-slot name="counter"></g-slot></div></body></html>`
+	html := `<!DOCTYPE html><html><head></head><body><div><g-slot type="component:Counter" instance="counter"></g-slot></div></body></html>`
 	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
@@ -3457,7 +3457,7 @@ func TestParseTemplate_GSlot(t *testing.T) {
 }
 
 func TestParseTemplate_GSlotSelfClosing(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body><g-slot name="sidebar"/><p>after</p></body></html>`
+	html := `<!DOCTYPE html><html><head></head><body><g-slot type="component:Sidebar" instance="sidebar"/><p>after</p></body></html>`
 	nodes, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
@@ -3482,7 +3482,7 @@ func TestParseTemplate_GSlotSelfClosing(t *testing.T) {
 }
 
 func TestParseTemplate_DuplicateSlotNames(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body><g-slot name="x"></g-slot><g-slot name="x"></g-slot></body></html>`
+	html := `<!DOCTYPE html><html><head></head><body><g-slot type="component:X" instance="x"></g-slot><g-slot type="component:X" instance="x"></g-slot></body></html>`
 	_, err := ParseTemplate(html)
 	if err == nil {
 		t.Fatal("expected error for duplicate slot names")
@@ -3500,13 +3500,65 @@ func TestCheckDuplicateSlots_NoSlots(t *testing.T) {
 }
 
 func TestCheckDuplicateSlots_DynamicSlotNamesAllowed(t *testing.T) {
-	// Dynamic slot names (containing ".") should not trigger duplicate check
+	// Interpolated names (containing "{{") should not trigger duplicate check
 	nodes := []*TemplateNode{
-		{IsSlot: true, SlotExpr: "slot.Name"},
-		{IsSlot: true, SlotExpr: "slot.Name"},
+		{IsSlot: true, SlotExpr: "{{slot.Name}}"},
+		{IsSlot: true, SlotExpr: "{{slot.Name}}"},
 	}
 	if err := checkDuplicateSlots(nodes); err != nil {
 		t.Errorf("expected no error for dynamic slot names, got: %v", err)
+	}
+}
+
+func TestCheckDuplicateSlots_TypeRequired(t *testing.T) {
+	// Static instance without type attribute should error
+	nodes := []*TemplateNode{
+		{IsSlot: true, SlotExpr: "counter1", SlotType: ""},
+	}
+	if err := checkDuplicateSlots(nodes); err == nil {
+		t.Error("expected error for missing type attribute")
+	}
+}
+
+func TestCheckDuplicateSlots_TypeEmptyComponentName(t *testing.T) {
+	// type="component:" with empty type name should error
+	nodes := []*TemplateNode{
+		{IsSlot: true, SlotExpr: "ticker", SlotType: "component:"},
+	}
+	if err := checkDuplicateSlots(nodes); err == nil {
+		t.Error("expected error for empty component type name")
+	}
+}
+
+func TestCheckDuplicateSlots_TypeInvalidFormat(t *testing.T) {
+	// type="Counter" without "component:" prefix should error
+	nodes := []*TemplateNode{
+		{IsSlot: true, SlotExpr: "counter1", SlotType: "Counter"},
+	}
+	if err := checkDuplicateSlots(nodes); err == nil {
+		t.Error("expected error for invalid type format")
+	}
+}
+
+func TestCheckDuplicateSlots_TypeAndInstance(t *testing.T) {
+	// Static instance with type attribute — should pass
+	nodes := []*TemplateNode{
+		{IsSlot: true, SlotExpr: "counter1", SlotType: "component:Counter"},
+		{IsSlot: true, SlotExpr: "counter2", SlotType: "component:Counter"},
+	}
+	if err := checkDuplicateSlots(nodes); err != nil {
+		t.Errorf("expected no error for different names, got: %v", err)
+	}
+}
+
+func TestCheckDuplicateSlots_DuplicateInstances(t *testing.T) {
+	// Same instance name should be caught
+	nodes := []*TemplateNode{
+		{IsSlot: true, SlotExpr: "counter1", SlotType: "component:Counter"},
+		{IsSlot: true, SlotExpr: "counter1", SlotType: "component:Timer"},
+	}
+	if err := checkDuplicateSlots(nodes); err == nil {
+		t.Error("expected duplicate error for same instance name")
 	}
 }
 
@@ -3515,7 +3567,7 @@ func TestCheckDuplicateSlots_DynamicSlotNamesAllowed(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestResolveSlotNode_StaticName(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body><g-slot name="counter"></g-slot></body></html>`
+	html := `<!DOCTYPE html><html><head></head><body><g-slot type="component:Counter" instance="counter"></g-slot></body></html>`
 	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
@@ -3544,7 +3596,7 @@ func TestResolveSlotNode_StaticName(t *testing.T) {
 }
 
 func TestResolveSlotNode_InterpolatedName(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body><g-slot name="{{SlotName}}"></g-slot></body></html>`
+	html := `<!DOCTYPE html><html><head></head><body><g-slot instance="{{SlotName}}"></g-slot></body></html>`
 	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
@@ -3801,35 +3853,21 @@ func TestResolveKeyedForNode_WithIndex(t *testing.T) {
 // resolveSlotNode negative tests
 // ---------------------------------------------------------------------------
 
-func TestResolveSlotNode_EmptyName(t *testing.T) {
-	// <g-slot></g-slot> without a name attribute — SlotExpr is ""
+func TestResolveSlotNode_EmptyInstance(t *testing.T) {
+	// <g-slot></g-slot> without an instance attribute — should error
 	html := `<!DOCTYPE html><html><head></head><body><g-slot></g-slot></body></html>`
-	templates, err := ParseTemplate(html)
-	if err != nil {
-		t.Fatal(err)
+	_, err := ParseTemplate(html)
+	if err == nil {
+		t.Fatal("expected error for g-slot without instance")
 	}
-	ctx := &ResolveContext{
-		State: reflect.ValueOf(&struct{}{}),
-		Vars:  make(map[string]any),
-	}
-	nodes := ResolveTree(templates, ctx)
-	found := false
-	for _, n := range nodes {
-		if el, ok := n.(*ElementNode); ok && el.IsSlot {
-			found = true
-			if el.SlotName != "" {
-				t.Errorf("expected empty SlotName for nameless g-slot, got %q", el.SlotName)
-			}
-		}
-	}
-	if !found {
-		t.Error("expected a resolved slot node even without a name")
+	if !strings.Contains(err.Error(), "non-empty") {
+		t.Errorf("expected 'non-empty' in error, got: %v", err)
 	}
 }
 
 func TestResolveSlotNode_MissingFieldInInterpolation(t *testing.T) {
 	// Interpolation references a field that doesn't exist on the state struct.
-	html := `<!DOCTYPE html><html><head></head><body><g-slot name="{{NoSuchField}}"></g-slot></body></html>`
+	html := `<!DOCTYPE html><html><head></head><body><g-slot instance="{{NoSuchField}}"></g-slot></body></html>`
 	templates, err := ParseTemplate(html)
 	if err != nil {
 		t.Fatal(err)
@@ -3855,26 +3893,24 @@ func TestResolveSlotNode_MissingFieldInInterpolation(t *testing.T) {
 // checkDuplicateSlots negative tests
 // ---------------------------------------------------------------------------
 
-func TestCheckDuplicateSlots_EmptyNameNotChecked(t *testing.T) {
-	// Two slots with empty SlotExpr — should NOT trigger duplicate error
-	// because the check requires SlotExpr != ""
+func TestCheckDuplicateSlots_EmptyInstanceIsError(t *testing.T) {
+	// g-slot with empty instance should be an error
 	nodes := []*TemplateNode{
 		{IsSlot: true, SlotExpr: ""},
-		{IsSlot: true, SlotExpr: ""},
 	}
-	if err := checkDuplicateSlots(nodes); err != nil {
-		t.Errorf("expected no error for empty slot names, got: %v", err)
+	if err := checkDuplicateSlots(nodes); err == nil {
+		t.Error("expected error for empty component name")
 	}
 }
 
 func TestCheckDuplicateSlots_NestedDuplicate(t *testing.T) {
 	// Duplicate slot names nested inside children should still be caught.
-	inner := &TemplateNode{IsSlot: true, SlotExpr: "sidebar"}
+	inner := &TemplateNode{IsSlot: true, SlotExpr: "sidebar", SlotType: "component:Sidebar"}
 	outer := &TemplateNode{
 		Tag:      "div",
 		Children: []*TemplateNode{inner},
 	}
-	topLevel := &TemplateNode{IsSlot: true, SlotExpr: "sidebar"}
+	topLevel := &TemplateNode{IsSlot: true, SlotExpr: "sidebar", SlotType: "component:Sidebar"}
 	err := checkDuplicateSlots([]*TemplateNode{outer, topLevel})
 	if err == nil {
 		t.Error("expected duplicate error for nested slot with same name")
@@ -3884,8 +3920,8 @@ func TestCheckDuplicateSlots_NestedDuplicate(t *testing.T) {
 func TestCheckDuplicateSlots_NestedDuplicateErrorPropagates(t *testing.T) {
 	// When a duplicate is found inside a child walk, the error must
 	// propagate up through the parent's walk (covers line 121-123).
-	topSlot := &TemplateNode{IsSlot: true, SlotExpr: "sidebar"}
-	nestedSlot := &TemplateNode{IsSlot: true, SlotExpr: "sidebar"}
+	topSlot := &TemplateNode{IsSlot: true, SlotExpr: "sidebar", SlotType: "component:Sidebar"}
+	nestedSlot := &TemplateNode{IsSlot: true, SlotExpr: "sidebar", SlotType: "component:Sidebar"}
 	wrapper := &TemplateNode{
 		Tag:      "div",
 		Children: []*TemplateNode{nestedSlot},

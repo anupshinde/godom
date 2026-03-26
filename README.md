@@ -245,8 +245,8 @@ The parent template declares slots with `<g-slot>`:
 <!-- ui/layout/index.html -->
 <body>
     <h1>My App</h1>
-    <div class="sidebar"><g-slot name="sidebar" /></div>
-    <div class="main"><g-slot name="counter" /></div>
+    <div class="sidebar"><g-slot type="component:Sidebar" instance="sidebar" /></div>
+    <div class="main"><g-slot type="component:Counter" instance="counter" /></div>
 </body>
 ```
 

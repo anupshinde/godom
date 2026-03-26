@@ -23,52 +23,51 @@ func main() {
 	layout := &Layout{
 		Slots: []SlotInfo{
 			{Name: "counter", Title: "Counter"},
+			{Name: "counter-display", Title: "Counter (Read-Only)"},
 			{Name: "clock", Title: "Clock"},
 			{Name: "monitor", Title: "System Monitor"},
 		},
 	}
 	eng.Mount(layout, ui, "ui/layout/index.html")
 
-	// Navbar
+	// Child components — registered by name, auto-wired to layout's <g-slot> tags
 	navbar := &Navbar{ComponentCount: 7, Status: "Connected"}
-	eng.Mount(navbar, ui, "ui/navbar/index.html")
-	eng.AddToSlot(layout, "navbar", navbar)
+	eng.Register("navbar", navbar, "ui/navbar/index.html")
 
-	// Toast
 	toast := &Toast{}
-	eng.Mount(toast, ui, "ui/toast/index.html")
-	eng.AddToSlot(layout, "toast", toast)
+	eng.Register("toast", toast, "ui/toast/index.html")
 
-	// Sidebar
 	sidebar := NewSidebar()
 	sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
-	eng.Mount(sidebar, ui, "ui/sidebar/index.html")
-	eng.AddToSlot(layout, "sidebar", sidebar)
+	eng.Register("sidebar", sidebar, "ui/sidebar/index.html")
 
-	// Counter
-	counter := &Counter{Step: 1}
-	eng.Mount(counter, ui, "ui/counter/index.html")
+	// Shared state: Counter and CounterDisplay both reference the same CounterState.
+	// Incrementing/decrementing in Counter is immediately visible in CounterDisplay.
+	sharedState := &CounterState{Count: 0, Step: 1}
+
+	// Dynamic components — referenced via {{slot.Name}} in a g-for loop,
+	// so they need AddToSlot for parent wiring.
+	counterDisplay := &CounterDisplay{CounterState: sharedState}
+
+	counter := &Counter{CounterState: sharedState, Display: counterDisplay}
+	eng.Register("counter", counter, "ui/counter/index.html")
 	eng.AddToSlot(layout, "counter", counter)
+	eng.Register("counter-display", counterDisplay, "ui/counter-display/index.html")
+	eng.AddToSlot(layout, "counter-display", counterDisplay)
 
-	// Clock
 	clock := &Clock{}
-	eng.Mount(clock, ui, "ui/clock/index.html")
+	eng.Register("clock", clock, "ui/clock/index.html")
 	eng.AddToSlot(layout, "clock", clock)
 
-	// System Monitor
 	monitor := &Monitor{}
-	eng.Mount(monitor, ui, "ui/monitor/index.html")
+	eng.Register("monitor", monitor, "ui/monitor/index.html")
 	eng.AddToSlot(layout, "monitor", monitor)
 
-	// Stock Ticker
 	ticker := &Ticker{}
-	eng.Mount(ticker, ui, "ui/ticker/index.html")
-	eng.AddToSlot(layout, "ticker", ticker)
+	eng.Register("ticker", ticker, "ui/ticker/index.html")
 
-	// Tips
 	tips := &Tips{}
-	eng.Mount(tips, ui, "ui/tips/index.html")
-	eng.AddToSlot(layout, "tips", tips)
+	eng.Register("tips", tips, "ui/tips/index.html")
 
 	go clock.startClock()
 	go monitor.startMonitor()

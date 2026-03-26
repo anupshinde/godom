@@ -29,7 +29,7 @@ import (
 type MountedComponent struct {
 	Info       *component.Info
 	ParentIdx  int    // index of parent component in Comps (-1 = no parent / root)
-	SlotName   string // slot name in parent's <g-slot> (empty = root, renders into body)
+	SlotName   string // instance name in parent's <g-slot> (empty = root, renders into body)
 	SlotNodeID int32  // VDOM node ID of the slot element in parent's tree (set during init)
 }
 

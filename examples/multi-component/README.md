@@ -34,9 +34,9 @@ eng.AddToSlot(layout, "counter", counter)
 The layout template declares insertion points:
 
 ```html
-<g-slot name="navbar" />
-<g-slot name="sidebar" />
-<g-slot name="counter" />
+<g-slot type="component:Navbar" instance="navbar" />
+<g-slot type="component:Sidebar" instance="sidebar" />
+<g-slot type="component:Counter" instance="counter" />
 ```
 
 Each child's HTML is a fragment (no `<html>`/`<head>`/`<body>`) that renders into its slot.

@@ -12,16 +12,16 @@
 </head>
 <body class="bg-gray-100 min-h-screen">
     <div class="fixed top-0 left-0 right-0 z-50">
-        <g-slot name="navbar"></g-slot>
+        <g-slot type="component:Navbar" instance="navbar"></g-slot>
     </div>
-    <g-slot name="toast"></g-slot>
+    <g-slot type="component:Toast" instance="toast"></g-slot>
     <div class="pt-14 pb-16 md:pb-0">
         <div class="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 overflow-x-auto md:border-t-0 md:border-r md:top-14 md:bottom-0 md:right-auto md:w-56 md:overflow-x-visible md:overflow-y-auto">
-            <g-slot name="sidebar"></g-slot>
+            <g-slot type="component:Sidebar" instance="sidebar"></g-slot>
         </div>
         <div class="flex-1 md:ml-56">
             <div class="bg-white border-b border-gray-200">
-                <g-slot name="tips"></g-slot>
+                <g-slot type="component:Tips" instance="tips"></g-slot>
             </div>
             <div class="max-w-5xl mx-auto p-3 sm:p-6">
                 <div class="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center mb-6 sm:mb-8">
@@ -29,12 +29,12 @@
                          g-for="slot, i in Slots" g-key="slot.Name"
                          g-draggable="i" g-drop="Reorder">
                         <h2 class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">{{slot.Title}}</h2>
-                        <g-slot name="{{slot.Name}}"></g-slot>
+                        <g-slot instance="{{slot.Name}}"></g-slot>
                     </div>
                 </div>
                 <div class="bg-white rounded-xl p-4 sm:p-6 shadow-sm">
                     <h2 class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Stock Ticker</h2>
-                    <g-slot name="ticker"></g-slot>
+                    <g-slot type="component:Ticker" instance="ticker"></g-slot>
                 </div>
             </div>
         </div>
