@@ -35,8 +35,8 @@ type MountedComponent struct {
 
 // Config holds everything the server needs to run.
 type Config struct {
-	Comps   []*MountedComponent
-	Plugins map[string][]string
+	Comps     []*MountedComponent
+	Plugins   map[string][]string
 	StaticFS  fs.FS
 	Port      int
 	Host      string
@@ -344,11 +344,23 @@ func findComponentByNodeID(comps []*MountedComponent, nodeID int) *component.Inf
 // --- VDOM orchestration ---
 
 // BuildInit builds the initial VDomMessage for a client connection.
-// If a live tree exists (from prior connections or node events), it encodes
-// that tree as-is so new clients see the current state.
+// On first call (no tree yet), it builds from scratch.
+// On subsequent calls (reconnect), it re-resolves from the live struct and
+// merges into the existing tree to preserve node IDs for other connections.
 func BuildInit(ci *component.Info) *gproto.VDomMessage {
 	if ci.Tree == nil {
+		// First connection: build from scratch. We must not rebuild ci.Tree
+		// from scratch after this point — node IDs are baked into the bridge's
+		// nodeMap for all connected browsers. A fresh tree would assign new IDs,
+		// causing subsequent patches to reference IDs that existing connections
+		// don't recognize.
 		ci.Tree = buildTree(ci)
+	} else {
+		// Re-resolve from live struct to pick up state changes that
+		// didn't trigger a BuildUpdate for this component (e.g. shared state).
+		// Use BuildUpdate (not just MergeTree) so that Bindings, InputBindings,
+		// and NodeStableIDs are remapped correctly after the merge.
+		BuildUpdate(ci)
 	}
 
 	msg, err := render.EncodeInitTreeMessage(ci.Tree)
@@ -813,10 +825,10 @@ func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPoo
 					continue
 				}
 				setPath := field
-			if b.Expr != "" {
-				setPath = b.Expr
-			}
-			ci.SetField(setPath, json.RawMessage(raw))
+				if b.Expr != "" {
+					setPath = b.Expr
+				}
+				ci.SetField(setPath, json.RawMessage(raw))
 			}
 		}
 	}
