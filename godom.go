@@ -190,6 +190,9 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	if name == "" {
 		log.Fatal("godom: Register requires a non-empty name")
 	}
+	if !vdom.IsValidIdentifier(name) {
+		log.Fatalf("godom: Register name %q must be a valid identifier (letters, digits, underscores; cannot start with a digit)", name)
+	}
 
 	if _, exists := a.registered[name]; exists {
 		log.Fatalf("godom: component %q already registered", name)

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Shared State Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2">Shared State</h1>
+        <p class="text-gray-500 mb-8">Four components sharing one CounterState. Three are Counter (same type, different templates), one is CounterDisplay (different type, read-only).</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div class="bg-white rounded-xl p-6 shadow-sm">
+                <h2 class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Full (buttons + step)</h2>
+                <g-slot type="component:Counter" instance="counter_full"></g-slot>
+            </div>
+            <div class="bg-white rounded-xl p-6 shadow-sm">
+                <h2 class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Compact (inline)</h2>
+                <g-slot type="component:Counter" instance="counter_compact"></g-slot>
+            </div>
+            <div class="bg-white rounded-xl p-6 shadow-sm">
+                <h2 class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Mini (increment only)</h2>
+                <g-slot type="component:Counter" instance="counter_mini"></g-slot>
+            </div>
+            <div class="bg-white rounded-xl p-6 shadow-sm border-2 border-blue-100">
+                <h2 class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Counter Display</h2>
+                <g-slot type="component:CounterDisplay" instance="counter_display"></g-slot>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

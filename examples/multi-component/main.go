@@ -23,7 +23,7 @@ func main() {
 	layout := &Layout{
 		Slots: []SlotInfo{
 			{Name: "counter", Title: "Counter"},
-			{Name: "counter-display", Title: "Counter (Read-Only)"},
+			{Name: "counter_display", Title: "Counter (Read-Only)"},
 			{Name: "clock", Title: "Clock"},
 			{Name: "monitor", Title: "System Monitor"},
 		},
@@ -47,13 +47,13 @@ func main() {
 
 	// Dynamic components — referenced via {{slot.Name}} in a g-for loop,
 	// so they need AddToSlot for parent wiring.
-	counterDisplay := &CounterDisplay{CounterState: sharedState}
-
-	counter := &Counter{CounterState: sharedState, Display: counterDisplay}
+	counter := &Counter{CounterState: sharedState}
 	eng.Register("counter", counter, "ui/counter/index.html")
 	eng.AddToSlot(layout, "counter", counter)
-	eng.Register("counter-display", counterDisplay, "ui/counter-display/index.html")
-	eng.AddToSlot(layout, "counter-display", counterDisplay)
+
+	counterDisplay := &CounterDisplay{CounterState: sharedState}
+	eng.Register("counter_display", counterDisplay, "ui/counter-display/index.html")
+	eng.AddToSlot(layout, "counter_display", counterDisplay)
 
 	clock := &Clock{}
 	eng.Register("clock", clock, "ui/clock/index.html")

@@ -124,7 +124,10 @@ func checkDuplicateSlots(nodes []*TemplateNode) error {
 				if isInterpolated {
 					// Interpolated names are dynamic — skip duplicate and type checks
 				} else {
-					// Static name — type attribute is required, must be "component:TypeName"
+					// Static name — must be a valid identifier, type attribute is required
+					if !IsValidIdentifier(n.SlotExpr) {
+						return fmt.Errorf("<g-slot instance=%q> must be a valid identifier (letters, digits, underscores; cannot start with a digit)", n.SlotExpr)
+					}
 					if n.SlotType == "" {
 						return fmt.Errorf("<g-slot instance=%q> requires a 'type' attribute for static names", n.SlotExpr)
 					}
@@ -1398,6 +1401,21 @@ func resolveArgs(argExprs []string, ctx *ResolveContext) []any {
 		args[i] = ResolveExpr(expr, ctx)
 	}
 	return args
+}
+
+// IsValidIdentifier checks that a name looks like a Go/JS identifier:
+// letters, digits, underscores; cannot start with a digit.
+func IsValidIdentifier(name string) bool {
+	for i, c := range name {
+		if c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+			continue
+		}
+		if c >= '0' && c <= '9' && i > 0 {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // ---------------------------------------------------------------------------
