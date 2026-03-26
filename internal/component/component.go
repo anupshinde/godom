@@ -28,6 +28,12 @@ type Info struct {
 	// via MarkRefresh(). Refresh() reads and clears this list.
 	MarkedFields []string
 
+	// LastChangedFields is populated by wireRefresh after a BuildUpdate,
+	// containing the field names that produced patches. Used by
+	// handleMethodCall to surgically refresh sibling components that
+	// share embedded pointer state.
+	LastChangedFields []string
+
 	// VDOM fields
 	VDOMTemplates []*vdom.TemplateNode      // parsed once at Mount()
 	Tree          vdom.Node                 // last rendered tree (for diffing)

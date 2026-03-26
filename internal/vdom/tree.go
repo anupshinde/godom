@@ -582,15 +582,27 @@ func resolveTextNode(t *TemplateNode, ctx *ResolveContext) []Node {
 	}
 
 	var sb strings.Builder
+	var dynamicCount int
+	var singleExpr string
 	for _, p := range t.TextParts {
 		if p.Static {
 			sb.WriteString(p.Value)
 		} else {
 			val := ResolveExpr(p.Value, ctx)
 			sb.WriteString(fmt.Sprint(val))
+			dynamicCount++
+			singleExpr = p.Value
 		}
 	}
-	return []Node{&TextNode{NodeBase: NodeBase{ID: nextID(ctx)}, Text: sb.String()}}
+	id := nextID(ctx)
+	// Only register a text binding when the node is a single {{field}} with
+	// no surrounding static text. Mixed content like "Step size: {{Step}}"
+	// can't be surgically patched (the static prefix would be lost), so it
+	// relies on the full BuildUpdate/diff path instead.
+	if dynamicCount == 1 && len(t.TextParts) == 1 {
+		ctx.addBinding(singleExpr, id, "text", "")
+	}
+	return []Node{&TextNode{NodeBase: NodeBase{ID: id}, Text: sb.String()}}
 }
 
 func resolveElementNode(t *TemplateNode, ctx *ResolveContext) Node {
