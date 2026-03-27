@@ -220,27 +220,6 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 
 // AddToSlot registers a child component to render into a named <g-slot> in the
 // parent component's template. Both parent and child must already be mounted.
-//
-// Deprecated: Use Register() instead. Components registered via Register() are
-// auto-wired to parent templates based on <g-slot> tags.
-func (a *Engine) AddToSlot(parent interface{}, slotName string, child interface{}) {
-	parentIdx, ok := a.compIndex[parent]
-	if !ok {
-		log.Fatal("godom: AddToSlot called with unmounted parent")
-	}
-	childIdx, ok := a.compIndex[child]
-	if !ok {
-		log.Fatal("godom: AddToSlot called with unmounted child")
-	}
-	for i, mc := range a.comps {
-		if i != childIdx && mc.ParentIdx == parentIdx && mc.SlotName == slotName {
-			log.Fatalf("godom: slot %q on this parent already has a component", slotName)
-		}
-	}
-	a.comps[childIdx].ParentIdx = parentIdx
-	a.comps[childIdx].SlotName = slotName
-}
-
 // Start starts the HTTP server, opens the default browser, and blocks forever.
 // If GODOM_VALIDATE_ONLY=1 is set, Start() returns immediately after Mount() validation
 // succeeds — useful for CI and pre-commit checks.
