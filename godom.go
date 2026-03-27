@@ -360,12 +360,69 @@ func (a *Engine) autoWireComponents() {
 		}
 	}
 
-	// Validate that registered components were wired — either by auto-wiring
-	// (static g-slot tag) or manually via AddToSlot (dynamic instance names).
+	// Second pass: resolve dynamic g-slots by evaluating the parent's templates
+	// against its struct. This handles <g-slot instance="{{slot.RegisteredName}}"> inside g-for.
+	for parentIdx, mc := range a.comps {
+		if !hasDynamicSlots(mc.Info.VDOMTemplates) {
+			continue
+		}
+		ctx := &vdom.ResolveContext{
+			State: mc.Info.Value,
+			Vars:  make(map[string]any),
+			IDs:   &vdom.IDCounter{},
+		}
+		resolved := vdom.ResolveTree(mc.Info.VDOMTemplates, ctx)
+		root := &vdom.ElementNode{Tag: "body", Children: resolved}
+		walkResolvedSlots(root, func(slotName string) {
+			childIdx, ok := regIdx[slotName]
+			if !ok || a.comps[childIdx].ParentIdx != -1 {
+				return // not registered, or already wired by static pass
+			}
+			a.comps[childIdx].ParentIdx = parentIdx
+			a.comps[childIdx].SlotName = slotName
+		})
+	}
+
+	// Validate that all registered components were wired.
 	for name, reg := range a.registered {
 		idx := a.compIndex[reg.comp]
 		if a.comps[idx].ParentIdx == -1 {
-			log.Fatalf("godom: registered component %q is not referenced by any <g-slot> tag and has no parent set via AddToSlot", name)
+			log.Fatalf("godom: registered component %q is not referenced by any <g-slot> tag", name)
+		}
+	}
+}
+
+// hasDynamicSlots returns true if any template node has an interpolated g-slot instance.
+func hasDynamicSlots(templates []*vdom.TemplateNode) bool {
+	var found bool
+	var walk func([]*vdom.TemplateNode)
+	walk = func(nodes []*vdom.TemplateNode) {
+		for _, n := range nodes {
+			if n.IsSlot && strings.Contains(n.SlotExpr, "{") {
+				found = true
+				return
+			}
+			walk(n.Children)
+			walk(n.ForBody)
+		}
+	}
+	walk(templates)
+	return found
+}
+
+// walkResolvedSlots walks a resolved VDOM tree and calls fn for each slot node's name.
+func walkResolvedSlots(node vdom.Node, fn func(string)) {
+	switch n := node.(type) {
+	case *vdom.ElementNode:
+		if n.IsSlot && n.SlotName != "" {
+			fn(n.SlotName)
+		}
+		for _, child := range n.Children {
+			walkResolvedSlots(child, fn)
+		}
+	case *vdom.KeyedElementNode:
+		for _, kc := range n.Children {
+			walkResolvedSlots(kc.Node, fn)
 		}
 	}
 }
