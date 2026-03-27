@@ -354,6 +354,127 @@ type childApp struct {
 
 var childHTML = `<!DOCTYPE html><html><head></head><body><span g-text="Value">placeholder</span></body></html>`
 
+// Parent template with a static g-slot for auto-wiring tests.
+var parentWithSlotHTML = `<!DOCTYPE html><html><head></head><body>
+	<span g-text="Name">placeholder</span>
+	<g-slot type="component:childApp" instance="sidebar"></g-slot>
+</body></html>`
+
+// Parent template with two static g-slots.
+var parentWithTwoSlotsHTML = `<!DOCTYPE html><html><head></head><body>
+	<span g-text="Name">placeholder</span>
+	<g-slot type="component:childApp" instance="sidebar"></g-slot>
+	<g-slot type="component:childApp" instance="footer"></g-slot>
+</body></html>`
+
+func makeSlotTestFS() fstest.MapFS {
+	return fstest.MapFS{
+		"parent/index.html": &fstest.MapFile{Data: []byte(parentWithSlotHTML)},
+		"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
+	}
+}
+
+
+// --- Auto-wiring tests ---
+
+func TestAutoWire_RegisteredChildWiredToParent(t *testing.T) {
+	e := NewEngine()
+	e.SetUI(makeSlotTestFS())
+
+	parent := &testApp{Name: "parent"}
+	e.Mount(parent, "parent/index.html")
+
+	child := &childApp{Value: "child"}
+	e.Register("sidebar", child, "child/index.html")
+
+	// Trigger auto-wiring (normally happens in Start)
+	e.autoWireComponents()
+
+	if len(e.comps) != 2 {
+		t.Fatalf("expected 2 comps, got %d", len(e.comps))
+	}
+	if e.comps[1].ParentIdx != 0 {
+		t.Errorf("expected child ParentIdx=0, got %d", e.comps[1].ParentIdx)
+	}
+	if e.comps[1].SlotName != "sidebar" {
+		t.Errorf("expected SlotName='sidebar', got %q", e.comps[1].SlotName)
+	}
+}
+
+func TestAutoWire_DuplicateSlotFatals(t *testing.T) {
+	if os.Getenv("TEST_FATAL_AUTOWIRE_DUP") == "1" {
+		e := NewEngine()
+		fsys := fstest.MapFS{
+			"parent/index.html": &fstest.MapFile{Data: []byte(parentWithTwoSlotsHTML)},
+			"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
+		}
+		e.SetUI(fsys)
+
+		parent := &testApp{Name: "parent"}
+		e.Mount(parent, "parent/index.html")
+
+		// Register two children with the same slot name — should fatal
+		child1 := &childApp{Value: "c1"}
+		child2 := &childApp{Value: "c2"}
+		e.Register("sidebar", child1, "child/index.html")
+		e.Register("sidebar", child2, "child/index.html")
+		e.autoWireComponents()
+		return
+	}
+	out := runSubprocess(t, "TestAutoWire_DuplicateSlotFatals", "TEST_FATAL_AUTOWIRE_DUP")
+	if !strings.Contains(out, "already registered") {
+		t.Errorf("expected 'already registered' error, got: %s", out)
+	}
+}
+
+func TestAutoWire_MultipleChildrenWiredCorrectly(t *testing.T) {
+	// Parent with two slots — each child is wired to the correct slot.
+	e := NewEngine()
+	e.SetUI(fstest.MapFS{
+		"parent/index.html": &fstest.MapFile{Data: []byte(parentWithTwoSlotsHTML)},
+		"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
+	})
+
+	parent := &testApp{Name: "parent"}
+	e.Mount(parent, "parent/index.html")
+
+	child1 := &childApp{Value: "c1"}
+	e.Register("sidebar", child1, "child/index.html")
+
+	child2 := &childApp{Value: "c2"}
+	e.Register("footer", child2, "child/index.html")
+
+	e.autoWireComponents()
+
+	// Both children should be wired to parent (index 0)
+	if e.comps[1].ParentIdx != 0 || e.comps[1].SlotName != "sidebar" {
+		t.Errorf("sidebar: expected ParentIdx=0 SlotName='sidebar', got %d %q", e.comps[1].ParentIdx, e.comps[1].SlotName)
+	}
+	if e.comps[2].ParentIdx != 0 || e.comps[2].SlotName != "footer" {
+		t.Errorf("footer: expected ParentIdx=0 SlotName='footer', got %d %q", e.comps[2].ParentIdx, e.comps[2].SlotName)
+	}
+}
+
+func TestAutoWire_UnreferencedComponentFatals(t *testing.T) {
+	if os.Getenv("TEST_FATAL_AUTOWIRE_NOREF") == "1" {
+		e := NewEngine()
+		e.SetUI(makeSlotTestFS())
+
+		parent := &testApp{Name: "parent"}
+		e.Mount(parent, "parent/index.html")
+
+		// Register a child with a name that doesn't match any g-slot
+		child := &childApp{Value: "orphan"}
+		e.Register("nonexistent", child, "child/index.html")
+		e.autoWireComponents()
+		return
+	}
+	out := runSubprocess(t, "TestAutoWire_UnreferencedComponentFatals", "TEST_FATAL_AUTOWIRE_NOREF")
+	if !strings.Contains(out, "not referenced by any") {
+		t.Errorf("expected 'not referenced' error, got: %s", out)
+	}
+}
+
 func TestMount_MultipleComponents_StaticFSFromFirst(t *testing.T) {
 	e := NewEngine()
 	parent := &testApp{Name: "parent"}
