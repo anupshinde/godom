@@ -112,7 +112,10 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 // For single-component apps, call Mount once. For multi-component apps, Mount the
 // root component and use Register() for child components — they are auto-wired to
 // parent templates based on <g-slot> tags.
-func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
+func (a *Engine) Mount(comp interface{}, entryPath string) {
+	if a.uiFS == nil {
+		log.Fatal("godom: call SetUI() before Mount()")
+	}
 	v := reflect.ValueOf(comp)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
 		log.Fatal("godom: Mount requires a pointer to a struct")
@@ -121,12 +124,7 @@ func (a *Engine) Mount(comp interface{}, fsys fs.FS, entryPath string) {
 		log.Fatal("godom: mounted struct must embed godom.Component")
 	}
 
-	// Store the FS for Register() calls if SetUI hasn't been called
-	if a.uiFS == nil {
-		a.uiFS = fsys
-	}
-
-	a.mountInternal(comp, fsys, entryPath)
+	a.mountInternal(comp, a.uiFS, entryPath)
 }
 
 // mountInternal is the shared mount logic used by both Mount and Register.

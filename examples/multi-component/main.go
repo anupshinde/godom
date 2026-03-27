@@ -17,18 +17,8 @@ var ui embed.FS
 
 func main() {
 	eng := godom.NewEngine()
+	eng.SetUI(ui)
 	chartjs.Register(eng)
-
-	// Layout — root component with orderable slots
-	layout := &Layout{
-		Slots: []SlotInfo{
-			{Name: "counter", Title: "Counter"},
-			{Name: "counter_display", Title: "Counter (Read-Only)"},
-			{Name: "clock", Title: "Clock"},
-			{Name: "monitor", Title: "System Monitor"},
-		},
-	}
-	eng.Mount(layout, ui, "ui/layout/index.html")
 
 	// Child components — registered by name, auto-wired to layout's <g-slot> tags
 	navbar := &Navbar{ComponentCount: 7, Status: "Connected"}
@@ -45,29 +35,34 @@ func main() {
 	// Incrementing/decrementing in Counter is immediately visible in CounterDisplay.
 	sharedState := &CounterState{Count: 0, Step: 1}
 
-	// Dynamic components — referenced via {{slot.Name}} in a g-for loop,
-	// so they need AddToSlot for parent wiring.
 	counter := &Counter{CounterState: sharedState}
 	eng.Register("counter", counter, "ui/counter/index.html")
-	eng.AddToSlot(layout, "counter", counter)
 
 	counterDisplay := &CounterDisplay{CounterState: sharedState}
 	eng.Register("counter_display", counterDisplay, "ui/counter-display/index.html")
-	eng.AddToSlot(layout, "counter_display", counterDisplay)
 
 	clock := &Clock{}
 	eng.Register("clock", clock, "ui/clock/index.html")
-	eng.AddToSlot(layout, "clock", clock)
 
 	monitor := &Monitor{}
 	eng.Register("monitor", monitor, "ui/monitor/index.html")
-	eng.AddToSlot(layout, "monitor", monitor)
 
 	ticker := &Ticker{}
 	eng.Register("ticker", ticker, "ui/ticker/index.html")
 
 	tips := &Tips{}
 	eng.Register("tips", tips, "ui/tips/index.html")
+
+	// Layout — root component with orderable slots
+	layout := &Layout{
+		Slots: []SlotInfo{
+			{RegisteredName: "counter", Title: "Counter"},
+			{RegisteredName: "counter_display", Title: "Counter (Read-Only)"},
+			{RegisteredName: "clock", Title: "Clock"},
+			{RegisteredName: "monitor", Title: "System Monitor"},
+		},
+	}
+	eng.Mount(layout, "ui/layout/index.html")
 
 	go clock.startClock()
 	go monitor.startMonitor()
