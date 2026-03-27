@@ -138,12 +138,13 @@ func (a *App) run() {
 
 func main() {
 	eng := godom.NewEngine()
+	eng.SetUI(ui)
 	eng.RegisterPlugin("canvas3d", canvasBridgeJS)
 
 	root := &App{}
 	go root.run()
 
 	fmt.Println("Solar system — 3D engine in Go, Canvas 2D rendering")
-	eng.Mount(root, ui, "ui/index.html")
+	eng.Mount(root, "ui/index.html")
 	log.Fatal(eng.Start())
 }

@@ -54,7 +54,8 @@ func (a *App) updateWidth() {
 
 func main() {
 	eng := godom.NewEngine()
+	eng.SetUI(ui)
 	root := &App{Label: "0%", Width: "0%"}
-	eng.Mount(root, ui, "ui/index.html")
+	eng.Mount(root, "ui/index.html")
 	log.Fatal(eng.Start())
 }

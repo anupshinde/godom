@@ -59,6 +59,7 @@ func (d *Demo) Remove(from, to float64) {
 
 func main() {
 	eng := godom.NewEngine()
+	eng.SetUI(ui)
 	eng.Port = 8083
 	eng.Mount(&Demo{
 		Palette: []PaletteColor{
@@ -69,6 +70,6 @@ func main() {
 			{Name: "Purple", Hex: "#8e44ad"},
 			{Name: "Pink", Hex: "#e91e8b"},
 		},
-	}, ui, "ui/index.html")
+	}, "ui/index.html")
 	log.Fatal(eng.Start())
 }

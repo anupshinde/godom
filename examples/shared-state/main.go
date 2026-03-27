@@ -15,7 +15,7 @@ func main() {
 	eng.SetUI(ui)
 
 	layout := &Layout{}
-	eng.Mount(layout, ui, "ui/layout/index.html")
+	eng.Mount(layout, "ui/layout/index.html")
 
 	// One shared state, four components.
 	shared := &CounterState{Step: 1}

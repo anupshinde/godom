@@ -157,21 +157,24 @@ var testHTML = `<!DOCTYPE html><html><head><title>Test</title></head><body>
 
 func makeTestFS() fstest.MapFS {
 	return fstest.MapFS{
-		"index.html": &fstest.MapFile{Data: []byte(testHTML)},
+		"index.html":       &fstest.MapFile{Data: []byte(testHTML)},
+		"child/index.html": &fstest.MapFile{Data: []byte(childHTML)},
 	}
 }
 
 func makeTestFSNested() fstest.MapFS {
 	return fstest.MapFS{
-		"ui/index.html": &fstest.MapFile{Data: []byte(testHTML)},
-		"ui/style.css":  &fstest.MapFile{Data: []byte("body{}")},
+		"ui/index.html":    &fstest.MapFile{Data: []byte(testHTML)},
+		"ui/style.css":     &fstest.MapFile{Data: []byte("body{}")},
+		"child/index.html": &fstest.MapFile{Data: []byte(childHTML)},
 	}
 }
 
 func TestMount_Valid(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.Mount(app, makeTestFS(), "index.html")
+	e.SetUI(makeTestFS())
+	e.Mount(app, "index.html")
 
 	if len(e.comps) != 1 {
 		t.Fatal("expected one component after Mount")
@@ -194,7 +197,8 @@ func TestMount_Valid(t *testing.T) {
 func TestMount_NestedEntryPath(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.Mount(app, makeTestFSNested(), "ui/index.html")
+	e.SetUI(makeTestFSNested())
+	e.Mount(app, "ui/index.html")
 
 	if len(e.comps) != 1 {
 		t.Fatal("expected one component after Mount")
@@ -215,7 +219,8 @@ func TestMount_NestedEntryPath(t *testing.T) {
 func TestMount_WiresComponentField(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.Mount(app, makeTestFS(), "index.html")
+	e.SetUI(makeTestFS())
+	e.Mount(app, "index.html")
 
 	// After Mount, app.Component.ci should be wired to the same Info as e.comps[0].Info
 	if app.Component.ci == nil {
@@ -229,7 +234,8 @@ func TestMount_WiresComponentField(t *testing.T) {
 func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.Mount(app, makeTestFS(), "index.html")
+	e.SetUI(makeTestFS())
+	e.Mount(app, "index.html")
 
 	ci := e.comps[0].Info
 	if !strings.Contains(ci.HTMLBody, "g-text") {
@@ -243,7 +249,8 @@ func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
 func TestMount_NonPointer(t *testing.T) {
 	if os.Getenv("TEST_FATAL_MOUNT_NONPTR") == "1" {
 		e := NewEngine()
-		e.Mount(testApp{}, makeTestFS(), "index.html")
+		e.SetUI(makeTestFS())
+		e.Mount(testApp{}, "index.html")
 		return
 	}
 	out := runSubprocess(t, "TestMount_NonPointer", "TEST_FATAL_MOUNT_NONPTR")
@@ -256,7 +263,8 @@ func TestMount_PointerToNonStruct(t *testing.T) {
 	if os.Getenv("TEST_FATAL_MOUNT_NONSTRUCT") == "1" {
 		e := NewEngine()
 		n := 42
-		e.Mount(&n, makeTestFS(), "index.html")
+		e.SetUI(makeTestFS())
+		e.Mount(&n, "index.html")
 		return
 	}
 	out := runSubprocess(t, "TestMount_PointerToNonStruct", "TEST_FATAL_MOUNT_NONSTRUCT")
@@ -268,7 +276,8 @@ func TestMount_PointerToNonStruct(t *testing.T) {
 func TestMount_NoEmbed(t *testing.T) {
 	if os.Getenv("TEST_FATAL_MOUNT_NOEMBED") == "1" {
 		e := NewEngine()
-		e.Mount(&noComponentApp{}, makeTestFS(), "index.html")
+		e.SetUI(makeTestFS())
+		e.Mount(&noComponentApp{}, "index.html")
 		return
 	}
 	out := runSubprocess(t, "TestMount_NoEmbed", "TEST_FATAL_MOUNT_NOEMBED")
@@ -280,7 +289,8 @@ func TestMount_NoEmbed(t *testing.T) {
 func TestMount_BadEntryPath(t *testing.T) {
 	if os.Getenv("TEST_FATAL_MOUNT_BADPATH") == "1" {
 		e := NewEngine()
-		e.Mount(&testApp{}, makeTestFS(), "nonexistent.html")
+		e.SetUI(makeTestFS())
+		e.Mount(&testApp{}, "nonexistent.html")
 		return
 	}
 	out := runSubprocess(t, "TestMount_BadEntryPath", "TEST_FATAL_MOUNT_BADPATH")
@@ -294,7 +304,8 @@ func TestMount_BadEntryPath(t *testing.T) {
 func TestMount_SetsValueAndType(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Bob", Count: 42}
-	e.Mount(app, makeTestFS(), "index.html")
+	e.SetUI(makeTestFS())
+	e.Mount(app, "index.html")
 
 	ci := e.comps[0].Info
 	// ci.Value should point to the same app instance
@@ -309,7 +320,8 @@ func TestMount_SetsValueAndType(t *testing.T) {
 func TestMount_RefreshWorksAfterMount(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.Mount(app, makeTestFS(), "index.html")
+	e.SetUI(makeTestFS())
+	e.Mount(app, "index.html")
 
 	// After Mount, Refresh should not panic (ci is wired, but RefreshFn is nil until Start)
 	app.Refresh()
@@ -325,7 +337,8 @@ func TestMount_InvalidDirective(t *testing.T) {
 		badFS := fstest.MapFS{
 			"index.html": &fstest.MapFile{Data: []byte(badHTML)},
 		}
-		e.Mount(&testApp{}, badFS, "index.html")
+		e.SetUI(badFS)
+		e.Mount(&testApp{}, "index.html")
 		return
 	}
 	out := runSubprocess(t, "TestMount_InvalidDirective", "TEST_FATAL_MOUNT_BADDIR")
@@ -354,8 +367,9 @@ func TestAddToSlot_Valid(t *testing.T) {
 	parent := &testApp{Name: "parent"}
 	child := &childApp{Value: "child"}
 
-	e.Mount(parent, makeTestFS(), "index.html")
-	e.Mount(child, makeChildFS(), "index.html")
+	e.SetUI(makeTestFS())
+	e.Mount(parent, "index.html")
+	e.Mount(child, "child/index.html")
 	e.AddToSlot(parent, "sidebar", child)
 
 	if len(e.comps) != 2 {
@@ -373,7 +387,8 @@ func TestAddToSlot_UnmountedParent(t *testing.T) {
 	if os.Getenv("TEST_FATAL_ADDSLOT_PARENT") == "1" {
 		e := NewEngine()
 		child := &childApp{Value: "child"}
-		e.Mount(child, makeChildFS(), "index.html")
+		e.SetUI(makeTestFS())
+		e.Mount(child, "child/index.html")
 		e.AddToSlot(&testApp{}, "sidebar", child) // parent not mounted
 		return
 	}
@@ -387,7 +402,8 @@ func TestAddToSlot_UnmountedChild(t *testing.T) {
 	if os.Getenv("TEST_FATAL_ADDSLOT_CHILD") == "1" {
 		e := NewEngine()
 		parent := &testApp{Name: "parent"}
-		e.Mount(parent, makeTestFS(), "index.html")
+		e.SetUI(makeTestFS())
+		e.Mount(parent, "index.html")
 		e.AddToSlot(parent, "sidebar", &childApp{}) // child not mounted
 		return
 	}
@@ -404,9 +420,10 @@ func TestAddToSlot_DuplicateSlot(t *testing.T) {
 		child1 := &childApp{Value: "c1"}
 		child2 := &childApp{Value: "c2"}
 
-		e.Mount(parent, makeTestFS(), "index.html")
-		e.Mount(child1, makeChildFS(), "index.html")
-		e.Mount(child2, makeChildFS(), "index.html")
+		e.SetUI(makeTestFS())
+		e.Mount(parent, "index.html")
+		e.Mount(child1, "child/index.html")
+		e.Mount(child2, "child/index.html")
 
 		e.AddToSlot(parent, "sidebar", child1)
 		e.AddToSlot(parent, "sidebar", child2) // duplicate slot
@@ -423,8 +440,9 @@ func TestMount_MultipleComponents_StaticFSFromFirst(t *testing.T) {
 	parent := &testApp{Name: "parent"}
 	child := &childApp{Value: "child"}
 
-	e.Mount(parent, makeTestFSNested(), "ui/index.html")
-	e.Mount(child, makeChildFS(), "index.html")
+	e.SetUI(makeTestFSNested())
+	e.Mount(parent, "ui/index.html")
+	e.Mount(child, "child/index.html")
 
 	// staticFS should be derived from the first Mount call only
 	if e.staticFS == nil {
@@ -440,31 +458,11 @@ func TestMount_MultipleComponents_StaticFSFromFirst(t *testing.T) {
 	}
 }
 
+// TODO: Mount no longer accepts an FS parameter (uses SetUI instead),
+// so the premise of this test (second Mount's FS not overwriting staticFS) is invalid.
+// Revisit if per-component FS support is re-added.
 func TestMount_SecondMountDoesNotOverwriteStaticFS(t *testing.T) {
-	e := NewEngine()
-	parent := &testApp{Name: "parent"}
-	child := &childApp{Value: "child"}
-
-	// First mount with nested FS that has style.css
-	e.Mount(parent, makeTestFSNested(), "ui/index.html")
-
-	// Second mount with a different FS — staticFS must NOT change
-	childFS := fstest.MapFS{
-		"other/index.html": &fstest.MapFile{Data: []byte(childHTML)},
-		"other/other.css":  &fstest.MapFile{Data: []byte("div{}")},
-	}
-	e.Mount(child, childFS, "other/index.html")
-
-	// staticFS should still be from the first mount (ui/ subdir)
-	_, err := fs.ReadFile(e.staticFS, "style.css")
-	if err != nil {
-		t.Error("expected staticFS to still serve first mount's style.css")
-	}
-	// The second mount's file should NOT be accessible via staticFS
-	_, err = fs.ReadFile(e.staticFS, "other.css")
-	if err == nil {
-		t.Error("expected second mount's other.css to NOT be in staticFS")
-	}
+	t.Skip("Mount no longer takes an FS argument; test premise is invalid")
 }
 
 func TestAddToSlot_SameSlotDifferentParents(t *testing.T) {
@@ -475,10 +473,11 @@ func TestAddToSlot_SameSlotDifferentParents(t *testing.T) {
 	child1 := &childApp{Value: "c1"}
 	child2 := &childApp{Value: "c2"}
 
-	e.Mount(parent1, makeTestFS(), "index.html")
-	e.Mount(parent2, makeTestFS(), "index.html")
-	e.Mount(child1, makeChildFS(), "index.html")
-	e.Mount(child2, makeChildFS(), "index.html")
+	e.SetUI(makeTestFS())
+	e.Mount(parent1, "index.html")
+	e.Mount(parent2, "index.html")
+	e.Mount(child1, "child/index.html")
+	e.Mount(child2, "child/index.html")
 
 	e.AddToSlot(parent1, "sidebar", child1)
 	e.AddToSlot(parent2, "sidebar", child2) // same slot name, different parent — should be fine
