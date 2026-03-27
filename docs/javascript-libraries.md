@@ -93,8 +93,9 @@ var apexBridgeJS string
 
 func main() {
     eng := godom.NewEngine()
+    eng.SetUI(ui)
     eng.RegisterPlugin("apexcharts", apexBridgeJS)
-    eng.Mount(&App{}, ui, "ui/index.html")
+    eng.Mount(&App{}, "ui/index.html")
     log.Fatal(eng.Start())
 }
 ```
@@ -239,8 +240,9 @@ import "github.com/anupshinde/godom/plugins/mylib"
 
 func main() {
     eng := godom.NewEngine()
+    eng.SetUI(ui)
     mylib.Register(eng)
-    eng.Mount(&App{}, ui, "ui/index.html")
+    eng.Mount(&App{}, "ui/index.html")
     log.Fatal(eng.Start())
 }
 ```

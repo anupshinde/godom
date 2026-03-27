@@ -16,18 +16,18 @@ Each component is an independent Go struct with its own HTML template. The root 
 
 ```go
 eng := godom.NewEngine()
+eng.SetUI(ui)
+
+// Child components — registered by name, auto-wired to layout's <g-slot> tags
+counter := &Counter{Step: 1}
+eng.Register("counter", counter, "ui/counter/index.html")
 
 // Root component — owns the page with <g-slot> tags
 layout := &Layout{...}
-eng.Mount(layout, ui, "ui/layout/index.html")
-
-// Child components — each mounted separately, then placed into a slot
-counter := &Counter{Step: 1}
-eng.Mount(counter, ui, "ui/counter/index.html")
-eng.AddToSlot(layout, "counter", counter)
+eng.Mount(layout, "ui/layout/index.html")
 ```
 
-`Mount` registers a component with its HTML template. `AddToSlot` places a child into a named `<g-slot>` in the parent's template. The root component (no `AddToSlot` call) provides the full page HTML; children provide fragments.
+`SetUI` sets the shared filesystem for templates. `Register` registers a named child component — it is auto-wired to the parent's `<g-slot>` tag matching its name. `Mount` mounts the root component which provides the full page HTML; children provide fragments.
 
 ### Slots in HTML
 

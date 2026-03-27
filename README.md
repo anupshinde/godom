@@ -52,7 +52,8 @@ func (a *App) Decrement() {
 
 func main() {
     eng := godom.NewEngine()
-    eng.Mount(&App{Step: 1}, ui, "ui/index.html")
+    eng.SetUI(ui)
+    eng.Mount(&App{Step: 1}, "ui/index.html")
     log.Fatal(eng.Start())
 }
 ```
@@ -229,14 +230,15 @@ Custom elements are template includes — directives inside the child HTML resol
 For apps with multiple independent pieces of state, each component gets its own Go struct, its own HTML template, and its own VDOM tree. Components compose via `<g-slot>` — the parent declares insertion points, children render into them.
 
 ```go
+eng.SetUI(ui)
+
+// Child components — registered by name, auto-wired to layout's <g-slot> tags
+counter := &Counter{Step: 1}
+eng.Register("counter", counter, "ui/counter/index.html")
+
 // Root component owns the page layout
 layout := &Layout{}
-eng.Mount(layout, ui, "ui/layout/index.html")
-
-// Child components mount into named slots
-counter := &Counter{Step: 1}
-eng.Mount(counter, ui, "ui/counter/index.html")
-eng.AddToSlot(layout, "counter", counter)
+eng.Mount(layout, "ui/layout/index.html")
 ```
 
 The parent template declares slots with `<g-slot>`:
@@ -282,8 +284,9 @@ eng.NoBrowser = true                    // Don't auto-open browser
 eng.Quiet = true                        // Suppress startup output
 eng.NoGodomEnv = true                   // Skip reading GODOM_* env vars
 eng.RegisterPlugin("chartjs", libJS, bridgeJS)   // Register a plugin with one or more JS scripts
-eng.Mount(&MyApp{}, fsys, "ui/index.html")  // Mount root component with embedded filesystem and entry path
-eng.AddToSlot(parent, "slotName", child)    // Place a child component into a parent's <g-slot>
+eng.SetUI(fsys)                                // Set the shared UI filesystem for templates
+eng.Register("name", child, "ui/child.html")   // Register a named child component with a template
+eng.Mount(&MyApp{}, "ui/index.html")            // Mount root component with entry path
 eng.Start()                                 // Start server, open browser, block forever
 ```
 
