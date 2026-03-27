@@ -21,9 +21,3 @@ func (c *Counter) Increment() {
 func (c *Counter) Decrement() {
 	c.Count -= c.Step
 }
-
-// CounterDisplay is a read-only view of the shared counter state.
-type CounterDisplay struct {
-	godom.Component
-	*CounterState
-}

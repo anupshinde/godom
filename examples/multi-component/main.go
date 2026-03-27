@@ -21,7 +21,7 @@ func main() {
 	chartjs.Register(eng)
 
 	// Child components — registered by name, auto-wired to layout's <g-slot> tags
-	navbar := &Navbar{ComponentCount: 7, Status: "Connected"}
+	navbar := &Navbar{ComponentCount: 6, Status: "Connected"}
 	eng.Register("navbar", navbar, "ui/navbar/index.html")
 
 	toast := &Toast{}
@@ -31,20 +31,17 @@ func main() {
 	sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
 	eng.Register("sidebar", sidebar, "ui/sidebar/index.html")
 
-	// Shared state: Counter and CounterDisplay both reference the same CounterState.
-	// Incrementing/decrementing in Counter is immediately visible in CounterDisplay.
+	// Shared state: Counter and Monitor both reference the same CounterState.
+	// Incrementing/decrementing in Counter is immediately visible in Monitor's read-only display.
 	sharedState := &CounterState{Count: 0, Step: 1}
 
 	counter := &Counter{CounterState: sharedState}
 	eng.Register("counter", counter, "ui/counter/index.html")
 
-	counterDisplay := &CounterDisplay{CounterState: sharedState}
-	eng.Register("counter_display", counterDisplay, "ui/counter-display/index.html")
-
 	clock := &Clock{}
 	eng.Register("clock", clock, "ui/clock/index.html")
 
-	monitor := &Monitor{}
+	monitor := &Monitor{CounterState: sharedState}
 	eng.Register("monitor", monitor, "ui/monitor/index.html")
 
 	ticker := &Ticker{}
@@ -57,7 +54,6 @@ func main() {
 	layout := &Layout{
 		Slots: []SlotInfo{
 			{RegisteredName: "counter", Title: "Counter"},
-			{RegisteredName: "counter_display", Title: "Counter (Read-Only)"},
 			{RegisteredName: "clock", Title: "Clock"},
 			{RegisteredName: "monitor", Title: "System Monitor"},
 		},
