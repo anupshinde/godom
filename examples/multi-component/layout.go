@@ -4,8 +4,8 @@ import "github.com/anupshinde/godom"
 
 // SlotInfo describes a named slot in the layout.
 type SlotInfo struct {
-	Name  string
-	Title string
+	RegisteredName string
+	Title          string
 }
 
 // Layout is the root component that owns the page structure.

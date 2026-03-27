@@ -67,7 +67,8 @@ func main() {
 	}()
 
 	eng := godom.NewEngine()
+	eng.SetUI(ui)
 	eng.Port = 8082
-	eng.Mount(grid, ui, "ui/index.html")
+	eng.Mount(grid, "ui/index.html")
 	log.Fatal(eng.Start())
 }

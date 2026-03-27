@@ -17,58 +17,48 @@ var ui embed.FS
 
 func main() {
 	eng := godom.NewEngine()
+	eng.SetUI(ui)
 	chartjs.Register(eng)
+
+	// Child components — registered by name, auto-wired to layout's <g-slot> tags
+	navbar := &Navbar{ComponentCount: 6, Status: "Connected"}
+	eng.Register("navbar", navbar, "ui/navbar/index.html")
+
+	toast := &Toast{}
+	eng.Register("toast", toast, "ui/toast/index.html")
+
+	sidebar := NewSidebar()
+	sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
+	eng.Register("sidebar", sidebar, "ui/sidebar/index.html")
+
+	// Shared state: Counter and Monitor both reference the same CounterState.
+	// Incrementing/decrementing in Counter is immediately visible in Monitor's read-only display.
+	sharedState := &CounterState{Count: 0, Step: 1}
+
+	counter := &Counter{CounterState: sharedState}
+	eng.Register("counter", counter, "ui/counter/index.html")
+
+	clock := &Clock{}
+	eng.Register("clock", clock, "ui/clock/index.html")
+
+	monitor := &Monitor{CounterState: sharedState}
+	eng.Register("monitor", monitor, "ui/monitor/index.html")
+
+	ticker := &Ticker{}
+	eng.Register("ticker", ticker, "ui/ticker/index.html")
+
+	tips := &Tips{}
+	eng.Register("tips", tips, "ui/tips/index.html")
 
 	// Layout — root component with orderable slots
 	layout := &Layout{
 		Slots: []SlotInfo{
-			{Name: "counter", Title: "Counter"},
-			{Name: "clock", Title: "Clock"},
-			{Name: "monitor", Title: "System Monitor"},
+			{RegisteredName: "counter", Title: "Counter"},
+			{RegisteredName: "clock", Title: "Clock"},
+			{RegisteredName: "monitor", Title: "System Monitor"},
 		},
 	}
-	eng.Mount(layout, ui, "ui/layout/index.html")
-
-	// Navbar
-	navbar := &Navbar{ComponentCount: 7, Status: "Connected"}
-	eng.Mount(navbar, ui, "ui/navbar/index.html")
-	eng.AddToSlot(layout, "navbar", navbar)
-
-	// Toast
-	toast := &Toast{}
-	eng.Mount(toast, ui, "ui/toast/index.html")
-	eng.AddToSlot(layout, "toast", toast)
-
-	// Sidebar
-	sidebar := NewSidebar()
-	sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
-	eng.Mount(sidebar, ui, "ui/sidebar/index.html")
-	eng.AddToSlot(layout, "sidebar", sidebar)
-
-	// Counter
-	counter := &Counter{Step: 1}
-	eng.Mount(counter, ui, "ui/counter/index.html")
-	eng.AddToSlot(layout, "counter", counter)
-
-	// Clock
-	clock := &Clock{}
-	eng.Mount(clock, ui, "ui/clock/index.html")
-	eng.AddToSlot(layout, "clock", clock)
-
-	// System Monitor
-	monitor := &Monitor{}
-	eng.Mount(monitor, ui, "ui/monitor/index.html")
-	eng.AddToSlot(layout, "monitor", monitor)
-
-	// Stock Ticker
-	ticker := &Ticker{}
-	eng.Mount(ticker, ui, "ui/ticker/index.html")
-	eng.AddToSlot(layout, "ticker", ticker)
-
-	// Tips
-	tips := &Tips{}
-	eng.Mount(tips, ui, "ui/tips/index.html")
-	eng.AddToSlot(layout, "tips", tips)
+	eng.Mount(layout, "ui/layout/index.html")
 
 	go clock.startClock()
 	go monitor.startMonitor()

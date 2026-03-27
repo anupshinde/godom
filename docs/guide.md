@@ -53,7 +53,8 @@ func (a *App) Decrement() { a.Count-- }
 
 func main() {
     eng := godom.NewEngine()
-    eng.Mount(&App{}, ui, "ui/index.html")
+    eng.SetUI(ui)
+    eng.Mount(&App{}, "ui/index.html")
     log.Fatal(eng.Start())
 }
 ```
@@ -321,7 +322,8 @@ func main() {
     go root.startClock()
 
     eng := godom.NewEngine()
-    eng.Mount(root, ui, "ui/index.html")
+    eng.SetUI(ui)
+    eng.Mount(root, "ui/index.html")
     log.Fatal(eng.Start())
 }
 ```
@@ -407,8 +409,9 @@ import "github.com/anupshinde/godom/plugins/chartjs"
 
 func main() {
     eng := godom.NewEngine()
+    eng.SetUI(ui)
     chartjs.Register(eng)
-    eng.Mount(&App{}, ui, "ui/index.html")
+    eng.Mount(&App{}, "ui/index.html")
     log.Fatal(eng.Start())
 }
 ```

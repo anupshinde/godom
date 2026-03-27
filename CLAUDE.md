@@ -17,7 +17,7 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 - Single binary output via `go build`, opens default browser on start
 
 ## Internal packages
-- `godom.go` — public API: Engine, Mount, AddToSlot, Start, Component, Refresh, MarkRefresh
+- `godom.go` — public API: Engine, SetUI, Mount, Register, Start, Component, Refresh, MarkRefresh
 - `internal/vdom/` — VDOM node types, template parsing, tree resolution, diffing, merging
 - `internal/component/` — component struct, Info, method dispatch, field access
 - `internal/server/` — HTTP server, WebSocket handling, connection pool, init/update pipeline
@@ -29,6 +29,7 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 
 ## Critical invariants
 - **IDCounter must never reset.** Each VDOM node gets a unique integer ID from `IDCounter`. The bridge's `nodeMap[id] → DOM node` depends on IDs being globally unique. Resetting the counter (e.g. `ci.IDCounter = &vdom.IDCounter{}` in `BuildUpdate`) causes new subtrees to reuse IDs of existing nodes, silently corrupting the bridge's nodeMap and breaking all subsequent patches. See `TestIDCounter_MustOnlyIncrement` in `internal/server/server_test.go`.
+- **Prefer MarkRefresh + surgical patches over full BuildUpdate.** When the changed fields are known, use `MarkRefresh(fields...)` then `Refresh()`. This triggers surgical patches (only the bound nodes for those fields are updated) — no tree rebuild, no diff. Full `BuildUpdate` with tree diff is the expensive fallback for when specific changed fields aren't known. See `wireRefresh` in `internal/server/server.go`.
 
 ## Key docs
 - `docs/why.md` — project rationale and motivation

@@ -237,7 +237,7 @@ func TestExpandComponents_SkipsGTags(t *testing.T) {
 	// g-* tags are framework directives, not custom components — they should
 	// be left in place and not trigger a file lookup.
 	fsys := fstest.MapFS{}
-	input := `<div><g-slot name="sidebar"></g-slot><span>after</span></div>`
+	input := `<div><g-slot instance="sidebar"></g-slot><span>after</span></div>`
 	result, err := ExpandComponents(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
@@ -256,7 +256,7 @@ func TestExpandComponents_GTagBeforeCustomElement(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-comp.html": {Data: []byte(`<span>expanded</span>`)},
 	}
-	input := `<div><g-slot name="x"></g-slot><my-comp></my-comp></div>`
+	input := `<div><g-slot instance="x"></g-slot><my-comp></my-comp></div>`
 	result, err := ExpandComponents(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
@@ -270,9 +270,9 @@ func TestExpandComponents_GTagBeforeCustomElement(t *testing.T) {
 }
 
 func TestExpandComponents_SkipsGTagSelfClosing(t *testing.T) {
-	// Self-closing g-* tags like <g-slot name="x"/> should also be skipped.
+	// Self-closing g-* tags like <g-slot instance="x"/> should also be skipped.
 	fsys := fstest.MapFS{}
-	input := `<div><g-slot name="x"/><span>ok</span></div>`
+	input := `<div><g-slot instance="x"/><span>ok</span></div>`
 	result, err := ExpandComponents(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
@@ -290,7 +290,7 @@ func TestExpandComponents_MultipleGTagsBeforeCustomElement(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-comp.html": {Data: []byte(`<b>hi</b>`)},
 	}
-	input := `<g-slot name="a"></g-slot><g-slot name="b"></g-slot><g-slot name="c"></g-slot><my-comp></my-comp>`
+	input := `<g-slot instance="a"></g-slot><g-slot instance="b"></g-slot><g-slot instance="c"></g-slot><my-comp></my-comp>`
 	result, err := ExpandComponents(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
@@ -313,7 +313,7 @@ func TestExpandComponents_GTagDoesNotConsumeExpansionBudget(t *testing.T) {
 	}
 	var sb strings.Builder
 	for i := 0; i < 10; i++ {
-		sb.WriteString(fmt.Sprintf(`<g-slot name="s%d"></g-slot>`, i))
+		sb.WriteString(fmt.Sprintf(`<g-slot instance="s%d"></g-slot>`, i))
 	}
 	sb.WriteString(`<my-comp></my-comp>`)
 	result, err := ExpandComponents(sb.String(), fsys, ".")

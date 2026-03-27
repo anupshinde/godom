@@ -239,6 +239,7 @@ func main() {
 	dur := probeSeconds(videoPath)
 
 	eng := godom.NewEngine()
+	eng.SetUI(ui)
 	eng.RegisterPlugin("videocanvas", videoBridgeJS)
 
 	root := &App{
@@ -249,7 +250,7 @@ func main() {
 	go root.run()
 
 	fmt.Printf("Video Player — %s\n", videoPath)
-	eng.Mount(root, ui, "ui/index.html")
+	eng.Mount(root, "ui/index.html")
 	log.Fatal(eng.Start())
 }
 

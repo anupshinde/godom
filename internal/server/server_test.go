@@ -125,7 +125,7 @@ func TestVDOMBuildUpdate_Increment(t *testing.T) {
 
 	// Simulate Increment
 	app.Count = 1
-	msg := BuildUpdate(ci)
+	msg, _ := BuildUpdate(ci)
 
 	if msg == nil {
 		t.Fatal("expected patch message after increment")
@@ -162,7 +162,7 @@ func TestVDOMBuildUpdate_NoChange(t *testing.T) {
 	_ = BuildInit(ci)
 
 	// No state change
-	msg := BuildUpdate(ci)
+	msg, _ := BuildUpdate(ci)
 	if msg != nil {
 		t.Errorf("expected nil message when nothing changed, got type=%q patches=%d", msg.Type, len(msg.Patches))
 	}
@@ -176,7 +176,7 @@ func TestVDOMBuildUpdate_BindStep(t *testing.T) {
 
 	// Simulate step change (as if g-bind updated it)
 	app.Step = 5
-	msg := BuildUpdate(ci)
+	msg, _ := BuildUpdate(ci)
 
 	if msg == nil {
 		t.Fatal("expected patch message after step change")
@@ -202,14 +202,14 @@ func TestVDOMBuildUpdate_MultipleIncrements(t *testing.T) {
 
 	// First increment
 	app.Count = 2
-	msg1 := BuildUpdate(ci)
+	msg1, _ := BuildUpdate(ci)
 	if msg1 == nil {
 		t.Fatal("expected patch for first increment")
 	}
 
 	// Second increment
 	app.Count = 4
-	msg2 := BuildUpdate(ci)
+	msg2, _ := BuildUpdate(ci)
 	if msg2 == nil {
 		t.Fatal("expected patch for second increment")
 	}
@@ -639,7 +639,7 @@ func TestHandleNodeEvent_UpdatesTreeAndBroadcasts(t *testing.T) {
 	pool.add(serverConn)
 
 	// Fire node event
-	handleNodeEvent(ci, int32(inputNodeID), "42", pool)
+	handleNodeEvent(ci, 0, int32(inputNodeID), "42", &sharedPtrMaps{}, pool)
 
 	// Verify the live tree was updated
 	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
@@ -691,7 +691,7 @@ func TestHandleNodeEvent_NodeNotFound(t *testing.T) {
 
 	pool := &connPool{}
 	// Should not panic with a nonexistent node ID
-	handleNodeEvent(ci, 99999, "value", pool)
+	handleNodeEvent(ci, 0, 99999, "value", &sharedPtrMaps{}, pool)
 }
 
 // --- handleMethodCall tests ---
@@ -728,7 +728,7 @@ func TestHandleMethodCall_CallsMethod(t *testing.T) {
 	// Wire RefreshFn to broadcast (mirrors Run)
 	ci.RefreshFn = func() {
 		ci.Mu.Lock()
-		msg := BuildUpdate(ci)
+		msg, _ := BuildUpdate(ci)
 		ci.Mu.Unlock()
 		if msg != nil {
 			data, _ := proto.Marshal(msg)
@@ -737,7 +737,7 @@ func TestHandleMethodCall_CallsMethod(t *testing.T) {
 	}
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// Verify method was called: Count should be 3 (0 + Step=3)
 	if app.Count != 3 {
@@ -791,7 +791,7 @@ func TestHandleMethodCall_RebuildReflectsNewState(t *testing.T) {
 	// Wire RefreshFn to broadcast (mirrors Run)
 	ci.RefreshFn = func() {
 		ci.Mu.Lock()
-		msg := BuildUpdate(ci)
+		msg, _ := BuildUpdate(ci)
 		ci.Mu.Unlock()
 		if msg != nil {
 			data, _ := proto.Marshal(msg)
@@ -800,7 +800,7 @@ func TestHandleMethodCall_RebuildReflectsNewState(t *testing.T) {
 	}
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// The broadcast should contain a tree with the new count "5"
 	client.SetReadDeadline(time.Now().Add(time.Second))
@@ -832,7 +832,7 @@ func TestHandleMethodCall_InvalidMethod(t *testing.T) {
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: "NonExistent"}
 	// Should not panic — logs error and returns
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// Count should not have changed
 	if app.Count != 0 {
@@ -900,7 +900,7 @@ func TestHandleMethodCall_SkipsRebuildWhenRefreshed(t *testing.T) {
 	ci.RefreshFn = func() {
 		refreshCount++
 		ci.Mu.Lock()
-		msg := BuildUpdate(ci)
+		msg, _ := BuildUpdate(ci)
 		ci.Mu.Unlock()
 		if msg != nil {
 			data, _ := proto.Marshal(msg)
@@ -911,7 +911,7 @@ func TestHandleMethodCall_SkipsRebuildWhenRefreshed(t *testing.T) {
 	app.refreshFn = ci.RefreshFn
 
 	call := &gproto.MethodCall{Method: "IncrementAndRefresh"}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// Method was called
 	if app.Count != 1 {
@@ -968,7 +968,7 @@ func TestHandleMethodCall_SyncsBindValues(t *testing.T) {
 	ci.RefreshFn = func() {}
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// Step should have been synced from tree prop to struct field
 	if app.Step != 10 {
@@ -1550,7 +1550,7 @@ func TestHandleNodeEvent_StoresUnboundValues(t *testing.T) {
 	pool := &connPool{}
 
 	// Fire node event — should store value in UnboundValues
-	handleNodeEvent(ci, int32(inputNodeID), "99", pool)
+	handleNodeEvent(ci, 0, int32(inputNodeID), "99", &sharedPtrMaps{}, pool)
 
 	if ci.UnboundValues == nil {
 		t.Fatal("expected UnboundValues to be initialized")
@@ -1603,7 +1603,7 @@ func TestHandleNodeEvent_NilPropsMapInitialized(t *testing.T) {
 	el.Facts.Props = nil
 
 	pool := &connPool{}
-	handleNodeEvent(ci, int32(inputNodeID), "hello", pool)
+	handleNodeEvent(ci, 0, int32(inputNodeID), "hello", &sharedPtrMaps{}, pool)
 
 	// Props should now be initialized with the value
 	if el.Facts.Props == nil {
@@ -1635,7 +1635,7 @@ func TestHandleNodeEvent_NotElementNode(t *testing.T) {
 
 	pool := &connPool{}
 	// Should not panic — logs and returns
-	handleNodeEvent(ci, int32(textNodeID), "value", pool)
+	handleNodeEvent(ci, 0, int32(textNodeID), "value", &sharedPtrMaps{}, pool)
 }
 
 // --- handleMethodCall: method with arguments ---
@@ -1672,7 +1672,7 @@ func TestHandleMethodCall_WithArgs(t *testing.T) {
 		Method: "SetResult",
 		Args:   [][]byte{[]byte(`"hello world"`)},
 	}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	if app.Result != "hello world" {
 		t.Errorf("expected Result='hello world', got %q", app.Result)
@@ -1717,7 +1717,7 @@ func TestHandleMethodCall_BindSyncWithExpr(t *testing.T) {
 	ci.RefreshFn = func() {}
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// The bind sync should have set Step=7
 	if app.Step != 7 {
@@ -1753,7 +1753,7 @@ func TestHandleMethodCall_BindSyncNilProps(t *testing.T) {
 	ci.RefreshFn = func() {}
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// Step should remain 5 (nil props → sync skipped)
 	if app.Step != 5 {
@@ -1787,7 +1787,7 @@ func TestHandleMethodCall_BindSyncNoValueProp(t *testing.T) {
 	ci.RefreshFn = func() {}
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// Step should remain 3 (no "value" prop → sync skipped)
 	if app.Step != 3 {
@@ -1830,7 +1830,7 @@ func TestHandleMethodCall_BindSyncSkipsNonElementNode(t *testing.T) {
 
 	// Should not panic — bind sync skips non-element nodes
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// Step should remain 1 (sync skipped), so Count = 0 + 1 = 1
 	if app.Step != 1 {
@@ -1859,7 +1859,7 @@ func TestHandleMethodCall_DebugLogging(t *testing.T) {
 	defer func() { env.Debug = prev }()
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	if app.Count != 1 {
 		t.Errorf("expected Count=1, got %d", app.Count)
@@ -2394,7 +2394,7 @@ func TestHandleNodeEvent_TextNodeNotElement(t *testing.T) {
 
 	pool := &connPool{}
 	// Should log but not panic
-	handleNodeEvent(ci, int32(textNodeID), "value", pool)
+	handleNodeEvent(ci, 0, int32(textNodeID), "value", &sharedPtrMaps{}, pool)
 }
 
 // --- handleMethodCall with args ---
@@ -2409,7 +2409,7 @@ func TestHandleMethodCall_EmptyMethod(t *testing.T) {
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: ""}
 	// Should not panic — empty method name
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 }
 
 // --- buildSurgicalPatches: prop binding (g-bind generates "bind" + "prop" bindings) ---
@@ -2554,7 +2554,7 @@ func TestHandleMethodCall_NilTree(t *testing.T) {
 
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// Method should still execute
 	if app.Count != 1 {
@@ -2581,7 +2581,7 @@ func TestHandleMethodCall_BindNodeMissing(t *testing.T) {
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: "Increment"}
 	// Should not panic — skips the missing node
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	if app.Count != 1 {
 		t.Errorf("expected Count=1, got %d", app.Count)
@@ -2610,7 +2610,7 @@ func TestHandleMethodCall_BindNodeNilProps(t *testing.T) {
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: "Increment"}
 	// Should not panic — skips the nil Props
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// Step should remain 5 (not synced since Props was nil)
 	if app.Step != 5 {
@@ -2638,7 +2638,7 @@ func TestHandleMethodCall_BindValueMissing(t *testing.T) {
 	ci.RefreshFn = func() {}
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// Step should remain 5 (no value to sync)
 	if app.Step != 5 {
@@ -2792,7 +2792,7 @@ func TestBuildUpdate_NilTree(t *testing.T) {
 	ci := makeCounterCI(app)
 
 	// Call BuildUpdate without BuildInit — Tree is nil
-	msg := BuildUpdate(ci)
+	msg, _ := BuildUpdate(ci)
 	if msg == nil {
 		t.Fatal("expected init message when Tree is nil")
 	}
@@ -2882,7 +2882,7 @@ func TestBuildUpdate_GifTransition_NoIDCollision(t *testing.T) {
 	// Add an item: Items goes from nil to ["item1"]
 	// g-if="Items" now produces nodes, shifting IDs of subsequent nodes
 	app.AddItem()
-	msg := BuildUpdate(ci)
+	msg, _ := BuildUpdate(ci)
 	if msg == nil {
 		t.Fatal("expected patch message after AddItem")
 	}
@@ -2907,7 +2907,7 @@ func TestBuildUpdate_GifTransition_NoIDCollision(t *testing.T) {
 
 	// Second update: add another item to verify IDs stay unique
 	app.Items = append(app.Items, "item2")
-	msg2 := BuildUpdate(ci)
+	msg2, _ := BuildUpdate(ci)
 	if msg2 == nil {
 		t.Fatal("expected patch message after second AddItem")
 	}
@@ -2940,7 +2940,7 @@ func TestIDCounter_MustOnlyIncrement(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		app.Count++
-		BuildUpdate(ci)
+		_, _ = BuildUpdate(ci)
 
 		if ci.IDCounter.Seq <= prevSeq {
 			t.Fatalf("render %d: IDCounter went from %d to %d — IDs must only increase", i, prevSeq, ci.IDCounter.Seq)
@@ -3058,7 +3058,7 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 				return
 			}
 		}
-		msg := BuildUpdate(ci)
+		msg, _ := BuildUpdate(ci)
 		ci.Mu.Unlock()
 		if msg != nil {
 			data, _ := proto.Marshal(msg)
@@ -3138,13 +3138,13 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 				if err := proto.Unmarshal(payload, evt); err != nil {
 					continue
 				}
-				handleNodeEvent(ci, evt.NodeId, evt.Value, pool)
+				handleNodeEvent(ci, 0, evt.NodeId, evt.Value, &sharedPtrMaps{}, pool)
 			case 2:
 				call := &gproto.MethodCall{}
 				if err := proto.Unmarshal(payload, call); err != nil {
 					continue
 				}
-				handleMethodCall(ci, call, pool)
+				handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 			}
 		}
 	})
@@ -3202,7 +3202,7 @@ func TestBuildUpdate_RemapsNodeStableIDs(t *testing.T) {
 	// gives the input a new ID (IDCounter advanced), but MergeTree keeps
 	// the old ID. remap[newID]=oldID should be produced.
 	app.Label = "world"
-	msg := BuildUpdate(ci)
+	msg, _ := BuildUpdate(ci)
 	if msg == nil {
 		t.Fatal("expected patch message after changing Label")
 	}
@@ -3276,7 +3276,7 @@ func TestBuildUpdate_RemapsNodeStableIDs_ElseBranch(t *testing.T) {
 
 	// Toggle g-if: structural change shifts input position
 	app.ShowExtra = true
-	msg := BuildUpdate(ci)
+	msg, _ := BuildUpdate(ci)
 	if msg == nil {
 		t.Fatal("expected patch message")
 	}
@@ -3446,9 +3446,12 @@ func TestFindComponentByNodeID_Found(t *testing.T) {
 		{Info: ci2, ParentIdx: 0},
 	}
 
-	found := findComponentByNodeID(comps, 20)
+	found, idx := findComponentByNodeID(comps, 20)
 	if found != ci2 {
 		t.Error("expected to find ci2 for node ID 20")
+	}
+	if idx != 1 {
+		t.Errorf("expected index 1, got %d", idx)
 	}
 }
 
@@ -3459,16 +3462,22 @@ func TestFindComponentByNodeID_NotFound(t *testing.T) {
 	}
 	comps := []*MountedComponent{{Info: ci, ParentIdx: -1}}
 
-	found := findComponentByNodeID(comps, 999)
+	found, idx := findComponentByNodeID(comps, 999)
 	if found != nil {
 		t.Error("expected nil for non-existent node ID")
+	}
+	if idx != -1 {
+		t.Errorf("expected index -1, got %d", idx)
 	}
 }
 
 func TestFindComponentByNodeID_Empty(t *testing.T) {
-	found := findComponentByNodeID(nil, 1)
+	found, idx := findComponentByNodeID(nil, 1)
 	if found != nil {
 		t.Error("expected nil for empty comps")
+	}
+	if idx != -1 {
+		t.Errorf("expected index -1, got %d", idx)
 	}
 }
 
@@ -3558,7 +3567,7 @@ func TestHandleNodeEvent_CheckboxUpdatesCheckedAsBool(t *testing.T) {
 	}
 
 	pool := &connPool{}
-	handleNodeEvent(ci, int32(nodeID), "false", pool)
+	handleNodeEvent(ci, 0, int32(nodeID), "false", &sharedPtrMaps{}, pool)
 
 	// Verify Props["checked"] is bool false, not string "false"
 	node := vdom.FindNodeByID(ci.Tree, nodeID)
@@ -3591,7 +3600,7 @@ func TestHandleNodeEvent_CheckboxTrueSetsBoolTrue(t *testing.T) {
 	}
 
 	pool := &connPool{}
-	handleNodeEvent(ci, int32(nodeID), "true", pool)
+	handleNodeEvent(ci, 0, int32(nodeID), "true", &sharedPtrMaps{}, pool)
 
 	node := vdom.FindNodeByID(ci.Tree, nodeID)
 	el := node.(*vdom.ElementNode)
@@ -3617,7 +3626,7 @@ func TestHandleNodeEvent_BoundInputSyncsStruct(t *testing.T) {
 	if titleNodeID == 0 {
 		t.Fatal("could not find Title binding")
 	}
-	handleNodeEvent(ci, int32(titleNodeID), "new title", pool)
+	handleNodeEvent(ci, 0, int32(titleNodeID), "new title", &sharedPtrMaps{}, pool)
 	if app.Title != "new title" {
 		t.Errorf("expected struct Title='new title', got %q", app.Title)
 	}
@@ -3627,7 +3636,7 @@ func TestHandleNodeEvent_BoundInputSyncsStruct(t *testing.T) {
 	if agreeNodeID == 0 {
 		t.Fatal("could not find Agree binding")
 	}
-	handleNodeEvent(ci, int32(agreeNodeID), "false", pool)
+	handleNodeEvent(ci, 0, int32(agreeNodeID), "false", &sharedPtrMaps{}, pool)
 	if app.Agree != false {
 		t.Errorf("expected struct Agree=false, got %v", app.Agree)
 	}
@@ -3637,7 +3646,7 @@ func TestHandleNodeEvent_BoundInputSyncsStruct(t *testing.T) {
 	if colorNodeID == 0 {
 		t.Fatal("could not find Color binding")
 	}
-	handleNodeEvent(ci, int32(colorNodeID), "blue", pool)
+	handleNodeEvent(ci, 0, int32(colorNodeID), "blue", &sharedPtrMaps{}, pool)
 	if app.Color != "blue" {
 		t.Errorf("expected struct Color='blue', got %q", app.Color)
 	}
@@ -3662,7 +3671,7 @@ func TestHandleNodeEvent_UnboundInputDoesNotSyncStruct(t *testing.T) {
 	}
 
 	pool := &connPool{}
-	handleNodeEvent(ci, int32(inputNodeID), "99", pool)
+	handleNodeEvent(ci, 0, int32(inputNodeID), "99", &sharedPtrMaps{}, pool)
 
 	// The tree should be updated (targeted patch path)
 	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
@@ -3746,7 +3755,7 @@ func TestHandleMethodCall_SyncsPropBindings(t *testing.T) {
 	// Call a method — handleMethodCall should sync Dark from tree to struct
 	call := &gproto.MethodCall{Method: "ToggleDark"}
 	pool := &connPool{}
-	handleMethodCall(ci, call, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
 
 	// ToggleDark flips Dark. If sync worked, Dark was set to true from tree,
 	// then ToggleDark flipped it to false.
@@ -3884,7 +3893,7 @@ func TestInputBindings_RemappedAfterBuildUpdate(t *testing.T) {
 	// then MergeTree remaps them back to old IDs.
 	ci.Mu.Lock()
 	app.Title = "world"
-	_ = BuildUpdate(ci)
+	_, _ = BuildUpdate(ci)
 	ci.Mu.Unlock()
 
 	// InputBindings should still have valid entries for all fields

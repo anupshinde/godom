@@ -33,6 +33,7 @@ func main() {
 	termPort := startTerminalServer(token)
 
 	eng := godom.NewEngine()
+	eng.SetUI(ui)
 	eng.RegisterPlugin("xterm", xtermAdapterJS)
 
 	root := &App{
@@ -41,7 +42,7 @@ func main() {
 			Token:  token,
 		},
 	}
-	eng.Mount(root, ui, "ui/index.html")
+	eng.Mount(root, "ui/index.html")
 	log.Fatal(eng.Start())
 }
 

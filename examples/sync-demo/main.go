@@ -73,7 +73,8 @@ func main() {
 	app.updateCSS()
 
 	eng := godom.NewEngine()
+	eng.SetUI(ui)
 	eng.Port = 61820
-	eng.Mount(app, ui, "ui/index.html")
+	eng.Mount(app, "ui/index.html")
 	log.Fatal(eng.Start())
 }

@@ -53,7 +53,7 @@ type ElementNode struct {
 	Facts     Facts
 	Children  []Node
 	IsSlot    bool   // true if this node is a g-slot placeholder
-	SlotName  string // resolved slot name (e.g. "counter")
+	SlotName  string // resolved instance name (e.g. "counter")
 }
 
 func (n *ElementNode) NodeType() int { return NodeElement }

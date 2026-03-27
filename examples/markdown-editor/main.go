@@ -91,10 +91,11 @@ func main() {
 	}
 
 	eng := godom.NewEngine()
+	eng.SetUI(ui)
 	eng.Mount(&App{
 		Markdown:    string(content),
 		EditorOpen:  true,
 		ToggleLabel: "Hide Editor",
-	}, ui, "ui/index.html")
+	}, "ui/index.html")
 	log.Fatal(eng.Start())
 }

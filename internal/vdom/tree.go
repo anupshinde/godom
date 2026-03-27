@@ -52,7 +52,8 @@ type TemplateNode struct {
 
 	// For g-slot nodes
 	IsSlot   bool
-	SlotExpr string // slot name expression (always resolved: "counter" or "slot.Name")
+	SlotExpr string // instance name expression (e.g. "counter" or "{{slot.Name}}")
+	SlotType string // type attribute (e.g. "component:Counter"), required for static names
 
 	// StableID is a UUID assigned at parse time to unbound form inputs.
 	// Used to preserve input values across tree rebuilds.
@@ -81,7 +82,7 @@ type TextPart struct {
 // ParseTemplate parses HTML into a template tree.
 func ParseTemplate(htmlStr string) ([]*TemplateNode, error) {
 	// Go's html.Parse doesn't treat custom elements as void/self-closing.
-	// <g-slot name="x"/> is parsed as <g-slot name="x"> (open tag), which
+	// <g-slot .../> is parsed as <g-slot ...> (open tag), which
 	// swallows all subsequent siblings as children. Expand to explicit
 	// closing tags so the parser produces correct sibling structure.
 	htmlStr = expandSelfClosingGSlot(htmlStr)
@@ -115,11 +116,29 @@ func checkDuplicateSlots(nodes []*TemplateNode) error {
 	var walk func([]*TemplateNode) error
 	walk = func(nodes []*TemplateNode) error {
 		for _, n := range nodes {
-			if n.IsSlot && n.SlotExpr != "" && !strings.Contains(n.SlotExpr, ".") && !strings.Contains(n.SlotExpr, "{") {
-				if seen[n.SlotExpr] {
-					return fmt.Errorf("duplicate <g-slot> name %q in template", n.SlotExpr)
+			if n.IsSlot {
+				if n.SlotExpr == "" {
+					return fmt.Errorf("<g-slot> requires a non-empty 'instance' attribute")
 				}
-				seen[n.SlotExpr] = true
+				isInterpolated := strings.Contains(n.SlotExpr, "{")
+				if isInterpolated {
+					// Interpolated names are dynamic — skip duplicate and type checks
+				} else {
+					// Static name — must be a valid identifier, type attribute is required
+					if !IsValidIdentifier(n.SlotExpr) {
+						return fmt.Errorf("<g-slot instance=%q> must be a valid identifier (letters, digits, underscores; cannot start with a digit)", n.SlotExpr)
+					}
+					if n.SlotType == "" {
+						return fmt.Errorf("<g-slot instance=%q> requires a 'type' attribute for static names", n.SlotExpr)
+					}
+					if !strings.HasPrefix(n.SlotType, "component:") || strings.TrimPrefix(n.SlotType, "component:") == "" {
+						return fmt.Errorf("<g-slot instance=%q> type must be \"component:TypeName\", got %q", n.SlotExpr, n.SlotType)
+					}
+					if seen[n.SlotExpr] {
+						return fmt.Errorf("duplicate <g-slot> instance %q in template", n.SlotExpr)
+					}
+					seen[n.SlotExpr] = true
+				}
 			}
 			if err := walk(n.Children); err != nil {
 				return err
@@ -157,12 +176,13 @@ func htmlElementToTemplate(n *html.Node) *TemplateNode {
 		return parseForTemplate(n, forExpr)
 	}
 
-	// <g-slot name="counter"> — name is always resolved as an expression.
-	// <g-slot name="counter"/> — static name
-	// <g-slot name="{{slot.Name}}"/> — interpolated name from context
+	// <g-slot type="component:Counter" instance="counter">
+	// <g-slot type="component:Counter" instance="counter"/>
+	// <g-slot instance="{{slot.Name}}"/>  — interpolated, type optional
 	if tag == "g-slot" {
-		tn := &TemplateNode{IsSlot: true}
-		tn.SlotExpr = getAttrVal(n, "name")
+		instance := getAttrVal(n, "instance")
+		slotType := getAttrVal(n, "type")
+		tn := &TemplateNode{IsSlot: true, SlotExpr: instance, SlotType: slotType}
 		return tn
 	}
 
@@ -562,15 +582,27 @@ func resolveTextNode(t *TemplateNode, ctx *ResolveContext) []Node {
 	}
 
 	var sb strings.Builder
+	var dynamicCount int
+	var singleExpr string
 	for _, p := range t.TextParts {
 		if p.Static {
 			sb.WriteString(p.Value)
 		} else {
 			val := ResolveExpr(p.Value, ctx)
 			sb.WriteString(fmt.Sprint(val))
+			dynamicCount++
+			singleExpr = p.Value
 		}
 	}
-	return []Node{&TextNode{NodeBase: NodeBase{ID: nextID(ctx)}, Text: sb.String()}}
+	id := nextID(ctx)
+	// Only register a text binding when the node is a single {{field}} with
+	// no surrounding static text. Mixed content like "Step size: {{Step}}"
+	// can't be surgically patched (the static prefix would be lost), so it
+	// relies on the full BuildUpdate/diff path instead.
+	if dynamicCount == 1 && len(t.TextParts) == 1 {
+		ctx.addBinding(singleExpr, id, "text", "")
+	}
+	return []Node{&TextNode{NodeBase: NodeBase{ID: id}, Text: sb.String()}}
 }
 
 func resolveElementNode(t *TemplateNode, ctx *ResolveContext) Node {
@@ -723,8 +755,8 @@ func resolveForNode(t *TemplateNode, ctx *ResolveContext) []Node {
 func resolveSlotNode(t *TemplateNode, ctx *ResolveContext) Node {
 	id := nextID(ctx)
 
-	// Resolve slot name — supports {{expr}} interpolation like all attributes.
-	// name="counter" → "counter", name="{{slot.Name}}" → resolved value.
+	// Resolve instance name — supports {{expr}} interpolation like all attributes.
+	// instance="counter" → "counter", instance="{{slot.Name}}" → resolved value.
 	name := resolveAttrValue(t.SlotExpr, ctx)
 
 	// Create a plain div placeholder. Slot metadata lives on the VDOM node
@@ -1381,6 +1413,21 @@ func resolveArgs(argExprs []string, ctx *ResolveContext) []any {
 		args[i] = ResolveExpr(expr, ctx)
 	}
 	return args
+}
+
+// IsValidIdentifier checks that a name looks like a Go/JS identifier:
+// letters, digits, underscores; cannot start with a digit.
+func IsValidIdentifier(name string) bool {
+	for i, c := range name {
+		if c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+			continue
+		}
+		if c >= '0' && c <= '9' && i > 0 {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // ---------------------------------------------------------------------------

@@ -445,6 +445,7 @@ func clamp(v, min, max float64) float64 {
 
 func main() {
 	eng := godom.NewEngine()
+	eng.SetUI(ui)
 	eng.RegisterPlugin("gyro", gyroJS)
 	eng.RegisterPlugin("sfx", sfxJS)
 
@@ -461,6 +462,6 @@ func main() {
 	go root.run()
 
 	fmt.Println("Breakout — classic brick-breaking game in Go")
-	eng.Mount(root, ui, "ui/index.html")
+	eng.Mount(root, "ui/index.html")
 	log.Fatal(eng.Start())
 }

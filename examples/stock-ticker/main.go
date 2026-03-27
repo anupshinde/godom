@@ -229,8 +229,9 @@ func (a *App) startTicker() {
 
 func main() {
 	eng := godom.NewEngine()
+	eng.SetUI(ui)
 	root := &App{}
 	go root.startTicker()
-	eng.Mount(root, ui, "ui/index.html")
+	eng.Mount(root, "ui/index.html")
 	log.Fatal(eng.Start())
 }

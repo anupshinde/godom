@@ -28,7 +28,8 @@ The bridge never evaluates expressions, resolves data, or makes decisions. It re
 
 ```go
 eng := godom.NewEngine()
-eng.Mount(&TodoApp{}, ui, "ui/index.html")             // parse, validate, prepare
+eng.SetUI(ui)                                          // set shared UI filesystem
+eng.Mount(&TodoApp{}, "ui/index.html")                 // parse, validate, prepare
 log.Fatal(eng.Start())                                 // serve, open browser, block
 ```
 
@@ -193,9 +194,9 @@ Parent struct         ──state──►    Child HTML template
 Each component is a self-contained unit: own Go struct, own HTML template, own VDOM tree, own diff cycle. They are like small independent applications that all run inside the same Go process and render through the same bridge.
 
 ```
-eng.Mount(layout, ui, "ui/layout/index.html")     // root component
-eng.Mount(counter, ui, "ui/counter/index.html")    // child component
-eng.AddToSlot(layout, "counter", counter)           // place child into parent's slot
+eng.SetUI(ui)
+eng.Register("counter", counter, "ui/counter/index.html")  // child component
+eng.Mount(layout, "ui/layout/index.html")                  // root component
 ```
 
 Components compose via `<g-slot>` — the parent declares named insertion points, children render into them. The root component provides the full HTML page (with `<body>`). Child components provide HTML fragments. On init, components are sent to the browser in topological order (parents before children). Each child targets a specific VDOM node ID in its parent's tree.

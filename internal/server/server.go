@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -29,14 +30,14 @@ import (
 type MountedComponent struct {
 	Info       *component.Info
 	ParentIdx  int    // index of parent component in Comps (-1 = no parent / root)
-	SlotName   string // slot name in parent's <g-slot> (empty = root, renders into body)
+	SlotName   string // instance name in parent's <g-slot> (empty = root, renders into body)
 	SlotNodeID int32  // VDOM node ID of the slot element in parent's tree (set during init)
 }
 
 // Config holds everything the server needs to run.
 type Config struct {
-	Comps   []*MountedComponent
-	Plugins map[string][]string
+	Comps     []*MountedComponent
+	Plugins   map[string][]string
 	StaticFS  fs.FS
 	Port      int
 	Host      string
@@ -53,6 +54,93 @@ type Config struct {
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+// sharedPtrMaps holds the pointer-sharing relationships between components.
+// Built once at startup, used to propagate refreshes to sibling components
+// that share embedded pointer fields (e.g. *CounterState).
+type sharedPtrMaps struct {
+	ptrToCompIdx map[uintptr][]int // pointer address → component indices sharing it
+	compIdxToPtr map[int][]uintptr // component index → pointer addresses it holds
+	comps        []*MountedComponent
+	pool         *connPool
+}
+
+// buildSharedPtrMaps walks all component structs to find embedded pointer fields
+// and groups components that share the same pointer address.
+func buildSharedPtrMaps(comps []*MountedComponent) *sharedPtrMaps {
+	sm := &sharedPtrMaps{
+		ptrToCompIdx: make(map[uintptr][]int),
+		compIdxToPtr: make(map[int][]uintptr),
+		comps:        comps,
+	}
+	for idx, mc := range comps {
+		v := mc.Info.Value.Elem() // the struct value
+		t := v.Type()
+		for i := 0; i < t.NumField(); i++ {
+			f := t.Field(i)
+			if !f.Anonymous || f.Type.Kind() != reflect.Ptr {
+				continue
+			}
+			fv := v.Field(i)
+			if fv.IsNil() {
+				continue
+			}
+			ptr := fv.Pointer()
+			sm.ptrToCompIdx[ptr] = append(sm.ptrToCompIdx[ptr], idx)
+			sm.compIdxToPtr[idx] = append(sm.compIdxToPtr[idx], ptr)
+		}
+	}
+	// Remove entries where only one component holds the pointer (no sharing).
+	for ptr, idxs := range sm.ptrToCompIdx {
+		if len(idxs) <= 1 {
+			delete(sm.ptrToCompIdx, ptr)
+			for _, idx := range idxs {
+				sm.compIdxToPtr[idx] = removePtr(sm.compIdxToPtr[idx], ptr)
+				if len(sm.compIdxToPtr[idx]) == 0 {
+					delete(sm.compIdxToPtr, idx)
+				}
+			}
+		}
+	}
+	return sm
+}
+
+func removePtr(ptrs []uintptr, target uintptr) []uintptr {
+	result := ptrs[:0]
+	for _, p := range ptrs {
+		if p != target {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+// refreshSharedComponents triggers surgical refresh on all other components
+// that share an embedded pointer with the given component, using the changed
+// field names extracted from the original component's patches.
+func (sm *sharedPtrMaps) refreshSharedComponents(compIdx int, changedFields []string) {
+	if sm == nil || len(changedFields) == 0 {
+		return
+	}
+	ptrs := sm.compIdxToPtr[compIdx]
+	if len(ptrs) == 0 {
+		return
+	}
+	seen := map[int]bool{compIdx: true} // skip self
+	for _, ptr := range ptrs {
+		for _, sibIdx := range sm.ptrToCompIdx[ptr] {
+			if seen[sibIdx] {
+				continue
+			}
+			seen[sibIdx] = true
+			sib := sm.comps[sibIdx]
+			sib.Info.Mu.Lock()
+			sib.Info.MarkedFields = append(sib.Info.MarkedFields, changedFields...)
+			sib.Info.Mu.Unlock()
+			sib.Info.RefreshFn()
+		}
+	}
 }
 
 // Run starts the HTTP server, opens the browser, and blocks forever.
@@ -79,6 +167,10 @@ func Run(cfg Config) error {
 		mc := mc // capture for closure
 		wireRefresh(mc, pool)
 	}
+
+	// Build shared pointer maps for auto-refreshing sibling components.
+	sm := buildSharedPtrMaps(cfg.Comps)
+	sm.pool = pool
 
 	mux := http.NewServeMux()
 
@@ -194,8 +286,8 @@ func Run(cfg Config) error {
 					log.Printf("godom: node event unmarshal error: %v", err)
 					continue
 				}
-				if ci := findComponentByNodeID(cfg.Comps, int(evt.NodeId)); ci != nil {
-					handleNodeEvent(ci, evt.NodeId, evt.Value, pool)
+				if ci, compIdx := findComponentByNodeID(cfg.Comps, int(evt.NodeId)); ci != nil {
+					handleNodeEvent(ci, compIdx, evt.NodeId, evt.Value, sm, pool)
 				}
 
 			case 2: // MethodCall (Layer 2)
@@ -204,8 +296,8 @@ func Run(cfg Config) error {
 					log.Printf("godom: method call unmarshal error: %v", err)
 					continue
 				}
-				if ci := findComponentByNodeID(cfg.Comps, int(call.NodeId)); ci != nil {
-					handleMethodCall(ci, call, pool)
+				if ci, compIdx := findComponentByNodeID(cfg.Comps, int(call.NodeId)); ci != nil {
+					handleMethodCall(ci, compIdx, call, sm, pool)
 				}
 			}
 		}
@@ -266,7 +358,8 @@ func wireRefresh(mc *MountedComponent, pool *connPool) {
 				return
 			}
 		}
-		msg := BuildUpdate(ci)
+		msg, changedFields := BuildUpdate(ci)
+		ci.LastChangedFields = changedFields
 		ci.Mu.Unlock()
 		if msg != nil {
 			msg.TargetNodeId = mc.SlotNodeID
@@ -328,27 +421,40 @@ func initOrder(comps []*MountedComponent) []int {
 }
 
 // findComponentByNodeID finds which component owns a given node ID
-// by searching each component's live tree.
-func findComponentByNodeID(comps []*MountedComponent, nodeID int) *component.Info {
-	for _, mc := range comps {
+// by searching each component's live tree. Returns the Info and the
+// component index (for shared-pointer lookups).
+func findComponentByNodeID(comps []*MountedComponent, nodeID int) (*component.Info, int) {
+	for idx, mc := range comps {
 		mc.Info.Mu.Lock()
 		node := vdom.FindNodeByID(mc.Info.Tree, nodeID)
 		mc.Info.Mu.Unlock()
 		if node != nil {
-			return mc.Info
+			return mc.Info, idx
 		}
 	}
-	return nil
+	return nil, -1
 }
 
 // --- VDOM orchestration ---
 
 // BuildInit builds the initial VDomMessage for a client connection.
-// If a live tree exists (from prior connections or node events), it encodes
-// that tree as-is so new clients see the current state.
+// On first call (no tree yet), it builds from scratch.
+// On subsequent calls (reconnect), it re-resolves from the live struct and
+// merges into the existing tree to preserve node IDs for other connections.
 func BuildInit(ci *component.Info) *gproto.VDomMessage {
 	if ci.Tree == nil {
+		// First connection: build from scratch. We must not rebuild ci.Tree
+		// from scratch after this point — node IDs are baked into the bridge's
+		// nodeMap for all connected browsers. A fresh tree would assign new IDs,
+		// causing subsequent patches to reference IDs that existing connections
+		// don't recognize.
 		ci.Tree = buildTree(ci)
+	} else {
+		// Re-resolve from live struct to pick up state changes that
+		// didn't trigger a BuildUpdate for this component (e.g. shared state).
+		// Use BuildUpdate (not just MergeTree) so that Bindings, InputBindings,
+		// and NodeStableIDs are remapped correctly after the merge.
+		_, _ = BuildUpdate(ci)
 	}
 
 	msg, err := render.EncodeInitTreeMessage(ci.Tree)
@@ -360,7 +466,7 @@ func BuildInit(ci *component.Info) *gproto.VDomMessage {
 
 // BuildUpdate rebuilds the tree from templates, diffs against Tree, and
 // returns a patch message. Returns nil if no changes.
-func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
+func BuildUpdate(ci *component.Info) (*gproto.VDomMessage, []string) {
 	// Keep the IDCounter alive across renders so IDs only increase.
 	// Resetting to zero would cause new subtrees (from g-if transitions)
 	// to get IDs that collide with existing nodes elsewhere in the tree,
@@ -376,7 +482,7 @@ func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
 		if err != nil {
 			panic("EncodeInitTreeMessage: " + err.Error())
 		}
-		return msg
+		return msg, nil
 	}
 
 	patches := vdom.Diff(ci.Tree, newTree)
@@ -420,10 +526,32 @@ func BuildUpdate(ci *component.Info) *gproto.VDomMessage {
 	}
 
 	if len(patches) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	return render.EncodePatchMessage(patches)
+	return render.EncodePatchMessage(patches), changedFieldsFromPatches(patches, ci.Bindings)
+}
+
+// changedFieldsFromPatches reverse-looks up patch NodeIDs in the bindings map
+// to determine which field names were affected by the update.
+func changedFieldsFromPatches(patches []vdom.Patch, bindings map[string][]vdom.Binding) []string {
+	if len(bindings) == 0 {
+		return nil
+	}
+	changedIDs := make(map[int]bool, len(patches))
+	for _, p := range patches {
+		changedIDs[p.NodeID] = true
+	}
+	var fields []string
+	for field, bs := range bindings {
+		for _, b := range bs {
+			if changedIDs[b.NodeID] {
+				fields = append(fields, field)
+				break
+			}
+		}
+	}
+	return fields
 }
 
 func buildTree(ci *component.Info) *vdom.ElementNode {
@@ -695,7 +823,7 @@ func handleInit(wc *wsConn, ci *component.Info, targetNodeID int32) error {
 // handleNodeEvent processes a Layer 1 node event: find the node in the live
 // tree by ID, update its Props["value"] (or Props["checked"] for checkboxes),
 // and broadcast a facts patch to all clients.
-func handleNodeEvent(ci *component.Info, nodeID int32, value string, pool *connPool) {
+func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string, sm *sharedPtrMaps, pool *connPool) {
 	ci.Mu.Lock()
 
 	node := vdom.FindNodeByID(ci.Tree, int(nodeID))
@@ -738,6 +866,12 @@ func handleNodeEvent(ci *component.Info, nodeID int32, value string, pool *connP
 		if ci.RefreshFn != nil {
 			ci.Mu.Unlock()
 			ci.RefreshFn()
+			// Refresh siblings sharing embedded pointer state.
+			ci.Mu.Lock()
+			changedFields := ci.LastChangedFields
+			ci.LastChangedFields = nil
+			ci.Mu.Unlock()
+			sm.refreshSharedComponents(compIdx, changedFields)
 			return
 		}
 	}
@@ -770,8 +904,10 @@ func handleNodeEvent(ci *component.Info, nodeID int32, value string, pool *connP
 }
 
 // handleMethodCall processes a Layer 2 method call: call the method on the
-// component, then rebuild the tree and broadcast init to all clients.
-func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPool) {
+// component, then rebuild the tree and broadcast to all clients.
+// If the component shares embedded pointers with siblings, their changed
+// fields are surgically refreshed via MarkRefresh.
+func handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall, sm *sharedPtrMaps, pool *connPool) {
 	ci.Mu.Lock()
 
 	// Convert protobuf [][]byte to []json.RawMessage
@@ -813,10 +949,10 @@ func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPoo
 					continue
 				}
 				setPath := field
-			if b.Expr != "" {
-				setPath = b.Expr
-			}
-			ci.SetField(setPath, json.RawMessage(raw))
+				if b.Expr != "" {
+					setPath = b.Expr
+				}
+				ci.SetField(setPath, json.RawMessage(raw))
 			}
 		}
 	}
@@ -829,13 +965,23 @@ func handleMethodCall(ci *component.Info, call *gproto.MethodCall, pool *connPoo
 	// (which also acquires ci.Mu) can run without deadlocking.
 	ci.Mu.Unlock()
 
-	// Call the method, then refresh all clients.
+	// Call the method, then refresh the component and any siblings
+	// that share embedded pointer state.
 	if err := ci.CallMethod(call.Method, args); err != nil {
 		log.Printf("godom: method call %q error: %v", call.Method, err)
 		return
 	}
 
+	// Refresh the calling component (BuildUpdate + broadcast).
 	ci.RefreshFn()
+
+	// Surgically refresh siblings that share embedded pointer state,
+	// using the changed fields captured during BuildUpdate above.
+	ci.Mu.Lock()
+	changedFields := ci.LastChangedFields
+	ci.LastChangedFields = nil
+	ci.Mu.Unlock()
+	sm.refreshSharedComponents(compIdx, changedFields)
 }
 
 // --- Helpers ---
