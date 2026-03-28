@@ -9,8 +9,6 @@ import (
 	"path"
 	"reflect"
 	"strconv"
-	"strings"
-
 	"github.com/anupshinde/godom/internal/component"
 	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/server"
@@ -175,7 +173,7 @@ func (a *Engine) mountInternal(comp interface{}, fsys fs.FS, entryPath string) {
 	ci.Value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
 
 	idx := len(a.comps)
-	a.comps = append(a.comps, &server.MountedComponent{Info: ci, ParentIdx: -1})
+	a.comps = append(a.comps, &server.MountedComponent{Info: ci})
 	a.compIndex[comp] = idx
 }
 
@@ -292,136 +290,17 @@ func (a *Engine) applyEnv() {
 	}
 }
 
-// slotRef holds a g-slot reference found in a template.
-type slotRef struct {
-	instance string // instance name
-	slotType string // type attribute value (e.g. "component:Counter"), empty for interpolated
-}
-
-// autoWireComponents walks all mounted component templates to find <g-slot>
-// references and automatically wires ParentIdx/SlotName for registered components.
+// autoWireComponents sets SlotName on each registered component's MountedComponent.
+// The SlotName is the registered instance name — the bridge uses it to find
+// target elements with matching g-component attributes in the DOM.
 func (a *Engine) autoWireComponents() {
-	// Build a map of instance name → comp index for registered components.
-	regIdx := make(map[string]int) // instance name → index in a.comps
 	for name, reg := range a.registered {
 		idx, ok := a.compIndex[reg.comp]
 		if !ok {
 			log.Fatalf("godom: registered component %q not found in mounted components", name)
 		}
-		regIdx[name] = idx
+		a.comps[idx].SlotName = name
 	}
-
-	// Walk each mounted component's templates looking for g-slot references.
-	for parentIdx, mc := range a.comps {
-		refs := collectSlotRefs(mc.Info.VDOMTemplates)
-		for _, ref := range refs {
-			childIdx, ok := regIdx[ref.instance]
-			if !ok {
-				continue // dynamic name resolved at runtime, or not a registered component
-			}
-
-			// Validate type if specified — format is "component:TypeName"
-			if ref.slotType != "" {
-				expectedType := strings.TrimPrefix(ref.slotType, "component:")
-				reg := a.registered[ref.instance]
-				actualType := reflect.ValueOf(reg.comp).Elem().Type().Name()
-				if actualType != expectedType {
-					log.Fatalf("godom: <g-slot type=%q instance=%q> expects type %s but registered component is %s",
-						ref.slotType, ref.instance, expectedType, actualType)
-				}
-			}
-
-			if a.comps[childIdx].ParentIdx != -1 {
-				log.Fatalf("godom: component %q is referenced by multiple parents", ref.instance)
-			}
-			a.comps[childIdx].ParentIdx = parentIdx
-			a.comps[childIdx].SlotName = ref.instance
-		}
-	}
-
-	// Second pass: resolve dynamic g-slots by evaluating the parent's templates
-	// against its struct. This handles <g-slot instance="{{slot.RegisteredName}}"> inside g-for.
-	for parentIdx, mc := range a.comps {
-		if !hasDynamicSlots(mc.Info.VDOMTemplates) {
-			continue
-		}
-		ctx := &vdom.ResolveContext{
-			State: mc.Info.Value,
-			Vars:  make(map[string]any),
-			IDs:   &vdom.IDCounter{},
-		}
-		resolved := vdom.ResolveTree(mc.Info.VDOMTemplates, ctx)
-		root := &vdom.ElementNode{Tag: "body", Children: resolved}
-		walkResolvedSlots(root, func(slotName string) {
-			childIdx, ok := regIdx[slotName]
-			if !ok || a.comps[childIdx].ParentIdx != -1 {
-				return // not registered, or already wired by static pass
-			}
-			a.comps[childIdx].ParentIdx = parentIdx
-			a.comps[childIdx].SlotName = slotName
-		})
-	}
-
-	// Validate that all registered components were wired.
-	for name, reg := range a.registered {
-		idx := a.compIndex[reg.comp]
-		if a.comps[idx].ParentIdx == -1 {
-			log.Fatalf("godom: registered component %q is not referenced by any <g-slot> tag", name)
-		}
-	}
-}
-
-// hasDynamicSlots returns true if any template node has an interpolated g-slot instance.
-func hasDynamicSlots(templates []*vdom.TemplateNode) bool {
-	var found bool
-	var walk func([]*vdom.TemplateNode)
-	walk = func(nodes []*vdom.TemplateNode) {
-		for _, n := range nodes {
-			if n.IsSlot && strings.Contains(n.SlotExpr, "{") {
-				found = true
-				return
-			}
-			walk(n.Children)
-			walk(n.ForBody)
-		}
-	}
-	walk(templates)
-	return found
-}
-
-// walkResolvedSlots walks a resolved VDOM tree and calls fn for each slot node's name.
-func walkResolvedSlots(node vdom.Node, fn func(string)) {
-	switch n := node.(type) {
-	case *vdom.ElementNode:
-		if n.IsSlot && n.SlotName != "" {
-			fn(n.SlotName)
-		}
-		for _, child := range n.Children {
-			walkResolvedSlots(child, fn)
-		}
-	case *vdom.KeyedElementNode:
-		for _, kc := range n.Children {
-			walkResolvedSlots(kc.Node, fn)
-		}
-	}
-}
-
-// collectSlotRefs extracts all static g-slot references from a template tree.
-// Interpolated instance names (containing "{{") are skipped — they are resolved at runtime.
-func collectSlotRefs(templates []*vdom.TemplateNode) []slotRef {
-	var refs []slotRef
-	var walk func([]*vdom.TemplateNode)
-	walk = func(nodes []*vdom.TemplateNode) {
-		for _, n := range nodes {
-			if n.IsSlot && n.SlotExpr != "" && !strings.Contains(n.SlotExpr, "{") {
-				refs = append(refs, slotRef{instance: n.SlotExpr, slotType: n.SlotType})
-			}
-			walk(n.Children)
-			walk(n.ForBody)
-		}
-	}
-	walk(templates)
-	return refs
 }
 
 // embedsComponent checks if a struct type embeds godom.Component.

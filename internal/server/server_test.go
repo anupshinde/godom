@@ -562,7 +562,7 @@ func TestHandleInit_SendsInitMessage(t *testing.T) {
 	<-done
 
 	wc := &wsConn{conn: serverConn}
-	if err := handleInit(wc, ci, 0); err != nil {
+	if err := handleInit(wc, ci, ""); err != nil {
 		t.Fatalf("handleInit error: %v", err)
 	}
 
@@ -3113,7 +3113,7 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 			return
 		}
 		wc := pool.add(conn)
-		if err := handleInit(wc, ci, 0); err != nil {
+		if err := handleInit(wc, ci, ""); err != nil {
 			pool.remove(wc)
 			conn.Close()
 			return
@@ -3358,72 +3358,6 @@ func TestInitOrder_Empty(t *testing.T) {
 	order := initOrder(nil)
 	if len(order) != 0 {
 		t.Errorf("expected empty, got %v", order)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// findSlotNodeID tests
-// ---------------------------------------------------------------------------
-
-func TestFindSlotNodeID_Found(t *testing.T) {
-	tree := &vdom.ElementNode{
-		NodeBase: vdom.NodeBase{ID: 1}, Tag: "div",
-		Children: []vdom.Node{
-			&vdom.ElementNode{
-				NodeBase: vdom.NodeBase{ID: 2}, Tag: "div",
-				IsSlot: true, SlotName: "counter",
-			},
-			&vdom.TextNode{NodeBase: vdom.NodeBase{ID: 3}, Text: "hello"},
-		},
-	}
-	id := findSlotNodeID(tree, "counter")
-	if id != 2 {
-		t.Errorf("expected slot node ID 2, got %d", id)
-	}
-}
-
-func TestFindSlotNodeID_NotFound(t *testing.T) {
-	tree := &vdom.ElementNode{
-		NodeBase: vdom.NodeBase{ID: 1}, Tag: "div",
-		Children: []vdom.Node{
-			&vdom.TextNode{NodeBase: vdom.NodeBase{ID: 2}, Text: "hello"},
-		},
-	}
-	id := findSlotNodeID(tree, "counter")
-	if id != 0 {
-		t.Errorf("expected 0 for not found, got %d", id)
-	}
-}
-
-func TestFindSlotNodeID_NilTree(t *testing.T) {
-	id := findSlotNodeID(nil, "counter")
-	if id != 0 {
-		t.Errorf("expected 0 for nil tree, got %d", id)
-	}
-}
-
-func TestFindSlotNodeID_NestedInKeyed(t *testing.T) {
-	tree := &vdom.KeyedElementNode{
-		NodeBase: vdom.NodeBase{ID: 1}, Tag: "ul",
-		Children: []vdom.KeyedChild{
-			{Key: "a", Node: &vdom.ElementNode{
-				NodeBase: vdom.NodeBase{ID: 5}, Tag: "div",
-				IsSlot: true, SlotName: "sidebar",
-			}},
-		},
-	}
-	id := findSlotNodeID(tree, "sidebar")
-	if id != 5 {
-		t.Errorf("expected 5, got %d", id)
-	}
-}
-
-func TestFindSlotNodeID_TextNode(t *testing.T) {
-	// Text nodes aren't slot nodes; should return 0
-	tree := &vdom.TextNode{NodeBase: vdom.NodeBase{ID: 1}, Text: "hello"}
-	id := findSlotNodeID(tree, "counter")
-	if id != 0 {
-		t.Errorf("expected 0 for text node, got %d", id)
 	}
 }
 

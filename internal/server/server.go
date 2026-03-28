@@ -26,12 +26,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// MountedComponent pairs a component with its slot in a parent component.
+// MountedComponent pairs a component with its render target name.
 type MountedComponent struct {
-	Info       *component.Info
-	ParentIdx  int    // index of parent component in Comps (-1 = no parent / root)
-	SlotName   string // instance name in parent's <g-slot> (empty = root, renders into body)
-	SlotNodeID int32  // VDOM node ID of the slot element in parent's tree (set during init)
+	Info     *component.Info
+	SlotName string // registered instance name (empty = root, renders into body)
 }
 
 // Config holds everything the server needs to run.
@@ -189,14 +187,8 @@ func Run(cfg Config) error {
 	}
 	injectedJS += "<script>" + cfg.BridgeJS + "</script>\n"
 
-	// The root component (ParentIdx < 0) provides the page HTML.
-	var pageHTML string
-	for _, mc := range cfg.Comps {
-		if mc.ParentIdx < 0 {
-			pageHTML = strings.Replace(mc.Info.HTMLBody, "</body>", injectedJS+"</body>", 1)
-			break
-		}
-	}
+	// The root component (first in Comps, mounted via Mount) provides the page HTML.
+	pageHTML := strings.Replace(cfg.Comps[0].Info.HTMLBody, "</body>", injectedJS+"</body>", 1)
 
 	// Serve static assets (CSS, images, etc.) from the embedded UI filesystem.
 	staticHandler := http.FileServer(http.FS(cfg.StaticFS))
@@ -233,18 +225,9 @@ func Run(cfg Config) error {
 
 		wc := pool.add(conn)
 
-		// Send init for each component in topological order (parents before children).
-		for _, idx := range initOrder(cfg.Comps) {
-			mc := cfg.Comps[idx]
-			// Resolve slot node ID from parent's tree (parent is already initialized).
-			if mc.ParentIdx >= 0 && mc.SlotName != "" {
-				parentTree := cfg.Comps[mc.ParentIdx].Info.Tree
-				mc.SlotNodeID = findSlotNodeID(parentTree, mc.SlotName)
-				if mc.SlotNodeID == 0 {
-					log.Printf("godom: slot %q not found in parent tree", mc.SlotName)
-				}
-			}
-			if err := handleInit(wc, mc.Info, mc.SlotNodeID); err != nil {
+		// Send init for each component in mount order (root first, children after).
+		for _, mc := range cfg.Comps {
+			if err := handleInit(wc, mc.Info, mc.SlotName); err != nil {
 				log.Printf("godom: failed to compute init for slot %q: %v", mc.SlotName, err)
 				pool.remove(wc)
 				conn.Close()
@@ -339,8 +322,7 @@ func Run(cfg Config) error {
 }
 
 // wireRefresh sets up the RefreshFn for a mounted component.
-// The slot node ID is read from mc.SlotNodeID at refresh time (set during init).
-// For root components, SlotNodeID is 0, which tells the bridge to render into body.
+// For root components, SlotName is empty, which tells the bridge to render into body.
 func wireRefresh(mc *MountedComponent, pool *connPool) {
 	ci := mc.Info
 	ci.RefreshFn = func() {
@@ -352,7 +334,7 @@ func wireRefresh(mc *MountedComponent, pool *connPool) {
 			if len(patches) > 0 {
 				ci.Mu.Unlock()
 				msg := render.EncodePatchMessage(patches)
-				msg.TargetNodeId = mc.SlotNodeID
+				msg.TargetName = mc.SlotName
 				data, _ := proto.Marshal(msg)
 				pool.broadcast(data)
 				return
@@ -362,63 +344,15 @@ func wireRefresh(mc *MountedComponent, pool *connPool) {
 		ci.LastChangedFields = changedFields
 		ci.Mu.Unlock()
 		if msg != nil {
-			msg.TargetNodeId = mc.SlotNodeID
+			msg.TargetName = mc.SlotName
 			data, _ := proto.Marshal(msg)
 			pool.broadcast(data)
 		}
 	}
 }
 
-// findSlotNodeID walks the resolved tree and returns the VDOM node ID of the
-// slot element with the given name. Returns 0 if not found.
-func findSlotNodeID(tree vdom.Node, slotName string) int32 {
-	if tree == nil {
-		return 0
-	}
-	switch n := tree.(type) {
-	case *vdom.ElementNode:
-		if n.IsSlot && n.SlotName == slotName {
-			return int32(n.ID)
-		}
-		for _, c := range n.Children {
-			if id := findSlotNodeID(c, slotName); id != 0 {
-				return id
-			}
-		}
-	case *vdom.KeyedElementNode:
-		for _, kc := range n.Children {
-			if id := findSlotNodeID(kc.Node, slotName); id != 0 {
-				return id
-			}
-		}
-	}
-	return 0
-}
 
-// initOrder returns indices into comps in topological order: parents before
-// children. Components with ParentIdx == -1 come first, then their children, etc.
-func initOrder(comps []*MountedComponent) []int {
-	n := len(comps)
-	order := make([]int, 0, n)
-	visited := make([]bool, n)
 
-	// Simple BFS-like: first add all roots, then their children, etc.
-	for changed := true; changed; {
-		changed = false
-		for i := 0; i < n; i++ {
-			if visited[i] {
-				continue
-			}
-			parent := comps[i].ParentIdx
-			if parent < 0 || visited[parent] {
-				order = append(order, i)
-				visited[i] = true
-				changed = true
-			}
-		}
-	}
-	return order
-}
 
 // findComponentByNodeID finds which component owns a given node ID
 // by searching each component's live tree. Returns the Info and the
@@ -808,10 +742,10 @@ func (p *connPool) broadcastClose(closeMsg []byte) {
 
 // --- Message handlers ---
 
-func handleInit(wc *wsConn, ci *component.Info, targetNodeID int32) error {
+func handleInit(wc *wsConn, ci *component.Info, targetName string) error {
 	ci.Mu.Lock()
 	msg := BuildInit(ci)
-	msg.TargetNodeId = targetNodeID
+	msg.TargetName = targetName
 	ci.Mu.Unlock()
 	data, err := proto.Marshal(msg)
 	if err != nil {
