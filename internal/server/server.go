@@ -181,6 +181,23 @@ func Run(cfg Config) error {
 	}
 	injectedJS += "<script>" + cfg.BridgeJS + "</script>\n"
 
+	// Serve the full JS bundle: protobuf, protocol, plugins, bridge.
+	var bundleJS string
+	bundleJS += cfg.ProtobufMinJS + "\n" + cfg.ProtocolJS + "\n"
+	if len(cfg.Plugins) > 0 {
+		bundleJS += "window.godom={_plugins:{},register:function(n,h){this._plugins[n]=h}};\n"
+		for _, pluginScripts := range cfg.Plugins {
+			for _, js := range pluginScripts {
+				bundleJS += js + "\n"
+			}
+		}
+	}
+	bundleJS += cfg.BridgeJS
+	mux.HandleFunc("/godom.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		fmt.Fprint(w, bundleJS)
+	})
+
 	// The root component (first in Comps, mounted via Mount) provides the page HTML.
 	pageHTML := strings.Replace(cfg.Comps[0].HTMLBody, "</body>", injectedJS+"</body>", 1)
 
