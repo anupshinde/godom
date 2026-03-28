@@ -109,7 +109,7 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 //
 // For single-component apps, call Mount once. For multi-component apps, Mount the
 // root component and use Register() for child components — they are auto-wired to
-// parent templates based on <g-slot> tags.
+// parent templates via g-component attributes.
 func (a *Engine) Mount(comp interface{}, entryPath string) {
 	if a.uiFS == nil {
 		log.Fatal("godom: call SetUI() before Mount()")
@@ -178,7 +178,7 @@ func (a *Engine) mountInternal(comp interface{}, fsys fs.FS, entryPath string) {
 }
 
 // Register registers a named component with a template. The name is used in
-// <g-slot type="component:Type" instance="name"> tags in parent templates.
+// g-component="name" attributes on elements in parent templates.
 //
 // Register uses the filesystem set via SetUI() or the one from the first Mount() call.
 // The entryPath is relative to that filesystem (e.g. "ui/counter/index.html").
@@ -216,8 +216,6 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	a.mountInternal(comp, a.uiFS, entryPath)
 }
 
-// AddToSlot registers a child component to render into a named <g-slot> in the
-// parent component's template. Both parent and child must already be mounted.
 // Start starts the HTTP server, opens the default browser, and blocks forever.
 // If GODOM_VALIDATE_ONLY=1 is set, Start() returns immediately after Mount() validation
 // succeeds — useful for CI and pre-commit checks.
@@ -226,7 +224,7 @@ func (a *Engine) Start() error {
 		return fmt.Errorf("godom: no component mounted, call Mount() before Start()")
 	}
 
-	// Auto-wire registered components to their parents based on g-slot tags.
+	// Auto-wire registered components to their g-component targets.
 	if len(a.registered) > 0 {
 		a.autoWireComponents()
 	}
@@ -291,8 +289,7 @@ func (a *Engine) applyEnv() {
 }
 
 // autoWireComponents sets SlotName on each registered component's MountedComponent.
-// The SlotName is the registered instance name — the bridge uses it to find
-// target elements with matching g-component attributes in the DOM.
+// The bridge uses it to find target elements with matching g-component attributes.
 func (a *Engine) autoWireComponents() {
 	for name, reg := range a.registered {
 		idx, ok := a.compIndex[reg.comp]

@@ -69,13 +69,6 @@ func diffText(old, new *TextNode, patches *[]Patch) {
 // Element (non-keyed children)
 // ---------------------------------------------------------------------------
 
-// IsSlotNode returns true if the element is a g-slot placeholder.
-// Slot nodes are opaque boundaries — their children are managed by child
-// components and must not be diffed or merged by the parent.
-func IsSlotNode(n *ElementNode) bool {
-	return n.IsSlot
-}
-
 func diffElement(old, new *ElementNode, patches *[]Patch) {
 	if old.Tag != new.Tag || old.Namespace != new.Namespace {
 		*patches = append(*patches, Patch{
@@ -93,12 +86,6 @@ func diffElement(old, new *ElementNode, patches *[]Patch) {
 			NodeID: old.ID,
 			Data:   PatchFactsData{Diff: fd},
 		})
-	}
-
-	// Slot nodes are opaque boundaries — skip child diffing.
-	// Children are owned by child components with their own diff cycle.
-	if IsSlotNode(old) && IsSlotNode(new) {
-		return
 	}
 
 	diffChildren(old.Children, new.Children, patches, old.ID)

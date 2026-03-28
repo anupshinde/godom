@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"regexp"
 	"strings"
 
 	"sync"
@@ -50,11 +49,6 @@ type TemplateNode struct {
 	PluginName string // plugin name from g-plugin:name
 	PluginExpr string // data expression
 
-	// For g-slot nodes
-	IsSlot   bool
-	SlotExpr string // instance name expression (e.g. "counter" or "{{slot.Name}}")
-	SlotType string // type attribute (e.g. "component:Counter"), required for static names
-
 	// StableID is a UUID assigned at parse time to unbound form inputs.
 	// Used to preserve input values across tree rebuilds.
 	StableID string
@@ -81,12 +75,6 @@ type TextPart struct {
 
 // ParseTemplate parses HTML into a template tree.
 func ParseTemplate(htmlStr string) ([]*TemplateNode, error) {
-	// Go's html.Parse doesn't treat custom elements as void/self-closing.
-	// <g-slot .../> is parsed as <g-slot ...> (open tag), which
-	// swallows all subsequent siblings as children. Expand to explicit
-	// closing tags so the parser produces correct sibling structure.
-	htmlStr = expandSelfClosingGSlot(htmlStr)
-
 	doc, err := html.Parse(strings.NewReader(htmlStr))
 	if err != nil { // unreachable: html.Parse never errors, but kept as defensive check
 		return nil, fmt.Errorf("parse HTML: %w", err)
@@ -103,51 +91,9 @@ func ParseTemplate(htmlStr string) ([]*TemplateNode, error) {
 			nodes = append(nodes, tn)
 		}
 	}
-	if err := checkDuplicateSlots(nodes); err != nil {
-		return nil, err
-	}
 	return nodes, nil
 }
 
-// checkDuplicateSlots walks the template tree and returns an error if any
-// static slot name appears more than once.
-func checkDuplicateSlots(nodes []*TemplateNode) error {
-	seen := map[string]bool{}
-	var walk func([]*TemplateNode) error
-	walk = func(nodes []*TemplateNode) error {
-		for _, n := range nodes {
-			if n.IsSlot {
-				if n.SlotExpr == "" {
-					return fmt.Errorf("<g-slot> requires a non-empty 'instance' attribute")
-				}
-				isInterpolated := strings.Contains(n.SlotExpr, "{")
-				if isInterpolated {
-					// Interpolated names are dynamic — skip duplicate and type checks
-				} else {
-					// Static name — must be a valid identifier, type attribute is required
-					if !IsValidIdentifier(n.SlotExpr) {
-						return fmt.Errorf("<g-slot instance=%q> must be a valid identifier (letters, digits, underscores; cannot start with a digit)", n.SlotExpr)
-					}
-					if n.SlotType == "" {
-						return fmt.Errorf("<g-slot instance=%q> requires a 'type' attribute for static names", n.SlotExpr)
-					}
-					if !strings.HasPrefix(n.SlotType, "component:") || strings.TrimPrefix(n.SlotType, "component:") == "" {
-						return fmt.Errorf("<g-slot instance=%q> type must be \"component:TypeName\", got %q", n.SlotExpr, n.SlotType)
-					}
-					if seen[n.SlotExpr] {
-						return fmt.Errorf("duplicate <g-slot> instance %q in template", n.SlotExpr)
-					}
-					seen[n.SlotExpr] = true
-				}
-			}
-			if err := walk(n.Children); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	return walk(nodes)
-}
 
 func htmlToTemplate(n *html.Node) *TemplateNode {
 	switch n.Type {
@@ -174,16 +120,6 @@ func htmlElementToTemplate(n *html.Node) *TemplateNode {
 
 	if forExpr := getAttrVal(n, "g-for"); forExpr != "" {
 		return parseForTemplate(n, forExpr)
-	}
-
-	// <g-slot type="component:Counter" instance="counter">
-	// <g-slot type="component:Counter" instance="counter"/>
-	// <g-slot instance="{{slot.Name}}"/>  — interpolated, type optional
-	if tag == "g-slot" {
-		instance := getAttrVal(n, "instance")
-		slotType := getAttrVal(n, "type")
-		tn := &TemplateNode{IsSlot: true, SlotExpr: instance, SlotType: slotType}
-		return tn
 	}
 
 	pluginName, pluginExpr := extractPluginDirective(n)
@@ -557,10 +493,6 @@ func ResolveTemplateNode(t *TemplateNode, ctx *ResolveContext) []Node {
 		}
 	}
 
-	if t.IsSlot {
-		return []Node{resolveSlotNode(t, ctx)}
-	}
-
 	if t.IsPlugin {
 		return []Node{resolvePluginNode(t, ctx)}
 	}
@@ -750,25 +682,6 @@ func resolveForNode(t *TemplateNode, ctx *ResolveContext) []Node {
 	}
 
 	return nodes
-}
-
-func resolveSlotNode(t *TemplateNode, ctx *ResolveContext) Node {
-	id := nextID(ctx)
-
-	// Resolve instance name — supports {{expr}} interpolation like all attributes.
-	// instance="counter" → "counter", instance="{{slot.Name}}" → resolved value.
-	name := resolveAttrValue(t.SlotExpr, ctx)
-
-	// Create a plain div placeholder. Slot metadata lives on the VDOM node
-	// (IsSlot/SlotName), not in DOM attributes. The bridge targets this node
-	// via its VDOM ID (nodeMap lookup), not via getElementById.
-	el := &ElementNode{
-		NodeBase: NodeBase{ID: id},
-		Tag:      "div",
-		IsSlot:   true,
-		SlotName: name,
-	}
-	return el
 }
 
 func resolvePluginNode(t *TemplateNode, ctx *ResolveContext) Node {
@@ -1545,12 +1458,3 @@ func findBody(n *html.Node) *html.Node {
 	return nil
 }
 
-// gSlotSelfCloseRe matches self-closing <g-slot .../> tags.
-var gSlotSelfCloseRe = regexp.MustCompile(`<g-slot\b([^>]*?)/>`)
-
-// expandSelfClosingGSlot rewrites <g-slot .../> → <g-slot ...></g-slot>
-// so Go's html.Parse treats them as proper sibling elements instead of
-// nesting subsequent tags inside the first unclosed g-slot.
-func expandSelfClosingGSlot(s string) string {
-	return gSlotSelfCloseRe.ReplaceAllString(s, `<g-slot$1></g-slot>`)
-}
