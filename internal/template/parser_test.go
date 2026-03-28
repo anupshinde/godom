@@ -7,59 +7,6 @@ import (
 	"testing/fstest"
 )
 
-func TestParseForExprParts(t *testing.T) {
-	tests := []struct {
-		expr      string
-		wantItem  string
-		wantIndex string
-		wantList  string
-	}{
-		{"todo in Todos", "todo", "", "Todos"},
-		{"todo, i in Todos", "todo", "i", "Todos"},
-		{"item , idx in Items", "item", "idx", "Items"},
-	}
-
-	for _, tt := range tests {
-		p := ParseForExprParts(tt.expr)
-		if p == nil {
-			t.Fatalf("ParseForExprParts(%q) returned nil", tt.expr)
-		}
-		if p.Item != tt.wantItem {
-			t.Errorf("Item = %q, want %q", p.Item, tt.wantItem)
-		}
-		if p.Index != tt.wantIndex {
-			t.Errorf("Index = %q, want %q", p.Index, tt.wantIndex)
-		}
-		if p.List != tt.wantList {
-			t.Errorf("List = %q, want %q", p.List, tt.wantList)
-		}
-	}
-}
-
-func TestParseForExprParts_Invalid(t *testing.T) {
-	if p := ParseForExprParts("invalid"); p != nil {
-		t.Error("expected nil for invalid expression")
-	}
-}
-
-func TestExprRoot(t *testing.T) {
-	tests := []struct {
-		expr string
-		want string
-	}{
-		{"InputText", "InputText"},
-		{"todo.Done", "todo"},
-		{"item.Address.City", "item"},
-		{"", ""},
-	}
-
-	for _, tt := range tests {
-		if got := ExprRoot(tt.expr); got != tt.want {
-			t.Errorf("ExprRoot(%q) = %q, want %q", tt.expr, got, tt.want)
-		}
-	}
-}
-
 // --- Template expansion tests ---
 
 func TestExtractGAttrs(t *testing.T) {
@@ -408,16 +355,4 @@ func TestExtractGAttrs_Empty(t *testing.T) {
 	}
 }
 
-func TestExprRoot_LeadingWhitespace(t *testing.T) {
-	// TrimSpace should handle leading/trailing whitespace
-	if got := ExprRoot(" Name "); got != "Name" {
-		t.Errorf("ExprRoot(\" Name \") = %q, want Name", got)
-	}
-}
-
-func TestExprRoot_DottedWithWhitespace(t *testing.T) {
-	if got := ExprRoot(" todo.Done "); got != "todo" {
-		t.Errorf("ExprRoot(\" todo.Done \") = %q, want todo", got)
-	}
-}
 

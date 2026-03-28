@@ -1226,28 +1226,6 @@ func callMethod(v reflect.Value, name string) any {
 	return m.Call(nil)[0].Interface()
 }
 
-// callMethodWithArgs calls a method with pre-resolved arguments and returns its result.
-// Returns nil if the method doesn't exist or has no return value.
-func callMethodWithArgs(v reflect.Value, name string, args []any) any {
-	m := v.MethodByName(name)
-	if !m.IsValid() {
-		return nil
-	}
-	mt := m.Type()
-	if mt.NumOut() != 1 {
-		return nil
-	}
-	in := make([]reflect.Value, len(args))
-	for i, a := range args {
-		if a == nil {
-			in[i] = reflect.Zero(mt.In(i))
-		} else {
-			in[i] = reflect.ValueOf(a)
-		}
-	}
-	return m.Call(in)[0].Interface()
-}
-
 // ParseMapAccess parses "Field[key]" into ("Field", "key", true).
 // Returns ("", "", false) if the expression doesn't match bracket syntax.
 func ParseMapAccess(expr string) (field, key string, ok bool) {

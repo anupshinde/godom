@@ -1686,7 +1686,7 @@ func TestResolveExpr_MethodWithArgs(t *testing.T) {
 	state := &testDirectiveState{}
 	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
 
-	// Add(3, 4) should work via ParseMethodCall + callMethodWithArgs
+	// Add(3, 4) should work via ParseMethodCall + expr-lang
 	// But Add takes int args and ResolveExpr for "3" returns nil (not a field).
 	// So we need loop vars or fields. Let's use Vars.
 	ctx.Vars["a"] = 3
@@ -2658,7 +2658,7 @@ func TestResolveStructField_NilRootPointer(t *testing.T) {
 }
 
 func TestResolveExpr_MethodWithArgsNoReturn(t *testing.T) {
-	// Exercises callMethodWithArgs NumOut != 1 branch (line 827-828)
+	// Exercises method call with no return value
 	// NoReturnWithArgs takes args but returns nothing
 	state := &testCallState{}
 	ctx := &ResolveContext{
@@ -2745,7 +2745,7 @@ func findTemplateByTag(nodes []*TemplateNode, tag string) *TemplateNode {
 }
 
 func TestResolveExpr_CallMethodWithNilArg(t *testing.T) {
-	// Exercises callMethodWithArgs nil arg path (line 832-833)
+	// Exercises method call with nil arg
 	type state struct{}
 	s := &state{}
 	ctx := &ResolveContext{State: reflect.ValueOf(s)}
