@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>Same Component Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+    <h1 class="text-2xl font-bold mb-6" g-text="Title">Title</h1>
+    <div class="flex gap-8">
+        <div class="bg-white rounded-xl p-6 shadow-sm flex-1">
+            <h2 class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Left</h2>
+            <!-- <g-slot type="component:Counter" instance="counter_single"></g-slot> -->
+            <div component-instance="counter_single"></div>
+        </div>
+        <div class="bg-white rounded-xl p-6 shadow-sm flex-1">
+            <h2 class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Right</h2>
+            <div component-instance="counter_single"></div>
+            <!-- <g-slot type="component:Counter" instance="counter_single"></g-slot> -->
+        </div>
+    </div>
+</body>
+</html>
