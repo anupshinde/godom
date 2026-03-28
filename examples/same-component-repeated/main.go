@@ -33,12 +33,11 @@ func main() {
 	eng := godom.NewEngine()
 	eng.SetUI(ui)
 
-	// Same instance, registered twice with different names
-	counter := &Counter{Step: 1}
-	eng.Register("counter_single", counter, "ui/counter/index.html")
-
 	layout := &Layout{Title: "Same Component Test"}
 	eng.Mount(layout, "ui/layout/index.html")
+
+	counter := &Counter{Step: 1}
+	eng.Register("counter_single", counter, "ui/counter/index.html")
 
 	log.Fatal(eng.Start())
 }

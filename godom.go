@@ -231,15 +231,6 @@ func (a *Engine) Start() error {
 		a.autoWireComponents()
 	}
 
-	// Ensure root component (SlotName="") is first — its DOM must exist
-	// before child components can find their g-component target elements.
-	for i, mc := range a.comps {
-		if mc.SlotName == "" && i > 0 {
-			a.comps[0], a.comps[i] = a.comps[i], a.comps[0]
-			break
-		}
-	}
-
 	if env.Bool("GODOM_VALIDATE_ONLY") {
 		if !a.Quiet {
 			fmt.Println("godom: validation passed")
