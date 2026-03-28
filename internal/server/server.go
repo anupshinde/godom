@@ -166,22 +166,7 @@ func Run(cfg Config) error {
 
 	mux := http.NewServeMux()
 
-	// Build injected scripts: protobuf library, protocol definitions,
-	// plugin registration + scripts, then bridge (last).
-	var injectedJS string
-	injectedJS += "<script>" + cfg.ProtobufMinJS + "</script>\n"
-	injectedJS += "<script>" + cfg.ProtocolJS + "</script>\n"
-	if len(cfg.Plugins) > 0 {
-		injectedJS += "<script>window.godom={_plugins:{},register:function(n,h){this._plugins[n]=h}};</script>\n"
-		for _, pluginScripts := range cfg.Plugins {
-			for _, js := range pluginScripts {
-				injectedJS += "<script>" + js + "</script>\n"
-			}
-		}
-	}
-	injectedJS += "<script>" + cfg.BridgeJS + "</script>\n"
-
-	// Serve the full JS bundle: protobuf, protocol, plugins, bridge.
+	// Build the JS bundle once: protobuf, protocol, plugins, bridge.
 	var bundleJS string
 	bundleJS += cfg.ProtobufMinJS + "\n" + cfg.ProtocolJS + "\n"
 	if len(cfg.Plugins) > 0 {
@@ -193,10 +178,15 @@ func Run(cfg Config) error {
 		}
 	}
 	bundleJS += cfg.BridgeJS
+
+	// Serve as external script at /godom.js.
 	mux.HandleFunc("/godom.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript")
 		fmt.Fprint(w, bundleJS)
 	})
+
+	// Inline into the page HTML.
+	injectedJS := "<script>" + bundleJS + "</script>\n"
 
 	// The root component (first in Comps, mounted via Mount) provides the page HTML.
 	pageHTML := strings.Replace(cfg.Comps[0].HTMLBody, "</body>", injectedJS+"</body>", 1)
