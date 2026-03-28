@@ -195,11 +195,11 @@ Each component is a self-contained unit: own Go struct, own HTML template, own V
 
 ```
 eng.SetFS(ui)
-eng.Register("counter", counter, "ui/counter/index.html")  // child component
 eng.Mount(layout, "ui/layout/index.html")                  // root component
+eng.Register("counter", counter, "ui/counter/index.html")  // child component
 ```
 
-Components compose via `<g-slot>` — the parent declares named insertion points, children render into them. The root component provides the full HTML page (with `<body>`). Child components provide HTML fragments. On init, components are sent to the browser in topological order (parents before children). Each child targets a specific VDOM node ID in its parent's tree.
+Components compose via `g-component` attributes — the parent declares named elements, children render into them. The root component provides the full HTML page (with `<body>`). Child components provide HTML fragments. On init, components are sent to the browser in mount order (root first, then children). Each child targets DOM elements with matching `g-component` attributes.
 
 ```
 ┌─────────────────── Go process ───────────────────┐
