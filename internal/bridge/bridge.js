@@ -5,7 +5,7 @@
 // On "patch": applies minimal DOM mutations using nodeMap[id] lookups.
 //
 // Each render target is identified by name (from g-component attribute).
-// The root component has an empty name and renders into document.body.
+// The root component has name "document.body" and renders into document.body.
 // A named component can have multiple DOM targets — each gets its own
 // encapsulated context (own nodeMap, own pluginState).
 //
@@ -112,7 +112,7 @@
     // initTarget creates encapsulated contexts for a named component and
     // builds the initial DOM tree inside each target element.
     function initTarget(name, msg) {
-        if (name === "") {
+        if (name === "document.body") {
             // Root component: render into document.body.
             // Destroy all existing target contexts first.
             for (var n in targets) {

@@ -123,6 +123,8 @@ func (a *Engine) Mount(comp interface{}, entryPath string) {
 	}
 
 	a.mountInternal(comp, a.uiFS, entryPath)
+	// Root component renders into document.body.
+	a.comps[len(a.comps)-1].SlotName = "document.body"
 }
 
 // mountInternal is the shared mount logic used by both Mount and Register.
@@ -227,6 +229,13 @@ func (a *Engine) Start() error {
 	// Auto-wire registered components to their g-component targets.
 	if len(a.registered) > 0 {
 		a.autoWireComponents()
+	}
+
+	// Validate: every component must have a SlotName.
+	for _, ci := range a.comps {
+		if ci.SlotName == "" {
+			log.Fatal("godom: every component must have a SlotName — use Mount() for the root and Register() for children")
+		}
 	}
 
 	if env.Bool("GODOM_VALIDATE_ONLY") {

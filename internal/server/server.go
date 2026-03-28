@@ -316,7 +316,6 @@ func Run(cfg Config) error {
 }
 
 // wireRefresh sets up the RefreshFn for a mounted component.
-// For root components, SlotName is empty, which tells the bridge to render into body.
 func wireRefresh(ci *component.Info, pool *connPool) {
 	ci.RefreshFn = func() {
 		ci.Mu.Lock()
