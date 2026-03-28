@@ -232,12 +232,12 @@ Components compose via `g-component` attributes — the parent declares named el
 │                    │                              │
 │    ┌───────────────┼───────────────┐              │
 │    ▼               ▼               ▼              │
-│  [body]     [slot:counter]   [slot:clock]         │
-│  (layout)   (counter DOM)    (clock DOM)          │
+│  [body]     [g-component=    [g-component=        │
+│  (layout)    "counter"]       "clock"]            │
 └───────────────────────────────────────────────────┘
 ```
 
-The bridge doesn't know there are multiple components. It sees one `nodeMap`, one WebSocket, and a sequence of init and patch messages — some targeting the body (root), others targeting slot elements via `targetNodeId`. All components share a single `IDCounter` so node IDs are globally unique. When a browser event arrives, the server searches each component's tree to find which one owns the target node ID, and dispatches the event to that component.
+The bridge doesn't know there are multiple components. It sees one `nodeMap`, one WebSocket, and a sequence of init and patch messages — some targeting the body (root), others targeting elements with a matching `g-component` attribute via `targetName`. All components share a single `IDCounter` so node IDs are globally unique. When a browser event arrives, the server searches each component's tree to find which one owns the target node ID, and dispatches the event to that component.
 
 Cross-component communication uses Go callbacks wired in `main.go`:
 

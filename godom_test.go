@@ -354,17 +354,17 @@ type childApp struct {
 
 var childHTML = `<!DOCTYPE html><html><head></head><body><span g-text="Value">placeholder</span></body></html>`
 
-// Parent template with a static g-slot for auto-wiring tests.
+// Parent template with a g-component target for auto-wiring tests.
 var parentWithSlotHTML = `<!DOCTYPE html><html><head></head><body>
 	<span g-text="Name">placeholder</span>
-	<g-slot type="component:childApp" instance="sidebar"></g-slot>
+	<div g-component="sidebar"></div>
 </body></html>`
 
-// Parent template with two static g-slots.
+// Parent template with two g-component targets.
 var parentWithTwoSlotsHTML = `<!DOCTYPE html><html><head></head><body>
 	<span g-text="Name">placeholder</span>
-	<g-slot type="component:childApp" instance="sidebar"></g-slot>
-	<g-slot type="component:childApp" instance="footer"></g-slot>
+	<div g-component="sidebar"></div>
+	<div g-component="footer"></div>
 </body></html>`
 
 func makeSlotTestFS() fstest.MapFS {

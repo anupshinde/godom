@@ -199,7 +199,7 @@ eng.Register("counter", counter, "ui/counter/index.html")  // child component
 eng.Mount(layout, "ui/layout/index.html")                  // root component
 ```
 
-Components compose via `<g-slot>` — the parent declares named insertion points, children render into them. The root component provides the full HTML page (with `<body>`). Child components provide HTML fragments. On init, components are sent to the browser in topological order (parents before children). Each child targets a specific VDOM node ID in its parent's tree.
+Components compose via `g-component` — the parent declares named insertion points using the `g-component` attribute, children render into them. The root component provides the full HTML page (with `<body>`). Child components provide HTML fragments. On init, each component is sent to the browser with an instance name. The bridge finds target elements via `querySelectorAll('[g-component="name"]')`.
 
 ```
 ┌─────────────────── Go process ───────────────────┐
@@ -232,12 +232,12 @@ Components compose via `<g-slot>` — the parent declares named insertion points
 │                    │                              │
 │    ┌───────────────┼───────────────┐              │
 │    ▼               ▼               ▼              │
-│  [body]     [slot:counter]   [slot:clock]         │
-│  (layout)   (counter DOM)    (clock DOM)          │
+│  [body]     [g-component=    [g-component=        │
+│  (layout)    "counter"]       "clock"]            │
 └───────────────────────────────────────────────────┘
 ```
 
-The bridge doesn't know there are multiple components. It sees one `nodeMap`, one WebSocket, and a sequence of init and patch messages — some targeting the body (root), others targeting slot elements via `targetNodeId`. All components share a single `IDCounter` so node IDs are globally unique. When a browser event arrives, the server searches each component's tree to find which one owns the target node ID, and dispatches the event to that component.
+The bridge doesn't know there are multiple components. It sees one `nodeMap`, one WebSocket, and a sequence of init and patch messages — some targeting the body (root), others targeting elements with a matching `g-component` attribute via `targetName`. All components share a single `IDCounter` so node IDs are globally unique. When a browser event arrives, the server searches each component's tree to find which one owns the target node ID, and dispatches the event to that component.
 
 Cross-component communication uses Go callbacks wired in `main.go`:
 

@@ -227,12 +227,12 @@ Custom elements are template includes — directives inside the child HTML resol
 
 ### Stateful components
 
-For apps with multiple independent pieces of state, each component gets its own Go struct, its own HTML template, and its own VDOM tree. Components compose via `<g-slot>` — the parent declares insertion points, children render into them.
+For apps with multiple independent pieces of state, each component gets its own Go struct, its own HTML template, and its own VDOM tree. Components compose via `g-component` — the parent declares insertion points, children render into them.
 
 ```go
 eng.SetFS(ui)
 
-// Child components — registered by name, auto-wired to layout's <g-slot> tags
+// Child components — registered by name, render into matching g-component targets
 counter := &Counter{Step: 1}
 eng.Register("counter", counter, "ui/counter/index.html")
 
@@ -241,18 +241,18 @@ layout := &Layout{}
 eng.Mount(layout, "ui/layout/index.html")
 ```
 
-The parent template declares slots with `<g-slot>`:
+The parent template declares targets with the `g-component` attribute:
 
 ```html
 <!-- ui/layout/index.html -->
 <body>
     <h1>My App</h1>
-    <div class="sidebar"><g-slot type="component:Sidebar" instance="sidebar" /></div>
-    <div class="main"><g-slot type="component:Counter" instance="counter" /></div>
+    <div class="sidebar" g-component="sidebar"></div>
+    <div class="main" g-component="counter"></div>
 </body>
 ```
 
-Child templates are HTML fragments (no `<html>`/`<head>`/`<body>`) — they render into the parent's slot:
+Child templates are HTML fragments (no `<html>`/`<head>`/`<body>`) — they render into the parent's target element:
 
 ```html
 <!-- ui/counter/index.html -->
@@ -387,7 +387,7 @@ chartjs.Register(eng)  // registers plugin + embeds Chart.js library
 - [examples/stock-ticker/](examples/stock-ticker/) — live stock ticker dashboard with 30 simulated stocks, per-stock tick intervals, table with color-coded gainers/losers, and external CSS via static file serving
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
-- [examples/multi-component/](examples/multi-component/) — 9-component dashboard with stateful components, `<g-slot>` composition, cross-component callbacks, Chart.js plugin, drag-and-drop reorder, goroutine-driven updates
+- [examples/multi-component/](examples/multi-component/) — 9-component dashboard with stateful components, `g-component` composition, cross-component callbacks, Chart.js plugin, drag-and-drop reorder, goroutine-driven updates
 - [examples/video-player/](examples/video-player/) — video player with Go decoding frames via ffmpeg and rendering on canvas
 
 After cloning the repo (see [Install](#install)), run any example with:
