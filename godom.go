@@ -35,7 +35,7 @@ type Engine struct {
 	NoBrowser  bool   // don't open browser on start
 	Quiet      bool   // suppress startup output
 	NoGodomEnv bool   // skip reading GODOM_* environment variables for configuration
-	comps      []*server.MountedComponent // mounted components
+	comps      []*component.Info          // mounted components
 	plugins    map[string][]string        // plugin name → JS scripts
 	staticFS   fs.FS                      // embedded UI filesystem for static assets
 	compIndex  map[interface{}]int        // comp pointer → index in comps slice
@@ -173,7 +173,7 @@ func (a *Engine) mountInternal(comp interface{}, fsys fs.FS, entryPath string) {
 	ci.Value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
 
 	idx := len(a.comps)
-	a.comps = append(a.comps, &server.MountedComponent{Info: ci})
+	a.comps = append(a.comps, ci)
 	a.compIndex[comp] = idx
 }
 
@@ -288,7 +288,7 @@ func (a *Engine) applyEnv() {
 	}
 }
 
-// autoWireComponents sets SlotName on each registered component's MountedComponent.
+// autoWireComponents sets SlotName on each registered component's Info.
 // The bridge uses it to find target elements with matching g-component attributes.
 func (a *Engine) autoWireComponents() {
 	for name, reg := range a.registered {

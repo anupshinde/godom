@@ -26,15 +26,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// MountedComponent pairs a component with its render target name.
-type MountedComponent struct {
-	Info     *component.Info
-	SlotName string // registered instance name (empty = root, renders into body)
-}
-
 // Config holds everything the server needs to run.
 type Config struct {
-	Comps     []*MountedComponent
+	Comps     []*component.Info
 	Plugins   map[string][]string
 	StaticFS  fs.FS
 	Port      int
@@ -60,20 +54,20 @@ var upgrader = websocket.Upgrader{
 type sharedPtrMaps struct {
 	ptrToCompIdx map[uintptr][]int // pointer address → component indices sharing it
 	compIdxToPtr map[int][]uintptr // component index → pointer addresses it holds
-	comps        []*MountedComponent
+	comps        []*component.Info
 	pool         *connPool
 }
 
 // buildSharedPtrMaps walks all component structs to find embedded pointer fields
 // and groups components that share the same pointer address.
-func buildSharedPtrMaps(comps []*MountedComponent) *sharedPtrMaps {
+func buildSharedPtrMaps(comps []*component.Info) *sharedPtrMaps {
 	sm := &sharedPtrMaps{
 		ptrToCompIdx: make(map[uintptr][]int),
 		compIdxToPtr: make(map[int][]uintptr),
 		comps:        comps,
 	}
-	for idx, mc := range comps {
-		v := mc.Info.Value.Elem() // the struct value
+	for idx, ci := range comps {
+		v := ci.Value.Elem() // the struct value
 		t := v.Type()
 		for i := 0; i < t.NumField(); i++ {
 			f := t.Field(i)
@@ -133,10 +127,10 @@ func (sm *sharedPtrMaps) refreshSharedComponents(compIdx int, changedFields []st
 			}
 			seen[sibIdx] = true
 			sib := sm.comps[sibIdx]
-			sib.Info.Mu.Lock()
-			sib.Info.MarkedFields = append(sib.Info.MarkedFields, changedFields...)
-			sib.Info.Mu.Unlock()
-			sib.Info.RefreshFn()
+			sib.Mu.Lock()
+			sib.MarkedFields = append(sib.MarkedFields, changedFields...)
+			sib.Mu.Unlock()
+			sib.RefreshFn()
 		}
 	}
 }
@@ -156,14 +150,14 @@ func Run(cfg Config) error {
 	// All components share a single IDCounter so node IDs are globally
 	// unique across the bridge's nodeMap.
 	sharedIDCounter := &vdom.IDCounter{}
-	for _, mc := range cfg.Comps {
-		mc.Info.IDCounter = sharedIDCounter
+	for _, ci := range cfg.Comps {
+		ci.IDCounter = sharedIDCounter
 	}
 
 	// Wire up Refresh for each component.
-	for _, mc := range cfg.Comps {
-		mc := mc // capture for closure
-		wireRefresh(mc, pool)
+	for _, ci := range cfg.Comps {
+		ci := ci // capture for closure
+		wireRefresh(ci, pool)
 	}
 
 	// Build shared pointer maps for auto-refreshing sibling components.
@@ -188,7 +182,7 @@ func Run(cfg Config) error {
 	injectedJS += "<script>" + cfg.BridgeJS + "</script>\n"
 
 	// The root component (first in Comps, mounted via Mount) provides the page HTML.
-	pageHTML := strings.Replace(cfg.Comps[0].Info.HTMLBody, "</body>", injectedJS+"</body>", 1)
+	pageHTML := strings.Replace(cfg.Comps[0].HTMLBody, "</body>", injectedJS+"</body>", 1)
 
 	// Serve static assets (CSS, images, etc.) from the embedded UI filesystem.
 	staticHandler := http.FileServer(http.FS(cfg.StaticFS))
@@ -226,9 +220,9 @@ func Run(cfg Config) error {
 		wc := pool.add(conn)
 
 		// Send init for each component in mount order (root first, children after).
-		for _, mc := range cfg.Comps {
-			if err := handleInit(wc, mc.Info, mc.SlotName); err != nil {
-				log.Printf("godom: failed to compute init for slot %q: %v", mc.SlotName, err)
+		for _, ci := range cfg.Comps {
+			if err := handleInit(wc, ci, ci.SlotName); err != nil {
+				log.Printf("godom: failed to compute init for slot %q: %v", ci.SlotName, err)
 				pool.remove(wc)
 				conn.Close()
 				return
@@ -323,8 +317,7 @@ func Run(cfg Config) error {
 
 // wireRefresh sets up the RefreshFn for a mounted component.
 // For root components, SlotName is empty, which tells the bridge to render into body.
-func wireRefresh(mc *MountedComponent, pool *connPool) {
-	ci := mc.Info
+func wireRefresh(ci *component.Info, pool *connPool) {
 	ci.RefreshFn = func() {
 		ci.Mu.Lock()
 		fields := ci.MarkedFields
@@ -334,7 +327,7 @@ func wireRefresh(mc *MountedComponent, pool *connPool) {
 			if len(patches) > 0 {
 				ci.Mu.Unlock()
 				msg := render.EncodePatchMessage(patches)
-				msg.TargetName = mc.SlotName
+				msg.TargetName = ci.SlotName
 				data, _ := proto.Marshal(msg)
 				pool.broadcast(data)
 				return
@@ -344,7 +337,7 @@ func wireRefresh(mc *MountedComponent, pool *connPool) {
 		ci.LastChangedFields = changedFields
 		ci.Mu.Unlock()
 		if msg != nil {
-			msg.TargetName = mc.SlotName
+			msg.TargetName = ci.SlotName
 			data, _ := proto.Marshal(msg)
 			pool.broadcast(data)
 		}
@@ -357,13 +350,13 @@ func wireRefresh(mc *MountedComponent, pool *connPool) {
 // findComponentByNodeID finds which component owns a given node ID
 // by searching each component's live tree. Returns the Info and the
 // component index (for shared-pointer lookups).
-func findComponentByNodeID(comps []*MountedComponent, nodeID int) (*component.Info, int) {
-	for idx, mc := range comps {
-		mc.Info.Mu.Lock()
-		node := vdom.FindNodeByID(mc.Info.Tree, nodeID)
-		mc.Info.Mu.Unlock()
+func findComponentByNodeID(comps []*component.Info, nodeID int) (*component.Info, int) {
+	for idx, ci := range comps {
+		ci.Mu.Lock()
+		node := vdom.FindNodeByID(ci.Tree, nodeID)
+		ci.Mu.Unlock()
 		if node != nil {
-			return mc.Info, idx
+			return ci, idx
 		}
 	}
 	return nil, -1
