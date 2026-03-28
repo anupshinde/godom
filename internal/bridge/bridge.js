@@ -4,9 +4,10 @@
 // On "init": builds DOM from tree description, registers events.
 // On "patch": applies minimal DOM mutations using nodeMap[id] lookups.
 //
-// Each render target (identified by targetNodeId) gets its own encapsulated
-// context — own nodeMap, own pluginState. Targets cannot see or modify each
-// other's DOM state.
+// Each render target is identified by name (from g-component attribute).
+// The root component has an empty name and renders into document.body.
+// A named component can have multiple DOM targets — each gets its own
+// encapsulated context (own nodeMap, own pluginState).
 //
 // Structure:
 //   1. State & globals
@@ -26,7 +27,7 @@
     // =========================================================================
 
     var ws;
-    var targets = {};   // targetNodeId (int) → target context
+    var targets = {};   // targetName (string) → [target context, ...]
 
     var Proto = godomProto;
     var textDecoder = new TextDecoder();
@@ -72,19 +73,21 @@
 
         ws.onmessage = function(evt) {
             var msg = Proto.VDomMessage.decode(new Uint8Array(evt.data));
-            var tid = msg.targetNodeId || 0;
+            var name = msg.targetName || "";
 
             if (msg.type === "init") {
                 hideDisconnectOverlay();
                 reconnectDelay = 1000;
-                initTarget(tid, msg);
+                initTarget(name, msg);
             } else if (msg.type === "patch") {
-                var ctx = targets[tid];
-                if (!ctx) {
-                    console.warn("[godom patch] no target context for targetNodeId=" + tid);
+                var ctxList = targets[name];
+                if (!ctxList || ctxList.length === 0) {
+                    console.warn("[godom patch] no target context for name=" + name);
                     return;
                 }
-                ctx.applyPatches(msg.patches);
+                for (var i = 0; i < ctxList.length; i++) {
+                    ctxList[i].applyPatches(msg.patches);
+                }
             }
         };
 
@@ -106,53 +109,50 @@
     // 3. Target management — per-target encapsulated contexts
     // =========================================================================
 
-    // initTarget creates or resets the encapsulated context for a target and
-    // builds the initial DOM tree inside it.
-    function initTarget(tid, msg) {
-        // For root (tid=0), the target element is document.body.
-        // For child components, look up the slot node in the parent's context.
-        var targetEl;
-        if (tid === 0) {
-            targetEl = document.body;
-            // Root init: destroy all existing target contexts.
-            for (var oldTid in targets) {
-                if (targets.hasOwnProperty(oldTid) && Number(oldTid) !== 0) {
-                    targets[oldTid].cleanup();
+    // initTarget creates encapsulated contexts for a named component and
+    // builds the initial DOM tree inside each target element.
+    function initTarget(name, msg) {
+        if (name === "") {
+            // Root component: render into document.body.
+            // Destroy all existing target contexts first.
+            for (var n in targets) {
+                if (targets.hasOwnProperty(n)) {
+                    var list = targets[n];
+                    for (var i = 0; i < list.length; i++) {
+                        list[i].cleanup();
+                    }
                 }
             }
             targets = {};
+            var ctx = createTargetContext(name, document.body);
+            targets[name] = [ctx];
+            ctx.init(msg);
         } else {
-            targetEl = findNodeAcrossTargets(tid);
-            if (!targetEl) {
-                console.warn("[godom init] slot node " + tid + " not found in any target");
+            // Named component: find all elements with g-component="name".
+            var els = document.querySelectorAll('[g-component="' + name + '"]');
+            if (els.length === 0) {
+                console.warn("[godom init] no g-component elements found for name=" + name);
                 return;
             }
-            // If this target already exists, clean it up first.
-            if (targets[tid]) {
-                targets[tid].cleanup();
+            // Clean up existing contexts for this name.
+            if (targets[name]) {
+                for (var i = 0; i < targets[name].length; i++) {
+                    targets[name][i].cleanup();
+                }
             }
-        }
-
-        var ctx = createTargetContext(tid, targetEl);
-        targets[tid] = ctx;
-        ctx.init(msg);
-    }
-
-    // findNodeAcrossTargets looks up a node ID in all existing target contexts.
-    // Used to find slot elements that child components render into.
-    function findNodeAcrossTargets(nodeId) {
-        for (var tid in targets) {
-            if (targets.hasOwnProperty(tid)) {
-                var node = targets[tid].lookupNode(nodeId);
-                if (node) return node;
+            var ctxList = [];
+            for (var i = 0; i < els.length; i++) {
+                var ctx = createTargetContext(name, els[i]);
+                ctxList.push(ctx);
+                ctx.init(msg);
             }
+            targets[name] = ctxList;
         }
-        return null;
     }
 
     // createTargetContext builds an encapsulated closure for a render target.
     // All DOM state (nodeMap, pluginState) is private to this closure.
-    function createTargetContext(tid, targetEl) {
+    function createTargetContext(name, targetEl) {
         var nodeMap = {};
         var pluginState = {};
         var pendingPluginInits = [];
@@ -235,7 +235,7 @@
                 var patch = patches[i];
                 var node = nodeMap[patch.nodeId];
                 if (!node) {
-                    console.warn("[godom patch] skip: nodeMap[" + patch.nodeId + "] not found for op=" + patch.op + " in target " + tid);
+                    console.warn("[godom patch] skip: nodeMap[" + patch.nodeId + "] not found for op=" + patch.op + " in target " + name);
                     continue;
                 }
                 applyPatch(node, patch);
@@ -657,10 +657,6 @@
             },
 
             applyPatches: applyPatches,
-
-            lookupNode: function(nodeId) {
-                return nodeMap[nodeId] || null;
-            },
 
             cleanup: function() {
                 nodeMap = {};
