@@ -179,7 +179,7 @@ func TestMount_Valid(t *testing.T) {
 	if len(e.comps) != 1 {
 		t.Fatal("expected one component after Mount")
 	}
-	ci := e.comps[0].Info
+	ci := e.comps[0]
 	if ci.HTMLBody == "" {
 		t.Error("expected HTMLBody to be set")
 	}
@@ -222,12 +222,12 @@ func TestMount_WiresComponentField(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
-	// After Mount, app.Component.ci should be wired to the same Info as e.comps[0].Info
+	// After Mount, app.Component.ci should be wired to the same Info as e.comps[0]
 	if app.Component.ci == nil {
 		t.Fatal("expected Component.ci to be wired after Mount")
 	}
-	if app.Component.ci != e.comps[0].Info {
-		t.Error("expected Component.ci to point to the same Info as Engine.comps[0].Info")
+	if app.Component.ci != e.comps[0] {
+		t.Error("expected Component.ci to point to the same Info as Engine.comps[0]")
 	}
 }
 
@@ -237,7 +237,7 @@ func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
-	ci := e.comps[0].Info
+	ci := e.comps[0]
 	if !strings.Contains(ci.HTMLBody, "g-text") {
 		t.Error("expected HTMLBody to contain template directives")
 	}
@@ -307,7 +307,7 @@ func TestMount_SetsValueAndType(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
-	ci := e.comps[0].Info
+	ci := e.comps[0]
 	// ci.Value should point to the same app instance
 	if ci.Value.Pointer() != reflect.ValueOf(app).Pointer() {
 		t.Error("expected ci.Value to point to the original app")
@@ -393,8 +393,8 @@ func TestAutoWire_RegisteredChildWiredToParent(t *testing.T) {
 	if len(e.comps) != 2 {
 		t.Fatalf("expected 2 comps, got %d", len(e.comps))
 	}
-	if e.comps[1].ParentIdx != 0 {
-		t.Errorf("expected child ParentIdx=0, got %d", e.comps[1].ParentIdx)
+	if e.comps[0].SlotName != "document.body" {
+		t.Errorf("expected root SlotName='document.body', got %q", e.comps[0].SlotName)
 	}
 	if e.comps[1].SlotName != "sidebar" {
 		t.Errorf("expected SlotName='sidebar', got %q", e.comps[1].SlotName)
@@ -446,34 +446,18 @@ func TestAutoWire_MultipleChildrenWiredCorrectly(t *testing.T) {
 
 	e.autoWireComponents()
 
-	// Both children should be wired to parent (index 0)
-	if e.comps[1].ParentIdx != 0 || e.comps[1].SlotName != "sidebar" {
-		t.Errorf("sidebar: expected ParentIdx=0 SlotName='sidebar', got %d %q", e.comps[1].ParentIdx, e.comps[1].SlotName)
+	// Both children should have their slot names set
+	if e.comps[0].SlotName != "document.body" {
+		t.Errorf("root: expected SlotName='document.body', got %q", e.comps[0].SlotName)
 	}
-	if e.comps[2].ParentIdx != 0 || e.comps[2].SlotName != "footer" {
-		t.Errorf("footer: expected ParentIdx=0 SlotName='footer', got %d %q", e.comps[2].ParentIdx, e.comps[2].SlotName)
+	if e.comps[1].SlotName != "sidebar" {
+		t.Errorf("sidebar: expected SlotName='sidebar', got %q", e.comps[1].SlotName)
 	}
-}
-
-func TestAutoWire_UnreferencedComponentFatals(t *testing.T) {
-	if os.Getenv("TEST_FATAL_AUTOWIRE_NOREF") == "1" {
-		e := NewEngine()
-		e.SetFS(makeSlotTestFS())
-
-		parent := &testApp{Name: "parent"}
-		e.Mount(parent, "parent/index.html")
-
-		// Register a child with a name that doesn't match any g-slot
-		child := &childApp{Value: "orphan"}
-		e.Register("nonexistent", child, "child/index.html")
-		e.autoWireComponents()
-		return
-	}
-	out := runSubprocess(t, "TestAutoWire_UnreferencedComponentFatals", "TEST_FATAL_AUTOWIRE_NOREF")
-	if !strings.Contains(out, "not referenced by any") {
-		t.Errorf("expected 'not referenced' error, got: %s", out)
+	if e.comps[2].SlotName != "footer" {
+		t.Errorf("footer: expected SlotName='footer', got %q", e.comps[2].SlotName)
 	}
 }
+
 
 func TestMount_MultipleComponents_StaticFSFromFirst(t *testing.T) {
 	e := NewEngine()

@@ -3385,243 +3385,6 @@ func TestDeepCopyJSON_UnmarshalError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// expandSelfClosingGSlot tests
-// ---------------------------------------------------------------------------
-
-func TestExpandSelfClosingGSlot_Basic(t *testing.T) {
-	input := `<g-slot instance="counter"/>`
-	got := expandSelfClosingGSlot(input)
-	want := `<g-slot instance="counter"></g-slot>`
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-}
-
-func TestExpandSelfClosingGSlot_Multiple(t *testing.T) {
-	input := `<g-slot instance="a"/><p>hi</p><g-slot instance="b"/>`
-	got := expandSelfClosingGSlot(input)
-	if !strings.Contains(got, `<g-slot instance="a"></g-slot>`) {
-		t.Errorf("first slot not expanded: %q", got)
-	}
-	if !strings.Contains(got, `<g-slot instance="b"></g-slot>`) {
-		t.Errorf("second slot not expanded: %q", got)
-	}
-}
-
-func TestExpandSelfClosingGSlot_AlreadyExplicit(t *testing.T) {
-	input := `<g-slot instance="counter"></g-slot>`
-	got := expandSelfClosingGSlot(input)
-	if got != input {
-		t.Errorf("explicit close tag should be unchanged, got %q", got)
-	}
-}
-
-func TestExpandSelfClosingGSlot_NoGSlot(t *testing.T) {
-	input := `<div><span>hello</span></div>`
-	got := expandSelfClosingGSlot(input)
-	if got != input {
-		t.Errorf("no g-slot should be unchanged, got %q", got)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// g-slot parsing tests
-// ---------------------------------------------------------------------------
-
-func TestParseTemplate_GSlot(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body><div><g-slot type="component:Counter" instance="counter"></g-slot></div></body></html>`
-	nodes, err := ParseTemplate(html)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Should have a div with a slot child
-	if len(nodes) != 1 {
-		t.Fatalf("expected 1 node, got %d", len(nodes))
-	}
-	div := nodes[0]
-	if div.Tag != "div" {
-		t.Fatalf("expected div, got %q", div.Tag)
-	}
-	found := false
-	for _, c := range div.Children {
-		if c.IsSlot {
-			found = true
-			if c.SlotExpr != "counter" {
-				t.Errorf("expected slot name 'counter', got %q", c.SlotExpr)
-			}
-		}
-	}
-	if !found {
-		t.Error("expected to find a slot child in parsed template")
-	}
-}
-
-func TestParseTemplate_GSlotSelfClosing(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body><g-slot type="component:Sidebar" instance="sidebar"/><p>after</p></body></html>`
-	nodes, err := ParseTemplate(html)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Self-closing g-slot should be a sibling, not swallow <p>
-	foundSlot := false
-	foundP := false
-	for _, n := range nodes {
-		if n.IsSlot && n.SlotExpr == "sidebar" {
-			foundSlot = true
-		}
-		if n.Tag == "p" {
-			foundP = true
-		}
-	}
-	if !foundSlot {
-		t.Error("expected slot node with name 'sidebar'")
-	}
-	if !foundP {
-		t.Error("expected <p> as sibling, not swallowed by slot")
-	}
-}
-
-func TestParseTemplate_DuplicateSlotNames(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body><g-slot type="component:X" instance="x"></g-slot><g-slot type="component:X" instance="x"></g-slot></body></html>`
-	_, err := ParseTemplate(html)
-	if err == nil {
-		t.Fatal("expected error for duplicate slot names")
-	}
-	if !strings.Contains(err.Error(), "duplicate") {
-		t.Errorf("expected 'duplicate' in error, got: %v", err)
-	}
-}
-
-func TestCheckDuplicateSlots_NoSlots(t *testing.T) {
-	nodes := []*TemplateNode{{Tag: "div"}}
-	if err := checkDuplicateSlots(nodes); err != nil {
-		t.Errorf("expected no error for no slots, got: %v", err)
-	}
-}
-
-func TestCheckDuplicateSlots_DynamicSlotNamesAllowed(t *testing.T) {
-	// Interpolated names (containing "{{") should not trigger duplicate check
-	nodes := []*TemplateNode{
-		{IsSlot: true, SlotExpr: "{{slot.Name}}"},
-		{IsSlot: true, SlotExpr: "{{slot.Name}}"},
-	}
-	if err := checkDuplicateSlots(nodes); err != nil {
-		t.Errorf("expected no error for dynamic slot names, got: %v", err)
-	}
-}
-
-func TestCheckDuplicateSlots_TypeRequired(t *testing.T) {
-	// Static instance without type attribute should error
-	nodes := []*TemplateNode{
-		{IsSlot: true, SlotExpr: "counter1", SlotType: ""},
-	}
-	if err := checkDuplicateSlots(nodes); err == nil {
-		t.Error("expected error for missing type attribute")
-	}
-}
-
-func TestCheckDuplicateSlots_TypeEmptyComponentName(t *testing.T) {
-	// type="component:" with empty type name should error
-	nodes := []*TemplateNode{
-		{IsSlot: true, SlotExpr: "ticker", SlotType: "component:"},
-	}
-	if err := checkDuplicateSlots(nodes); err == nil {
-		t.Error("expected error for empty component type name")
-	}
-}
-
-func TestCheckDuplicateSlots_TypeInvalidFormat(t *testing.T) {
-	// type="Counter" without "component:" prefix should error
-	nodes := []*TemplateNode{
-		{IsSlot: true, SlotExpr: "counter1", SlotType: "Counter"},
-	}
-	if err := checkDuplicateSlots(nodes); err == nil {
-		t.Error("expected error for invalid type format")
-	}
-}
-
-func TestCheckDuplicateSlots_TypeAndInstance(t *testing.T) {
-	// Static instance with type attribute — should pass
-	nodes := []*TemplateNode{
-		{IsSlot: true, SlotExpr: "counter1", SlotType: "component:Counter"},
-		{IsSlot: true, SlotExpr: "counter2", SlotType: "component:Counter"},
-	}
-	if err := checkDuplicateSlots(nodes); err != nil {
-		t.Errorf("expected no error for different names, got: %v", err)
-	}
-}
-
-func TestCheckDuplicateSlots_DuplicateInstances(t *testing.T) {
-	// Same instance name should be caught
-	nodes := []*TemplateNode{
-		{IsSlot: true, SlotExpr: "counter1", SlotType: "component:Counter"},
-		{IsSlot: true, SlotExpr: "counter1", SlotType: "component:Timer"},
-	}
-	if err := checkDuplicateSlots(nodes); err == nil {
-		t.Error("expected duplicate error for same instance name")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// resolveSlotNode tests
-// ---------------------------------------------------------------------------
-
-func TestResolveSlotNode_StaticName(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body><g-slot type="component:Counter" instance="counter"></g-slot></body></html>`
-	templates, err := ParseTemplate(html)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := &ResolveContext{
-		State: reflect.ValueOf(&struct{}{}),
-		Vars:  make(map[string]any),
-	}
-	nodes := ResolveTree(templates, ctx)
-	// Should produce a div element with IsSlot=true
-	found := false
-	for _, n := range nodes {
-		if el, ok := n.(*ElementNode); ok && el.IsSlot {
-			found = true
-			if el.Tag != "div" {
-				t.Errorf("expected tag 'div', got %q", el.Tag)
-			}
-			if el.SlotName != "counter" {
-				t.Errorf("expected slot name 'counter', got %q", el.SlotName)
-			}
-		}
-	}
-	if !found {
-		t.Error("expected a resolved slot node")
-	}
-}
-
-func TestResolveSlotNode_InterpolatedName(t *testing.T) {
-	html := `<!DOCTYPE html><html><head></head><body><g-slot instance="{{SlotName}}"></g-slot></body></html>`
-	templates, err := ParseTemplate(html)
-	if err != nil {
-		t.Fatal(err)
-	}
-	type app struct{ SlotName string }
-	ctx := &ResolveContext{
-		State: reflect.ValueOf(&app{SlotName: "dynamic"}),
-		Vars:  make(map[string]any),
-	}
-	nodes := ResolveTree(templates, ctx)
-	found := false
-	for _, n := range nodes {
-		if el, ok := n.(*ElementNode); ok && el.IsSlot {
-			found = true
-			if el.SlotName != "dynamic" {
-				t.Errorf("expected slot name 'dynamic', got %q", el.SlotName)
-			}
-		}
-	}
-	if !found {
-		t.Error("expected a resolved slot node with interpolated name")
-	}
-}
-
-// ---------------------------------------------------------------------------
 // resolveAttrValue tests
 // ---------------------------------------------------------------------------
 
@@ -3647,6 +3410,400 @@ func TestResolveAttrValue_WithInterpolation(t *testing.T) {
 		t.Errorf("expected 'bg-red', got %q", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// IsValidIdentifier tests
+// ---------------------------------------------------------------------------
+
+func TestIsValidIdentifier(t *testing.T) {
+	valid := []struct {
+		name  string
+		input string
+	}{
+		{"simple lowercase", "hello"},
+		{"simple uppercase", "Hello"},
+		{"all caps", "ABC"},
+		{"with underscore", "my_var"},
+		{"leading underscore", "_private"},
+		{"digits after first", "x1"},
+		{"mixed", "camelCase2"},
+		{"underscore and digits", "_a1b2c3"},
+		{"single char", "x"},
+		{"single underscore", "_"},
+		// Note: empty string returns true (loop never executes)
+		{"empty string", ""},
+	}
+	for _, tt := range valid {
+		t.Run(tt.name, func(t *testing.T) {
+			if !IsValidIdentifier(tt.input) {
+				t.Errorf("IsValidIdentifier(%q) = false, want true", tt.input)
+			}
+		})
+	}
+
+	invalid := []struct {
+		name  string
+		input string
+	}{
+		{"starts with digit", "1abc"},
+		{"contains space", "hello world"},
+		{"contains dash", "my-var"},
+		{"contains dot", "a.b"},
+		{"contains at", "user@name"},
+		{"contains paren", "func()"},
+		{"contains equals", "a=b"},
+		{"contains bang", "!done"},
+		{"contains plus", "a+b"},
+		{"single digit", "1"},
+		{"unicode special", "café"},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.name, func(t *testing.T) {
+			if IsValidIdentifier(tt.input) {
+				t.Errorf("IsValidIdentifier(%q) = true, want false", tt.input)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// resolveArgs tests (loop path)
+// ---------------------------------------------------------------------------
+
+func TestResolveArgs_WithArgs(t *testing.T) {
+	// Exercise the loop path in resolveArgs (len(argExprs) > 0).
+	state := &testDirectiveState{Name: "Alice", Count: 42}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  map[string]any{"i": 7},
+		IDs:   &IDCounter{},
+	}
+
+	args := resolveArgs([]string{"Name", "Count", "i"}, ctx)
+	if len(args) != 3 {
+		t.Fatalf("expected 3 args, got %d", len(args))
+	}
+	if args[0] != "Alice" {
+		t.Errorf("args[0] = %v, want 'Alice'", args[0])
+	}
+	if args[1] != 42 {
+		t.Errorf("args[1] = %v, want 42", args[1])
+	}
+	if args[2] != 7 {
+		t.Errorf("args[2] = %v, want 7", args[2])
+	}
+}
+
+func TestResolveArgs_EmptySlice(t *testing.T) {
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&testDirectiveState{}),
+		Vars:  make(map[string]any),
+	}
+	args := resolveArgs([]string{}, ctx)
+	if args != nil {
+		t.Errorf("expected nil for empty args, got %v", args)
+	}
+}
+
+func TestResolveArgs_NilSlice(t *testing.T) {
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(&testDirectiveState{}),
+		Vars:  make(map[string]any),
+	}
+	args := resolveArgs(nil, ctx)
+	if args != nil {
+		t.Errorf("expected nil for nil args, got %v", args)
+	}
+}
+
+// Test resolveArgs indirectly through g-click with arguments.
+func TestResolve_GClickWithArgs(t *testing.T) {
+	tmpl := &TemplateNode{
+		Tag:        "button",
+		Directives: []Directive{{Type: "click", Expr: "Add(Count, Count)"}},
+	}
+	state := &testDirectiveState{Count: 5}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+		IDs:   &IDCounter{},
+	}
+	nodes := ResolveTemplateNode(tmpl, ctx)
+	el := nodes[0].(*ElementNode)
+	ev, ok := el.Facts.Events["click"]
+	if !ok {
+		t.Fatal("expected click event")
+	}
+	if ev.Handler != "Add" {
+		t.Errorf("expected handler 'Add', got %q", ev.Handler)
+	}
+	if len(ev.Args) != 2 {
+		t.Fatalf("expected 2 args, got %d", len(ev.Args))
+	}
+	if ev.Args[0] != 5 || ev.Args[1] != 5 {
+		t.Errorf("expected args [5, 5], got %v", ev.Args)
+	}
+}
+
+// Test resolveArgs through g-keydown with arguments.
+func TestResolve_GKeydownWithArgs(t *testing.T) {
+	tmpl := &TemplateNode{
+		Tag:        "input",
+		Directives: []Directive{{Type: "keydown", Name: "Enter", Expr: "Submit(Name)"}},
+	}
+	state := &testDirectiveState{Name: "test-value"}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+		IDs:   &IDCounter{},
+	}
+	nodes := ResolveTemplateNode(tmpl, ctx)
+	el := nodes[0].(*ElementNode)
+	ev, ok := el.Facts.Events["keydown:Enter"]
+	if !ok {
+		t.Fatal("expected keydown:Enter event")
+	}
+	if ev.Handler != "Submit" {
+		t.Errorf("expected handler 'Submit', got %q", ev.Handler)
+	}
+	if len(ev.Args) != 1 {
+		t.Fatalf("expected 1 arg, got %d", len(ev.Args))
+	}
+	if ev.Args[0] != "test-value" {
+		t.Errorf("expected arg 'test-value', got %v", ev.Args[0])
+	}
+}
+
+// Test resolveArgs through g-drop with arguments.
+func TestResolve_GDropWithArgs(t *testing.T) {
+	tmpl := &TemplateNode{
+		Tag:        "div",
+		Directives: []Directive{{Type: "drop", Expr: "HandleDrop(Count)"}},
+	}
+	state := &testDirectiveState{Count: 99}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+		IDs:   &IDCounter{},
+	}
+	nodes := ResolveTemplateNode(tmpl, ctx)
+	el := nodes[0].(*ElementNode)
+	ev, ok := el.Facts.Events["drop"]
+	if !ok {
+		t.Fatal("expected drop event")
+	}
+	if ev.Handler != "HandleDrop" {
+		t.Errorf("expected handler 'HandleDrop', got %q", ev.Handler)
+	}
+	if len(ev.Args) != 1 {
+		t.Fatalf("expected 1 arg, got %d", len(ev.Args))
+	}
+	if ev.Args[0] != 99 {
+		t.Errorf("expected arg 99, got %v", ev.Args[0])
+	}
+}
+
+// Test resolveArgs through g-dropzone with arguments.
+func TestResolve_GDropzoneWithArgs(t *testing.T) {
+	tmpl := &TemplateNode{
+		Tag:        "div",
+		Directives: []Directive{{Type: "dropzone", Expr: "HandleDrop(Name)"}},
+	}
+	state := &testDirectiveState{Name: "zone-arg"}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+		IDs:   &IDCounter{},
+	}
+	nodes := ResolveTemplateNode(tmpl, ctx)
+	el := nodes[0].(*ElementNode)
+	ev, ok := el.Facts.Events["drop"]
+	if !ok {
+		t.Fatal("expected drop event from g-dropzone")
+	}
+	if ev.Handler != "HandleDrop" {
+		t.Errorf("expected handler 'HandleDrop', got %q", ev.Handler)
+	}
+	if len(ev.Args) != 1 {
+		t.Fatalf("expected 1 arg, got %d", len(ev.Args))
+	}
+	if ev.Args[0] != "zone-arg" {
+		t.Errorf("expected arg 'zone-arg', got %v", ev.Args[0])
+	}
+}
+
+// Test resolveArgs through g-draggable with args (resolves via loop vars).
+func TestResolve_GDraggableWithLoopVar(t *testing.T) {
+	tmpl := &TemplateNode{
+		Tag:        "div",
+		Directives: []Directive{{Type: "click", Expr: "Select(idx)"}},
+	}
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  map[string]any{"idx": 3},
+		IDs:   &IDCounter{},
+	}
+	nodes := ResolveTemplateNode(tmpl, ctx)
+	el := nodes[0].(*ElementNode)
+	ev := el.Facts.Events["click"]
+	if len(ev.Args) != 1 {
+		t.Fatalf("expected 1 arg, got %d", len(ev.Args))
+	}
+	if ev.Args[0] != 3 {
+		t.Errorf("expected arg 3, got %v", ev.Args[0])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ResolveExpr — method calls with args (expr-lang path)
+// ---------------------------------------------------------------------------
+
+func TestResolveExpr_MethodWithLiteralArgs(t *testing.T) {
+	// Add(3, 4) — numeric literals resolved via expr-lang.
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+		IDs:   &IDCounter{},
+	}
+	val := ResolveExpr("Add(3, 4)", ctx)
+	if val != 7 {
+		t.Errorf("expected Add(3,4)=7, got %v (%T)", val, val)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ResolveExpr — convertQuotes path
+// ---------------------------------------------------------------------------
+
+func TestResolveExpr_SingleQuoteStringInComparison(t *testing.T) {
+	// Exercises convertQuotes complex case: "Name == 'Alice'" → double-quoted for expr-lang.
+	state := &testDirectiveState{Name: "Bob"}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+	}
+	if ResolveExpr("Name == 'Bob'", ctx) != true {
+		t.Error("expected Name == 'Bob' → true")
+	}
+	if ResolveExpr("Name == 'Alice'", ctx) != false {
+		t.Error("expected Name == 'Alice' → false")
+	}
+}
+
+func TestResolveExpr_SingleQuoteLiteralAlone(t *testing.T) {
+	// Exercises convertQuotes simple case: entire expression is single-quoted string.
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+	}
+	val := ResolveExpr("'hello world'", ctx)
+	if val != "hello world" {
+		t.Errorf("expected 'hello world', got %v", val)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// resolveTextNode — missed branches
+// ---------------------------------------------------------------------------
+
+func TestResolveTextNode_MultipleDynamicParts(t *testing.T) {
+	// Exercises the dynamicCount > 1 path where no single binding is registered.
+	// Template: "{{Name}} has {{Count}} items"
+	tmpl := &TemplateNode{
+		IsText: true,
+		TextParts: []TextPart{
+			{Static: false, Value: "Name"},
+			{Static: true, Value: " has "},
+			{Static: false, Value: "Count"},
+			{Static: true, Value: " items"},
+		},
+	}
+	state := &testCounter{Name: "Alice", Count: 3}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+		IDs:   &IDCounter{},
+	}
+	nodes := resolveTextNode(tmpl, ctx)
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	tn := nodes[0].(*TextNode)
+	if tn.Text != "Alice has 3 items" {
+		t.Errorf("expected 'Alice has 3 items', got %q", tn.Text)
+	}
+	// With multiple dynamic parts, no binding should be registered
+	if len(ctx.Bindings) != 0 {
+		t.Errorf("expected no bindings for multi-dynamic text, got %v", ctx.Bindings)
+	}
+}
+
+func TestResolveTextNode_SingleDynamicWithStaticPrefix(t *testing.T) {
+	// Exercises the path: dynamicCount == 1 but len(TextParts) > 1 → no binding.
+	// Template: "Count: {{Count}}"
+	tmpl := &TemplateNode{
+		IsText: true,
+		TextParts: []TextPart{
+			{Static: true, Value: "Count: "},
+			{Static: false, Value: "Count"},
+		},
+	}
+	state := &testCounter{Count: 7}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+		IDs:   &IDCounter{},
+	}
+	nodes := resolveTextNode(tmpl, ctx)
+	tn := nodes[0].(*TextNode)
+	if tn.Text != "Count: 7" {
+		t.Errorf("expected 'Count: 7', got %q", tn.Text)
+	}
+	// Single dynamic part but with static prefix → no binding (can't surgically patch)
+	if len(ctx.Bindings) != 0 {
+		t.Errorf("expected no bindings for mixed text, got %v", ctx.Bindings)
+	}
+}
+
+func TestResolveTextNode_SingleDynamicOnly(t *testing.T) {
+	// Exercises the path: dynamicCount == 1 && len(TextParts) == 1 → binding registered.
+	tmpl := &TemplateNode{
+		IsText: true,
+		TextParts: []TextPart{
+			{Static: false, Value: "Name"},
+		},
+	}
+	state := &testCounter{Name: "Bob"}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  make(map[string]any),
+		IDs:   &IDCounter{},
+	}
+	nodes := resolveTextNode(tmpl, ctx)
+	tn := nodes[0].(*TextNode)
+	if tn.Text != "Bob" {
+		t.Errorf("expected 'Bob', got %q", tn.Text)
+	}
+	// Single dynamic part, single text part → binding IS registered
+	if len(ctx.Bindings["Name"]) != 1 {
+		t.Errorf("expected 1 binding for 'Name', got %v", ctx.Bindings)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ParseTemplate / htmlToTemplate — unreachable code documentation
+// [COVERAGE GAP] ParseTemplate: html.Parse never returns an error and always
+// synthesizes <html><head><body>, so the error-return and nil-body branches
+// are dead code. These defensive checks cannot be covered via tests.
+//
+// [COVERAGE GAP] htmlToTemplate default branch: Go's html.Parse only produces
+// TextNode, ElementNode, and CommentNode inside <body>. The default case
+// (returning nil for unknown node types) can never be reached through
+// ParseTemplate.
+// ---------------------------------------------------------------------------
 
 func TestResolveAttrValue_MultipleInterpolations(t *testing.T) {
 	type app struct {
@@ -3846,91 +4003,6 @@ func TestResolveKeyedForNode_WithIndex(t *testing.T) {
 	}
 	if kel.Children[0].Key != "10" || kel.Children[1].Key != "20" {
 		t.Errorf("unexpected keys: %q, %q", kel.Children[0].Key, kel.Children[1].Key)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// resolveSlotNode negative tests
-// ---------------------------------------------------------------------------
-
-func TestResolveSlotNode_EmptyInstance(t *testing.T) {
-	// <g-slot></g-slot> without an instance attribute — should error
-	html := `<!DOCTYPE html><html><head></head><body><g-slot></g-slot></body></html>`
-	_, err := ParseTemplate(html)
-	if err == nil {
-		t.Fatal("expected error for g-slot without instance")
-	}
-	if !strings.Contains(err.Error(), "non-empty") {
-		t.Errorf("expected 'non-empty' in error, got: %v", err)
-	}
-}
-
-func TestResolveSlotNode_MissingFieldInInterpolation(t *testing.T) {
-	// Interpolation references a field that doesn't exist on the state struct.
-	html := `<!DOCTYPE html><html><head></head><body><g-slot instance="{{NoSuchField}}"></g-slot></body></html>`
-	templates, err := ParseTemplate(html)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := &ResolveContext{
-		State: reflect.ValueOf(&struct{}{}),
-		Vars:  make(map[string]any),
-	}
-	nodes := ResolveTree(templates, ctx)
-	for _, n := range nodes {
-		if el, ok := n.(*ElementNode); ok && el.IsSlot {
-			// Missing field resolves to nil → fmt.Sprint(nil) = "<nil>"
-			if el.SlotName != "<nil>" {
-				t.Errorf("expected '<nil>' for missing field, got %q", el.SlotName)
-			}
-			return
-		}
-	}
-	t.Error("expected a resolved slot node")
-}
-
-// ---------------------------------------------------------------------------
-// checkDuplicateSlots negative tests
-// ---------------------------------------------------------------------------
-
-func TestCheckDuplicateSlots_EmptyInstanceIsError(t *testing.T) {
-	// g-slot with empty instance should be an error
-	nodes := []*TemplateNode{
-		{IsSlot: true, SlotExpr: ""},
-	}
-	if err := checkDuplicateSlots(nodes); err == nil {
-		t.Error("expected error for empty component name")
-	}
-}
-
-func TestCheckDuplicateSlots_NestedDuplicate(t *testing.T) {
-	// Duplicate slot names nested inside children should still be caught.
-	inner := &TemplateNode{IsSlot: true, SlotExpr: "sidebar", SlotType: "component:Sidebar"}
-	outer := &TemplateNode{
-		Tag:      "div",
-		Children: []*TemplateNode{inner},
-	}
-	topLevel := &TemplateNode{IsSlot: true, SlotExpr: "sidebar", SlotType: "component:Sidebar"}
-	err := checkDuplicateSlots([]*TemplateNode{outer, topLevel})
-	if err == nil {
-		t.Error("expected duplicate error for nested slot with same name")
-	}
-}
-
-func TestCheckDuplicateSlots_NestedDuplicateErrorPropagates(t *testing.T) {
-	// When a duplicate is found inside a child walk, the error must
-	// propagate up through the parent's walk (covers line 121-123).
-	topSlot := &TemplateNode{IsSlot: true, SlotExpr: "sidebar", SlotType: "component:Sidebar"}
-	nestedSlot := &TemplateNode{IsSlot: true, SlotExpr: "sidebar", SlotType: "component:Sidebar"}
-	wrapper := &TemplateNode{
-		Tag:      "div",
-		Children: []*TemplateNode{nestedSlot},
-	}
-	// topSlot is processed first (marks "sidebar" as seen), then wrapper's
-	// child walk finds "sidebar" again → error returned from child walk.
-	err := checkDuplicateSlots([]*TemplateNode{topSlot, wrapper})
-	if err == nil {
-		t.Error("expected duplicate error propagated from child walk")
 	}
 }
 

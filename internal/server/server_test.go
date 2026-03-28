@@ -1914,7 +1914,7 @@ func TestRun_ServesHTML(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
+		Comps: []*component.Info{ci},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -1954,7 +1954,7 @@ func TestRun_AuthRejectsWithoutToken(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
+		Comps: []*component.Info{ci},
 		NoAuth:    false,
 		Token:     "testsecret",
 		NoBrowser: true,
@@ -1984,7 +1984,7 @@ func TestRun_AuthAcceptsWithToken(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
+		Comps: []*component.Info{ci},
 		NoAuth:    false,
 		Token:     "testsecret",
 		NoBrowser: true,
@@ -2043,7 +2043,7 @@ func TestRun_WebSocketUpgrade(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
+		Comps: []*component.Info{ci},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -2086,7 +2086,7 @@ func TestRun_WebSocketMethodCall(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
+		Comps: []*component.Info{ci},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -2153,7 +2153,7 @@ func TestRun_WebSocketNodeEvent(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
+		Comps: []*component.Info{ci},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -2226,7 +2226,7 @@ func TestRun_WebSocketAuthReject(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
+		Comps: []*component.Info{ci},
 		NoAuth:    false,
 		Token:     "secret",
 		NoBrowser: true,
@@ -2256,7 +2256,7 @@ func TestRun_PluginScripts(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
+		Comps: []*component.Info{ci},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -2293,7 +2293,7 @@ func TestRun_StaticFiles(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
+		Comps: []*component.Info{ci},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -2654,7 +2654,7 @@ func TestRun_WebSocketIgnoresNonBinary(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
+		Comps: []*component.Info{ci},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -2709,7 +2709,7 @@ func TestRun_WebSocketBadProtobuf(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*MountedComponent{{Info: ci, ParentIdx: -1}},
+		Comps: []*component.Info{ci},
 		NoAuth:    true,
 		NoBrowser: true,
 		Quiet:     true,
@@ -3031,7 +3031,7 @@ func walkTree(n vdom.Node, fn func(vdom.Node)) {
 func startTestServer(t *testing.T, cfg Config) (string, error) {
 	t.Helper()
 
-	ci := cfg.Comps[0].Info
+	ci := cfg.Comps[0]
 	pool := &connPool{}
 
 	var token string
@@ -3297,71 +3297,6 @@ func TestBuildUpdate_RemapsNodeStableIDs_ElseBranch(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// initOrder tests
-// ---------------------------------------------------------------------------
-
-func TestInitOrder_SingleRoot(t *testing.T) {
-	comps := []*MountedComponent{
-		{ParentIdx: -1},
-	}
-	order := initOrder(comps)
-	if len(order) != 1 || order[0] != 0 {
-		t.Errorf("expected [0], got %v", order)
-	}
-}
-
-func TestInitOrder_ParentBeforeChildren(t *testing.T) {
-	comps := []*MountedComponent{
-		{ParentIdx: -1}, // 0: root
-		{ParentIdx: 0},  // 1: child of root
-		{ParentIdx: 0},  // 2: another child of root
-		{ParentIdx: 1},  // 3: grandchild
-	}
-	order := initOrder(comps)
-	if len(order) != 4 {
-		t.Fatalf("expected 4 items, got %d", len(order))
-	}
-
-	// Build position map
-	pos := map[int]int{}
-	for i, idx := range order {
-		pos[idx] = i
-	}
-	// Root must come before its children
-	if pos[0] >= pos[1] {
-		t.Error("root should come before child 1")
-	}
-	if pos[0] >= pos[2] {
-		t.Error("root should come before child 2")
-	}
-	if pos[1] >= pos[3] {
-		t.Error("child 1 should come before grandchild 3")
-	}
-}
-
-func TestInitOrder_ChildBeforeParent_InSlice(t *testing.T) {
-	// Even if child appears before parent in the slice, order is correct
-	comps := []*MountedComponent{
-		{ParentIdx: 1},  // 0: child of 1
-		{ParentIdx: -1}, // 1: root
-	}
-	order := initOrder(comps)
-	if len(order) != 2 {
-		t.Fatalf("expected 2, got %d", len(order))
-	}
-	if order[0] != 1 || order[1] != 0 {
-		t.Errorf("expected [1, 0], got %v", order)
-	}
-}
-
-func TestInitOrder_Empty(t *testing.T) {
-	order := initOrder(nil)
-	if len(order) != 0 {
-		t.Errorf("expected empty, got %v", order)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // findComponentByNodeID tests
 // ---------------------------------------------------------------------------
 
@@ -3375,10 +3310,7 @@ func TestFindComponentByNodeID_Found(t *testing.T) {
 		NodeBase: vdom.NodeBase{ID: 20}, Tag: "span",
 	}
 
-	comps := []*MountedComponent{
-		{Info: ci1, ParentIdx: -1},
-		{Info: ci2, ParentIdx: 0},
-	}
+	comps := []*component.Info{ci1, ci2}
 
 	found, idx := findComponentByNodeID(comps, 20)
 	if found != ci2 {
@@ -3394,7 +3326,7 @@ func TestFindComponentByNodeID_NotFound(t *testing.T) {
 	ci.Tree = &vdom.ElementNode{
 		NodeBase: vdom.NodeBase{ID: 10}, Tag: "div",
 	}
-	comps := []*MountedComponent{{Info: ci, ParentIdx: -1}}
+	comps := []*component.Info{ci}
 
 	found, idx := findComponentByNodeID(comps, 999)
 	if found != nil {
