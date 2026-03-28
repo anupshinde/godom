@@ -31,7 +31,7 @@ func (c *Counter) Decrement() {
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 
 	layout := &Layout{Title: "Same Component Test"}
 	eng.Mount(layout, "ui/layout/index.html")

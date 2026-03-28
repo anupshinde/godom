@@ -173,7 +173,7 @@ func makeTestFSNested() fstest.MapFS {
 func TestMount_Valid(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.SetUI(makeTestFS())
+	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
 	if len(e.comps) != 1 {
@@ -197,7 +197,7 @@ func TestMount_Valid(t *testing.T) {
 func TestMount_NestedEntryPath(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.SetUI(makeTestFSNested())
+	e.SetFS(makeTestFSNested())
 	e.Mount(app, "ui/index.html")
 
 	if len(e.comps) != 1 {
@@ -219,7 +219,7 @@ func TestMount_NestedEntryPath(t *testing.T) {
 func TestMount_WiresComponentField(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.SetUI(makeTestFS())
+	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
 	// After Mount, app.Component.ci should be wired to the same Info as e.comps[0].Info
@@ -234,7 +234,7 @@ func TestMount_WiresComponentField(t *testing.T) {
 func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.SetUI(makeTestFS())
+	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
 	ci := e.comps[0].Info
@@ -249,7 +249,7 @@ func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
 func TestMount_NonPointer(t *testing.T) {
 	if os.Getenv("TEST_FATAL_MOUNT_NONPTR") == "1" {
 		e := NewEngine()
-		e.SetUI(makeTestFS())
+		e.SetFS(makeTestFS())
 		e.Mount(testApp{}, "index.html")
 		return
 	}
@@ -263,7 +263,7 @@ func TestMount_PointerToNonStruct(t *testing.T) {
 	if os.Getenv("TEST_FATAL_MOUNT_NONSTRUCT") == "1" {
 		e := NewEngine()
 		n := 42
-		e.SetUI(makeTestFS())
+		e.SetFS(makeTestFS())
 		e.Mount(&n, "index.html")
 		return
 	}
@@ -276,7 +276,7 @@ func TestMount_PointerToNonStruct(t *testing.T) {
 func TestMount_NoEmbed(t *testing.T) {
 	if os.Getenv("TEST_FATAL_MOUNT_NOEMBED") == "1" {
 		e := NewEngine()
-		e.SetUI(makeTestFS())
+		e.SetFS(makeTestFS())
 		e.Mount(&noComponentApp{}, "index.html")
 		return
 	}
@@ -289,7 +289,7 @@ func TestMount_NoEmbed(t *testing.T) {
 func TestMount_BadEntryPath(t *testing.T) {
 	if os.Getenv("TEST_FATAL_MOUNT_BADPATH") == "1" {
 		e := NewEngine()
-		e.SetUI(makeTestFS())
+		e.SetFS(makeTestFS())
 		e.Mount(&testApp{}, "nonexistent.html")
 		return
 	}
@@ -304,7 +304,7 @@ func TestMount_BadEntryPath(t *testing.T) {
 func TestMount_SetsValueAndType(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Bob", Count: 42}
-	e.SetUI(makeTestFS())
+	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
 	ci := e.comps[0].Info
@@ -320,7 +320,7 @@ func TestMount_SetsValueAndType(t *testing.T) {
 func TestMount_RefreshWorksAfterMount(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.SetUI(makeTestFS())
+	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
 	// After Mount, Refresh should not panic (ci is wired, but RefreshFn is nil until Start)
@@ -337,7 +337,7 @@ func TestMount_InvalidDirective(t *testing.T) {
 		badFS := fstest.MapFS{
 			"index.html": &fstest.MapFile{Data: []byte(badHTML)},
 		}
-		e.SetUI(badFS)
+		e.SetFS(badFS)
 		e.Mount(&testApp{}, "index.html")
 		return
 	}
@@ -379,7 +379,7 @@ func makeSlotTestFS() fstest.MapFS {
 
 func TestAutoWire_RegisteredChildWiredToParent(t *testing.T) {
 	e := NewEngine()
-	e.SetUI(makeSlotTestFS())
+	e.SetFS(makeSlotTestFS())
 
 	parent := &testApp{Name: "parent"}
 	e.Mount(parent, "parent/index.html")
@@ -408,7 +408,7 @@ func TestAutoWire_DuplicateSlotFatals(t *testing.T) {
 			"parent/index.html": &fstest.MapFile{Data: []byte(parentWithTwoSlotsHTML)},
 			"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
 		}
-		e.SetUI(fsys)
+		e.SetFS(fsys)
 
 		parent := &testApp{Name: "parent"}
 		e.Mount(parent, "parent/index.html")
@@ -430,7 +430,7 @@ func TestAutoWire_DuplicateSlotFatals(t *testing.T) {
 func TestAutoWire_MultipleChildrenWiredCorrectly(t *testing.T) {
 	// Parent with two slots — each child is wired to the correct slot.
 	e := NewEngine()
-	e.SetUI(fstest.MapFS{
+	e.SetFS(fstest.MapFS{
 		"parent/index.html": &fstest.MapFile{Data: []byte(parentWithTwoSlotsHTML)},
 		"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
 	})
@@ -458,7 +458,7 @@ func TestAutoWire_MultipleChildrenWiredCorrectly(t *testing.T) {
 func TestAutoWire_UnreferencedComponentFatals(t *testing.T) {
 	if os.Getenv("TEST_FATAL_AUTOWIRE_NOREF") == "1" {
 		e := NewEngine()
-		e.SetUI(makeSlotTestFS())
+		e.SetFS(makeSlotTestFS())
 
 		parent := &testApp{Name: "parent"}
 		e.Mount(parent, "parent/index.html")
@@ -480,7 +480,7 @@ func TestMount_MultipleComponents_StaticFSFromFirst(t *testing.T) {
 	parent := &testApp{Name: "parent"}
 	child := &childApp{Value: "child"}
 
-	e.SetUI(makeTestFSNested())
+	e.SetFS(makeTestFSNested())
 	e.Mount(parent, "ui/index.html")
 	e.Mount(child, "child/index.html")
 

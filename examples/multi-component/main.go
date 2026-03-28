@@ -17,7 +17,7 @@ var ui embed.FS
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	chartjs.Register(eng)
 
 	// Layout — root component, must be mounted first

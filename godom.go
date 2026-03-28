@@ -40,7 +40,7 @@ type Engine struct {
 	staticFS   fs.FS                      // embedded UI filesystem for static assets
 	compIndex  map[interface{}]int        // comp pointer → index in comps slice
 	registered map[string]*registration   // instance name → registration (from Register)
-	uiFS       fs.FS                      // shared UI filesystem set via SetUI
+	uiFS       fs.FS                      // shared UI filesystem set via SetFS
 }
 
 // registration holds metadata for a component registered via Register().
@@ -93,9 +93,9 @@ func NewEngine() *Engine {
 	}
 }
 
-// SetUI sets the shared UI filesystem for templates. When set, Register()
+// SetFS sets the shared UI filesystem for templates. When set, Register()
 // uses this filesystem instead of requiring one per call.
-func (a *Engine) SetUI(fsys fs.FS) {
+func (a *Engine) SetFS(fsys fs.FS) {
 	a.uiFS = fsys
 }
 
@@ -112,7 +112,7 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 // parent templates via g-component attributes.
 func (a *Engine) Mount(comp interface{}, entryPath string) {
 	if a.uiFS == nil {
-		log.Fatal("godom: call SetUI() before Mount()")
+		log.Fatal("godom: call SetFS() before Mount()")
 	}
 	v := reflect.ValueOf(comp)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
@@ -180,7 +180,7 @@ func (a *Engine) mountInternal(comp interface{}, fsys fs.FS, entryPath string) {
 // Register registers a named component with a template. The name is used in
 // g-component="name" attributes on elements in parent templates.
 //
-// Register uses the filesystem set via SetUI() or the one from the first Mount() call.
+// Register uses the filesystem set via SetFS() or the one from the first Mount() call.
 // The entryPath is relative to that filesystem (e.g. "ui/counter/index.html").
 func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	if name == "" {
@@ -203,7 +203,7 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	}
 
 	if a.uiFS == nil {
-		log.Fatal("godom: call SetUI() or Mount() before Register()")
+		log.Fatal("godom: call SetFS() or Mount() before Register()")
 	}
 
 	a.registered[name] = &registration{

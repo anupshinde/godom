@@ -15,7 +15,7 @@ import "github.com/anupshinde/godom/plugins/chartjs"
 
 func main() {
     eng := godom.NewEngine()
-    eng.SetUI(ui)
+    eng.SetFS(ui)
     chartjs.Register(eng)  // registers the plugin + injects Chart.js
     eng.Mount(&App{}, "ui/index.html")
     log.Fatal(eng.Start())

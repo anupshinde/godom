@@ -445,7 +445,7 @@ func clamp(v, min, max float64) float64 {
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	eng.RegisterPlugin("gyro", gyroJS)
 	eng.RegisterPlugin("sfx", sfxJS)
 

@@ -292,7 +292,7 @@ func formatUptime(secs uint64) string {
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	chartjs.Register(eng)
 
 	root := &App{}

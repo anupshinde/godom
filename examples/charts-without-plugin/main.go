@@ -114,7 +114,7 @@ func round1(v float64) float64 {
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	eng.RegisterPlugin("apexcharts", apexBridgeJS)
 
 	root := &App{}

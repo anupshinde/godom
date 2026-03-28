@@ -28,7 +28,7 @@ The bridge never evaluates expressions, resolves data, or makes decisions. It re
 
 ```go
 eng := godom.NewEngine()
-eng.SetUI(ui)                                          // set shared UI filesystem
+eng.SetFS(ui)                                          // set shared UI filesystem
 eng.Mount(&TodoApp{}, "ui/index.html")                 // parse, validate, prepare
 log.Fatal(eng.Start())                                 // serve, open browser, block
 ```
@@ -194,7 +194,7 @@ Parent struct         ──state──►    Child HTML template
 Each component is a self-contained unit: own Go struct, own HTML template, own VDOM tree, own diff cycle. They are like small independent applications that all run inside the same Go process and render through the same bridge.
 
 ```
-eng.SetUI(ui)
+eng.SetFS(ui)
 eng.Register("counter", counter, "ui/counter/index.html")  // child component
 eng.Mount(layout, "ui/layout/index.html")                  // root component
 ```

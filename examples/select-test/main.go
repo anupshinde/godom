@@ -40,7 +40,7 @@ func (a *App) Summary() string {
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	eng.Mount(&App{
 		Color:  "blue",
 		Colors: []string{"red", "green", "blue", "yellow"},
