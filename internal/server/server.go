@@ -170,7 +170,7 @@ func Run(cfg Config) error {
 	var bundleJS string
 	bundleJS += cfg.ProtobufMinJS + "\n" + cfg.ProtocolJS + "\n"
 	if len(cfg.Plugins) > 0 {
-		bundleJS += "window.godom={_plugins:{},register:function(n,h){this._plugins[n]=h}};\n"
+		bundleJS += "var godom=window[window.GODOM_NS||'godom']=window[window.GODOM_NS||'godom']||{};godom._plugins=godom._plugins||{};godom.register=function(n,h){godom._plugins[n]=h};\n"
 		for _, pluginScripts := range cfg.Plugins {
 			for _, js := range pluginScripts {
 				bundleJS += js + "\n"

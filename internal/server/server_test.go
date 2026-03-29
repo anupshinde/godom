@@ -2282,7 +2282,7 @@ func TestRun_PluginScripts(t *testing.T) {
 	if !strings.Contains(bodyStr, "console.log('chart')") {
 		t.Error("expected plugin script in response")
 	}
-	if !strings.Contains(bodyStr, "window.godom=") {
+	if !strings.Contains(bodyStr, "godom.register=") {
 		t.Error("expected godom plugin registration script")
 	}
 }
@@ -3072,7 +3072,7 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 	injectedJS += "<script>" + cfg.ProtobufMinJS + "</script>\n"
 	injectedJS += "<script>" + cfg.ProtocolJS + "</script>\n"
 	if len(cfg.Plugins) > 0 {
-		injectedJS += "<script>window.godom={_plugins:{},register:function(n,h){this._plugins[n]=h}};</script>\n"
+		injectedJS += "<script>var godom=window[window.GODOM_NS||'godom']=window[window.GODOM_NS||'godom']||{};godom._plugins=godom._plugins||{};godom.register=function(n,h){godom._plugins[n]=h};</script>\n"
 		for _, pluginScripts := range cfg.Plugins {
 			for _, js := range pluginScripts {
 				injectedJS += "<script>" + js + "</script>\n"

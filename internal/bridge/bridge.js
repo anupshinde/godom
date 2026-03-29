@@ -26,6 +26,10 @@
     // 1. State & globals
     // =========================================================================
 
+    var nsName = window.GODOM_NS || "godom";
+    var ns = window[nsName] = window[nsName] || {};
+    if (!ns._plugins) ns._plugins = {};
+
     var ws;
     var targets = {};   // targetName (string) → [target context, ...]
 
@@ -211,7 +215,7 @@
 
             if (tree.plug) {
                 el._godomPlugin = tree.plug;
-                var handler = window.godom && window.godom._plugins && window.godom._plugins[tree.plug];
+                var handler = ns._plugins[tree.plug];
                 if (handler && tree.pd !== undefined) {
                     pendingPluginInits.push({el: el, id: tree.id, handler: handler, data: tree.pd});
                 }
@@ -377,7 +381,7 @@
             var data = JSON.parse(textDecoder.decode(patch.pluginData));
             var nid = patch.nodeId;
             var pluginName = node._godomPlugin;
-            var handler = window.godom && window.godom._plugins && window.godom._plugins[pluginName];
+            var handler = ns._plugins[pluginName];
             if (!handler) return;
 
             if (!pluginState[nid]) {
@@ -715,10 +719,8 @@
     // 9. Plugin registration (global API)
     // =========================================================================
 
-    if (!window.godom) window.godom = {};
-    if (!window.godom._plugins) window.godom._plugins = {};
-    window.godom.register = function(name, handler) {
-        window.godom._plugins[name] = handler;
+    ns.register = function(name, handler) {
+        ns._plugins[name] = handler;
     };
 
     // =========================================================================
