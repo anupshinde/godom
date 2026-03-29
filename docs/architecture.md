@@ -47,9 +47,9 @@ log.Fatal(eng.Start())                                 // serve, open browser, b
 1. Reads `GODOM_*` environment variables for any settings not already set in code (see [configuration.md](configuration.md))
 2. Generates a random auth token (unless `NoAuth` is set or a fixed `Token` is provided)
 3. Wires the `Refresh()` callback (needs the connection pool, which only exists at start time)
-4. Builds a JS bundle (protobuf + protocol + plugin bootstrap + plugin scripts + bridge) — used both for inline injection and served at `/godom.js`
-5. Injects the bundle inline before `</body>` in the root HTML page
-6. Starts an HTTP server on the configured host and port, with token auth middleware on `/` and `/ws`. Serves `/godom.js` for external pages. Non-root paths are served as static files from the embedded UI filesystem (CSS, images, fonts, etc.)
+4. Builds a JS bundle (protobuf + protocol + plugin bootstrap + plugin scripts + bridge), served at `/godom.js`
+5. Injects `<script src="/godom.js"></script>` before `</body>` in the root HTML page
+6. Starts an HTTP server on the configured host and port, with token auth middleware on `/` and `/ws`. Serves `/godom.js` for both the root page and external pages. Non-root paths are served as static files from the embedded UI filesystem (CSS, images, fonts, etc.)
 7. Opens the default browser with the token URL
 8. Blocks forever, handling WebSocket connections
 
