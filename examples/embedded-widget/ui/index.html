@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>MarketPulse — Stock News</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Georgia, "Times New Roman", serif; background: #f9f9f7; color: #1a1a1a; }
+        a { color: inherit; text-decoration: none; }
+
+        .header { border-bottom: 3px double #1a1a1a; padding: 12px 24px; background: #fff; }
+        .header-top { display: flex; justify-content: space-between; align-items: center; max-width: 1000px; margin: 0 auto; }
+        .logo { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+        .header-date { font-size: 13px; color: #666; font-style: italic; }
+        .nav { display: flex; gap: 24px; max-width: 1000px; margin: 8px auto 0; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #444; }
+
+        .ticker-bar { background: #1a1a1a; color: #fff; padding: 8px 24px; }
+        .ticker-inner { max-width: 1000px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
+        .ticker-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #999; font-family: sans-serif; }
+
+        .main { max-width: 1000px; margin: 0 auto; padding: 24px; display: grid; grid-template-columns: 2fr 1fr; gap: 32px; }
+
+        .headline { font-size: 32px; font-weight: 700; line-height: 1.2; margin-bottom: 12px; }
+        .lead { font-size: 16px; color: #444; line-height: 1.6; margin-bottom: 16px; }
+        .byline { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 24px; }
+        .story-divider { border: none; border-top: 1px solid #ddd; margin: 24px 0; }
+
+        .story-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .story-card h3 { font-size: 16px; font-weight: 700; line-height: 1.3; margin-bottom: 6px; }
+        .story-card p { font-size: 13px; color: #666; line-height: 1.5; }
+        .story-card .meta { font-size: 11px; color: #999; margin-top: 6px; }
+
+        .sidebar h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #ddd; }
+        .sidebar-section { margin-bottom: 28px; }
+        .sidebar-item { padding: 8px 0; border-bottom: 1px solid #eee; }
+        .sidebar-item h4 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+        .sidebar-item p { font-size: 12px; color: #888; }
+
+        .footer { border-top: 3px double #1a1a1a; padding: 16px 24px; text-align: center; font-size: 12px; color: #999; background: #fff; margin-top: 40px; }
+    </style>
+    <script>
+        window.GODOM_WS_URL = "ws://localhost:9091/ws";
+    </script>
+    <script src="http://localhost:9091/godom.js"></script>
+</head>
+<body>
+    <div class="header">
+        <div class="header-top">
+            <div class="logo">MarketPulse</div>
+            <div class="header-date">Saturday, March 29, 2026</div>
+        </div>
+        <div class="nav">
+            <a href="#">Markets</a>
+            <a href="#">Tech</a>
+            <a href="#">Economy</a>
+            <a href="#">Commodities</a>
+            <a href="#">Opinion</a>
+        </div>
+    </div>
+
+    <div class="ticker-bar">
+        <div class="ticker-inner">
+            <span class="ticker-label">Live</span>
+            <div g-component="marquee"></div>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="content">
+            <h1 class="headline">Fed Signals Patience on Rate Cuts as Inflation Holds Steady</h1>
+            <p class="lead">Federal Reserve officials indicated they are in no rush to lower interest rates, citing persistent inflationary pressures in housing and services sectors despite cooling in goods prices.</p>
+            <div class="byline">By J. Whitfield &bull; 3 hours ago</div>
+
+            <hr class="story-divider"/>
+
+            <div class="story-grid">
+                <div class="story-card">
+                    <h3>NVIDIA Surpasses $3T Valuation on AI Chip Demand</h3>
+                    <p>The chipmaker's stock rallied after reporting record data center revenue, fueled by enterprise adoption of generative AI infrastructure.</p>
+                    <div class="meta">Markets &bull; 5 hours ago</div>
+                </div>
+                <div class="story-card">
+                    <h3>Oil Drops Below $70 on Demand Concerns</h3>
+                    <p>Crude futures fell sharply as China's manufacturing data disappointed and OPEC+ members signaled willingness to increase output.</p>
+                    <div class="meta">Commodities &bull; 6 hours ago</div>
+                </div>
+                <div class="story-card">
+                    <h3>Apple Plans Major Push Into Home Robotics</h3>
+                    <p>The tech giant is developing a personal robot assistant, part of a broader strategy to diversify beyond the iPhone.</p>
+                    <div class="meta">Tech &bull; 8 hours ago</div>
+                </div>
+                <div class="story-card">
+                    <h3>Treasury Yields Climb Ahead of Jobs Report</h3>
+                    <p>The 10-year yield rose to 4.35% as traders positioned for a stronger-than-expected employment number on Friday.</p>
+                    <div class="meta">Economy &bull; 10 hours ago</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="sidebar-section" style="padding-bottom: 20px; border-bottom: 1px solid #eee;">
+                <h2>Live Ticker</h2>
+                <div g-component="stock"></div>
+            </div>
+            <div class="sidebar-section">
+                <h2>Trending</h2>
+                <div class="sidebar-item">
+                    <h4>Bitcoin crosses $95,000 for the first time</h4>
+                    <p>12 min ago</p>
+                </div>
+                <div class="sidebar-item">
+                    <h4>EU approves sweeping AI regulation package</h4>
+                    <p>1 hour ago</p>
+                </div>
+                <div class="sidebar-item">
+                    <h4>Amazon warehouse workers vote to unionize in Texas</h4>
+                    <p>2 hours ago</p>
+                </div>
+                <div class="sidebar-item">
+                    <h4>Gold hits record $2,450 on safe-haven demand</h4>
+                    <p>4 hours ago</p>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h2>Opinion</h2>
+                <div class="sidebar-item">
+                    <h4>The market is pricing in a soft landing. Is it right?</h4>
+                    <p>R. Dalio</p>
+                </div>
+                <div class="sidebar-item">
+                    <h4>Why passive investing is eating Wall Street alive</h4>
+                    <p>M. Chen</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        &copy; 2026 MarketPulse &mdash; This is a demo site. All content is fictional.
+    </div>
+</body>
+</html>
