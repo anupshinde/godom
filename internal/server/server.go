@@ -225,11 +225,9 @@ func Run(cfg Config) error {
 
 		// Send init for each component in mount order (root first, children after).
 		for _, ci := range cfg.Comps {
-			if err := handleInit(wc, ci, ci.SlotName); err != nil {
-				log.Printf("godom: failed to compute init for slot %q: %v", ci.SlotName, err)
-				pool.remove(wc)
-				conn.Close()
-				return
+			ci.EventCh <- component.Event{
+				Kind:  component.InitKind,
+				Reply: wc.writeBinary,
 			}
 		}
 
@@ -398,6 +396,8 @@ func processEvents(ci *component.Info, compIdx int, sm *sharedPtrMaps, pool *con
 			handleMethodCall(ci, compIdx, evt.Call, sm, pool)
 		case component.RefreshKind:
 			executeRefresh(ci, pool)
+		case component.InitKind:
+			handleInit(ci, evt.Reply)
 		}
 	}
 }
@@ -730,16 +730,19 @@ func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
 
 // --- Message handlers ---
 
-func handleInit(wc *wsConn, ci *component.Info, targetName string) error {
-	ci.Mu.Lock()
+// handleInit builds and sends the init tree to a specific connection.
+// Called only from processEvents (serialized) — no lock needed.
+func handleInit(ci *component.Info, reply func([]byte) error) {
 	msg := BuildInit(ci)
-	msg.TargetName = targetName
-	ci.Mu.Unlock()
+	msg.TargetName = ci.SlotName
 	data, err := proto.Marshal(msg)
 	if err != nil {
-		return err
+		log.Printf("godom: init marshal error for slot %q: %v", ci.SlotName, err)
+		return
 	}
-	return wc.writeBinary(data)
+	if err := reply(data); err != nil {
+		log.Printf("godom: init send error for slot %q: %v", ci.SlotName, err)
+	}
 }
 
 // handleNodeEvent processes a Layer 1 node event: find the node in the live
