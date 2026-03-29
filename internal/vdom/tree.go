@@ -38,10 +38,10 @@ type TemplateNode struct {
 
 	// For g-for nodes
 	IsFor    bool
-	ForItem  string // loop variable name, e.g. "todo"
-	ForIndex string // index variable name, e.g. "i" (empty if unused)
-	ForList  string // list field, e.g. "Todos"
-	ForKey   string // key expression, e.g. "todo.ID" (empty = positional)
+	ForItem  string          // loop variable name, e.g. "todo"
+	ForIndex string          // index variable name, e.g. "i" (empty if unused)
+	ForList  string          // list field, e.g. "Todos"
+	ForKey   string          // key expression, e.g. "todo.ID" (empty = positional)
 	ForBody  []*TemplateNode // template for each item
 
 	// For plugin nodes
@@ -57,8 +57,8 @@ type TemplateNode struct {
 // Directive represents a single g-* directive on an element.
 type Directive struct {
 	Type string // "text", "html", "bind", "value", "checked", "if", "show", "hide", "class", "attr", "style", "prop",
-	           // "click", "keydown", "mousedown", "mousemove", "mouseup", "wheel", "scroll", "drop",
-	           // "draggable", "dropzone"
+	// "click", "keydown", "mousedown", "mousemove", "mouseup", "wheel", "scroll", "drop",
+	// "draggable", "dropzone"
 	Name string // modifier name: class name, attr name, style property, key filter, etc.
 	Expr string // expression: field name, method call, etc.
 }
@@ -93,7 +93,6 @@ func ParseTemplate(htmlStr string) ([]*TemplateNode, error) {
 	}
 	return nodes, nil
 }
-
 
 func htmlToTemplate(n *html.Node) *TemplateNode {
 	switch n.Type {
@@ -396,9 +395,9 @@ type ResolveContext struct {
 	InputBindings map[int]InputBinding
 
 	// Unbound input support
-	UnboundValues map[string]any    // stableKey → stored value (passed in from component.Info)
-	NodeStableIDs map[int]string    // nodeID → stableKey (built during resolve, read by server)
-	ForIndices    []int             // current g-for loop index stack (for composite stable keys)
+	UnboundValues map[string]any // stableKey → stored value (passed in from component.Info)
+	NodeStableIDs map[int]string // nodeID → stableKey (built during resolve, read by server)
+	ForIndices    []int          // current g-for loop index stack (for composite stable keys)
 
 	// baseEnv is the expr-lang environment built from struct fields + methods.
 	// Built once per render on first use, reused for every ResolveExpr call.
@@ -1435,4 +1434,3 @@ func findBody(n *html.Node) *html.Node {
 	}
 	return nil
 }
-
