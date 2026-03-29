@@ -138,18 +138,30 @@ Inputs without `g-bind` still participate in Layer 1. The bridge sends `NodeEven
 
 Not all state changes come from user interaction. Background goroutines (timers, sensors, network listeners) can mutate struct fields and call `Refresh()` to push the new state to all browsers:
 
-1. Go locks the component mutex
-2. Resolves the template tree, diffs against the old tree, produces patches
+1. `Refresh()` sends a `RefreshKind` event to the component's event queue
+2. The processor goroutine picks it up, resolves the template tree, diffs against the old tree, produces patches
 3. Broadcasts the patches to all connected tabs
 
 This uses the same `VDomMessage` patch format as user-triggered changes — the bridge doesn't know the difference.
+
+### Event queue (concurrency model)
+
+Each component instance has a buffered event channel (`EventCh`) and a single processor goroutine. All events — browser input changes (`NodeEventKind`), method calls (`MethodCallKind`), background refreshes (`RefreshKind`), and new connection inits (`InitKind`) — are sent to this channel and processed sequentially.
+
+This eliminates race conditions between concurrent sources (multiple browser tabs, background goroutines) without requiring locks on the component's state. The only remaining lock is in `findComponentByNodeID`, which reads the VDOM tree from the WebSocket read loop to determine which component owns a node ID.
+
+Two filter hooks control event flow:
+- `shouldEnqueue(event)` — called before sending to the channel (for future deduplication)
+- `shouldProcess(event)` — called before processing from the channel (for future filtering)
+
+Both return `true` for now.
 
 ### Surgical refresh (MarkRefresh)
 
 For large UIs where only a few fields changed, `MarkRefresh()` avoids a full tree diff:
 
 1. Call `MarkRefresh("Field1", "Field2")` before `Refresh()`
-2. The server rebuilds only the nodes bound to those fields
+2. The processor rebuilds only the nodes bound to those fields
 3. If the partial rebuild produces patches, they are sent. Otherwise, it falls back to a full rebuild
 
 This is the primary optimization for dashboards and large lists where one item changed.
