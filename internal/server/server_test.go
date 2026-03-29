@@ -3060,9 +3060,8 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 
 	// Wire up RefreshFn (mirrors Run)
 	ci.RefreshFn = func() {
+		fields := ci.DrainMarkedFields()
 		ci.Mu.Lock()
-		fields := ci.MarkedFields
-		ci.MarkedFields = nil
 		if len(fields) > 0 {
 			patches := buildSurgicalPatches(ci, fields)
 			if len(patches) > 0 {

@@ -127,9 +127,7 @@ func (sm *sharedPtrMaps) refreshSharedComponents(compIdx int, changedFields []st
 			}
 			seen[sibIdx] = true
 			sib := sm.comps[sibIdx]
-			sib.Mu.Lock()
-			sib.MarkedFields = append(sib.MarkedFields, changedFields...)
-			sib.Mu.Unlock()
+			sib.AddMarkedFields(changedFields...)
 			sib.RefreshFn()
 		}
 	}
@@ -163,6 +161,13 @@ func Run(cfg Config) error {
 	// Build shared pointer maps for auto-refreshing sibling components.
 	sm := buildSharedPtrMaps(cfg.Comps)
 	sm.pool = pool
+
+	// Start event queue processor for each component.
+	for idx, ci := range cfg.Comps {
+		ci.EventCh = make(chan component.Event, 64)
+		idx, ci := idx, ci // capture for closure
+		go processEvents(ci, idx, sm, pool)
+	}
 
 	mux := http.NewServeMux()
 
@@ -267,8 +272,11 @@ func Run(cfg Config) error {
 					log.Printf("godom: node event unmarshal error: %v", err)
 					continue
 				}
-				if ci, compIdx := findComponentByNodeID(cfg.Comps, int(evt.NodeId)); ci != nil {
-					handleNodeEvent(ci, compIdx, evt.NodeId, evt.Value, sm, pool)
+				if ci, _ := findComponentByNodeID(cfg.Comps, int(evt.NodeId)); ci != nil {
+					e := component.Event{Kind: component.NodeEventKind, NodeID: evt.NodeId, Value: evt.Value}
+					if shouldEnqueue(e) {
+						ci.EventCh <- e
+					}
 				}
 
 			case 2: // MethodCall (Layer 2)
@@ -277,8 +285,11 @@ func Run(cfg Config) error {
 					log.Printf("godom: method call unmarshal error: %v", err)
 					continue
 				}
-				if ci, compIdx := findComponentByNodeID(cfg.Comps, int(call.NodeId)); ci != nil {
-					handleMethodCall(ci, compIdx, call, sm, pool)
+				if ci, _ := findComponentByNodeID(cfg.Comps, int(call.NodeId)); ci != nil {
+					e := component.Event{Kind: component.MethodCallKind, Call: call}
+					if shouldEnqueue(e) {
+						ci.EventCh <- e
+					}
 				}
 			}
 		}
@@ -316,39 +327,90 @@ func Run(cfg Config) error {
 		openBrowser(url)
 	}
 
-	return http.Serve(ln, mux)
+	err = http.Serve(ln, mux)
+
+	// Clean shutdown: close event channels so processor goroutines exit.
+	for _, ci := range cfg.Comps {
+		if ci.EventCh != nil {
+			close(ci.EventCh)
+		}
+	}
+
+	return err
 }
 
 // wireRefresh sets up the RefreshFn for a mounted component.
+// RefreshFn sends a RefreshKind event to the component's event queue,
+// ensuring all refreshes are serialized through the processor goroutine.
+// The actual refresh logic lives in executeRefresh.
 func wireRefresh(ci *component.Info, pool *connPool) {
 	ci.RefreshFn = func() {
-		ci.Mu.Lock()
-		fields := ci.MarkedFields
-		ci.MarkedFields = nil
-		if len(fields) > 0 {
-			patches := buildSurgicalPatches(ci, fields)
-			if len(patches) > 0 {
-				ci.Mu.Unlock()
-				msg := render.EncodePatchMessage(patches)
-				msg.TargetName = ci.SlotName
-				data, _ := proto.Marshal(msg)
-				pool.broadcast(data)
-				return
-			}
-		}
-		msg, changedFields := BuildUpdate(ci)
-		ci.LastChangedFields = changedFields
-		ci.Mu.Unlock()
-		if msg != nil {
-			msg.TargetName = ci.SlotName
-			data, _ := proto.Marshal(msg)
-			pool.broadcast(data)
+		if ci.EventCh != nil {
+			ci.EventCh <- component.Event{Kind: component.RefreshKind}
 		}
 	}
 }
 
+// executeRefresh performs the actual refresh: drain marked fields for surgical
+// patches, or fall back to a full BuildUpdate + diff. Called only from
+// processEvents to ensure serialized access.
+func executeRefresh(ci *component.Info, pool *connPool) {
+	// Drain marked fields before acquiring the main lock.
+	// DrainMarkedFields has its own lock for thread safety.
+	fields := ci.DrainMarkedFields()
+	ci.Mu.Lock()
+	if len(fields) > 0 {
+		patches := buildSurgicalPatches(ci, fields)
+		if len(patches) > 0 {
+			ci.Mu.Unlock()
+			msg := render.EncodePatchMessage(patches)
+			msg.TargetName = ci.SlotName
+			data, _ := proto.Marshal(msg)
+			pool.broadcast(data)
+			return
+		}
+	}
+	msg, changedFields := BuildUpdate(ci)
+	ci.LastChangedFields = changedFields
+	ci.Mu.Unlock()
+	if msg != nil {
+		msg.TargetName = ci.SlotName
+		data, _ := proto.Marshal(msg)
+		pool.broadcast(data)
+	}
+}
 
+// shouldEnqueue decides whether an event should be placed on the channel.
+// Returns true to enqueue, false to drop. Currently allows all events.
+func shouldEnqueue(_ component.Event) bool {
+	return true
+}
 
+// shouldProcess decides whether an event should be processed after being
+// dequeued. Returns true to process, false to skip. Currently allows all events.
+func shouldProcess(_ component.Event) bool {
+	return true
+}
+
+// processEvents is the single goroutine per component that processes events
+// sequentially from the component's event queue. This eliminates race
+// conditions between concurrent event sources (multiple WS connections,
+// background goroutines).
+func processEvents(ci *component.Info, compIdx int, sm *sharedPtrMaps, pool *connPool) {
+	for evt := range ci.EventCh {
+		if !shouldProcess(evt) {
+			continue
+		}
+		switch evt.Kind {
+		case component.NodeEventKind:
+			handleNodeEvent(ci, compIdx, evt.NodeID, evt.Value, sm, pool)
+		case component.MethodCallKind:
+			handleMethodCall(ci, compIdx, evt.Call, sm, pool)
+		case component.RefreshKind:
+			executeRefresh(ci, pool)
+		}
+	}
+}
 
 // findComponentByNodeID finds which component owns a given node ID
 // by searching each component's live tree. Returns the Info and the
@@ -793,9 +855,11 @@ func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string
 			}
 			ci.SetField(setPath, json.RawMessage(raw))
 		}
-		if ci.RefreshFn != nil {
+		if ci.EventCh != nil {
 			ci.Mu.Unlock()
-			ci.RefreshFn()
+			// Called directly (not through the channel) because we're already
+			// inside processEvents and need LastChangedFields immediately.
+			executeRefresh(ci, pool)
 			// Refresh siblings sharing embedded pointer state.
 			ci.Mu.Lock()
 			changedFields := ci.LastChangedFields
@@ -904,7 +968,9 @@ func handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall, 
 	}
 
 	// Refresh the calling component (BuildUpdate + broadcast).
-	ci.RefreshFn()
+	// Called directly (not through the channel) because we're already
+	// inside processEvents and need LastChangedFields immediately.
+	executeRefresh(ci, pool)
 
 	// Surgically refresh siblings that share embedded pointer state,
 	// using the changed fields captured during BuildUpdate above.
