@@ -298,6 +298,16 @@ GODOM_PORT=8081 GODOM_HOST=0.0.0.0 ./myapp
 
 Env vars are only read for fields not already set in code. godom does not parse CLI flags — your binary owns its flags entirely.
 
+For external hosting (embedding godom components in pages not served by godom), set browser-side variables before loading the bundle:
+
+```html
+<script>
+window.GODOM_WS_URL = "ws://localhost:9091/ws";  // Connect to godom on a different origin
+window.GODOM_NS = "myApp";                        // Rename window.godom to window.myApp
+</script>
+<script src="http://localhost:9091/godom.js"></script>
+```
+
 See [docs/configuration.md](docs/configuration.md) for the full reference on settings, environment variables, authentication, and precedence rules.
 
 ### Component
@@ -388,6 +398,8 @@ chartjs.Register(eng)  // registers plugin + embeds Chart.js library
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
 - [examples/multi-component/](examples/multi-component/) — 9-component dashboard with stateful components, `g-component` composition, cross-component callbacks, Chart.js plugin, drag-and-drop reorder, goroutine-driven updates
+- [examples/embedded-widget/](examples/embedded-widget/) — godom components embedded in an external HTML page (separate static server, `GODOM_WS_URL`, `/godom.js` script tag, `g-component` targets)
+- [examples/same-component-repeated/](examples/same-component-repeated/) — same component type rendered into multiple `g-component` targets simultaneously
 - [examples/video-player/](examples/video-player/) — video player with Go decoding frames via ffmpeg and rendering on canvas
 
 After cloning the repo (see [Install](#install)), run any example with:

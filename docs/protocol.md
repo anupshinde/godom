@@ -50,9 +50,11 @@ The browser sends binary messages with a one-byte tag prefix:
 
 **Tag 0x01 — NodeEvent (Layer 1: input sync)**
 
-Sent automatically on every `input` event for elements with `g-bind`. Contains:
+Sent automatically on every `input` event for elements with `g-bind` (and unbound inputs). Contains:
 - `node_id` (int32) — stable node ID of the input element
 - `value` (string) — current DOM value (e.g., `input.value`)
+
+Layer 1 updates the struct field without triggering a re-render. This keeps Go in sync with user typing cheaply.
 
 **Tag 0x02 — MethodCall (Layer 2: event dispatch)**
 
@@ -61,7 +63,9 @@ Sent when the user triggers an event (click, keydown, mousedown, drop, etc.). Co
 - `method` (string) — Go method name (e.g., `"AddTodo"`, `"Toggle"`)
 - `args` (repeated bytes) — JSON-encoded arguments
 
-The bridge constructs these messages directly from event data and the event handler information embedded in the VDOM tree's facts.
+Layer 2 calls the method via reflection and triggers a full re-render (tree resolution, diff, broadcast patches).
+
+The bridge constructs these messages directly from event data and the event handler information embedded in the VDOM tree's facts. See [architecture.md — Browser → Go: two layers](architecture.md#browser--go-two-layers) for the design rationale.
 
 **Key files:**
 
