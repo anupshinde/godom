@@ -32,7 +32,9 @@ Port 9090 (static server)          Port 9091 (godom)
 
 ```
 cd examples/embedded-widget
-go run .
+sh run.sh
 ```
+
+This runs `GODOM_PORT=9091 GODOM_NO_AUTH=1 go run .` — auth is disabled because the external page on port 9090 needs to connect to godom's WebSocket without a token.
 
 Open http://localhost:9090/ui/ in your browser. The stock ticker card and scrolling marquee update live with simulated prices.
