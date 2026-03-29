@@ -46,7 +46,9 @@ type Info struct {
 
 	// markedFields accumulates field names marked for surgical refresh
 	// via AddMarkedFields(). DrainMarkedFields() reads and clears this list.
-	// Access only through AddMarkedFields/DrainMarkedFields (lock-protected).
+	// Access only through AddMarkedFields/DrainMarkedFields.
+	// Protected by markedMu (separate from Mu to avoid contention with tree ops).
+	markedMu     sync.Mutex
 	markedFields []string
 
 	// LastChangedFields is populated by wireRefresh after a BuildUpdate,
@@ -75,17 +77,17 @@ type Info struct {
 
 // AddMarkedFields appends field names for surgical refresh. Thread-safe.
 func (ci *Info) AddMarkedFields(fields ...string) {
-	ci.Mu.Lock()
+	ci.markedMu.Lock()
 	ci.markedFields = append(ci.markedFields, fields...)
-	ci.Mu.Unlock()
+	ci.markedMu.Unlock()
 }
 
 // DrainMarkedFields returns and clears the accumulated marked fields. Thread-safe.
 func (ci *Info) DrainMarkedFields() []string {
-	ci.Mu.Lock()
+	ci.markedMu.Lock()
 	fields := ci.markedFields
 	ci.markedFields = nil
-	ci.Mu.Unlock()
+	ci.markedMu.Unlock()
 	return fields
 }
 
