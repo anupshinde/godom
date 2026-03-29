@@ -42,30 +42,70 @@
     // =========================================================================
 
     var overlay = null;
+    var hasRoot = false; // true when document.body is a godom root
 
     function showDisconnectOverlay(errorMsg) {
-        if (overlay) return;
-        overlay = document.createElement("div");
-        overlay.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;transition:opacity 0.3s";
-        var title = errorMsg ? "Application Crashed" : "Disconnected";
-        var subtitle = errorMsg ? "Restart the application to continue" : "Waiting for server\u2026";
-        var html = '<div style="color:#fff;font-family:system-ui,sans-serif;text-align:center">'
-            + '<div style="font-size:1.5rem;margin-bottom:0.5rem;color:#ff4d4d;font-weight:600">' + title + '</div>'
-            + '<div style="font-size:1.05rem;color:#ccc">' + subtitle + '</div>';
-        if (errorMsg) {
-            var safe = errorMsg.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-            html += '<div style="margin-top:1.2rem;background:rgba(0,0,0,0.5);border:1px solid #444;border-radius:8px;padding:0.8rem 1.2rem;text-align:left;max-width:80vw;overflow-x:auto">'
-                + '<pre style="margin:0;font-size:0.85rem;color:#ffaaaa;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word">' + safe + '</pre></div>';
+        if (hasRoot) {
+            // godom owns the page — full-page overlay.
+            if (overlay) return;
+            overlay = document.createElement("div");
+            overlay.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;transition:opacity 0.3s";
+            var title = errorMsg ? "Application Crashed" : "Disconnected";
+            var subtitle = errorMsg ? "Restart the application to continue" : "Waiting for server\u2026";
+            var html = '<div style="color:#fff;font-family:system-ui,sans-serif;text-align:center">'
+                + '<div style="font-size:1.5rem;margin-bottom:0.5rem;color:#ff4d4d;font-weight:600">' + title + '</div>'
+                + '<div style="font-size:1.05rem;color:#ccc">' + subtitle + '</div>';
+            if (errorMsg) {
+                var safe = errorMsg.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+                html += '<div style="margin-top:1.2rem;background:rgba(0,0,0,0.5);border:1px solid #444;border-radius:8px;padding:0.8rem 1.2rem;text-align:left;max-width:80vw;overflow-x:auto">'
+                    + '<pre style="margin:0;font-size:0.85rem;color:#ffaaaa;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word">' + safe + '</pre></div>';
+            }
+            html += '</div>';
+            overlay.innerHTML = html;
+            document.body.appendChild(overlay);
+        } else {
+            // Embedded — dim each component target and show a small badge.
+            for (var n in targets) {
+                if (!targets.hasOwnProperty(n)) continue;
+                var list = targets[n];
+                for (var i = 0; i < list.length; i++) {
+                    var el = list[i].targetEl;
+                    if (!el || el._godomDisconnected) continue;
+                    el._godomDisconnected = true;
+                    el.style.opacity = "0.4";
+                    el.style.pointerEvents = "none";
+                    // Badge as sibling so parent opacity doesn't affect it.
+                    var badge = document.createElement("div");
+                    badge.className = "godom-disconnect-badge";
+                    badge.style.cssText = "position:relative;display:inline-block;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#ff6b6b;font-family:system-ui,sans-serif;font-size:11px;padding:2px 8px;border-radius:4px;z-index:2147483647;pointer-events:none;margin-left:4px";
+                    badge.textContent = errorMsg ? "Error" : "Disconnected";
+                    el.parentNode.insertBefore(badge, el.nextSibling);
+                }
+            }
         }
-        html += '</div>';
-        overlay.innerHTML = html;
-        document.body.appendChild(overlay);
     }
 
     function hideDisconnectOverlay() {
-        if (!overlay) return;
-        overlay.remove();
-        overlay = null;
+        if (overlay) {
+            overlay.remove();
+            overlay = null;
+        }
+        // Clean up per-target disconnect badges and restore target styles.
+        var badges = document.querySelectorAll(".godom-disconnect-badge");
+        for (var i = 0; i < badges.length; i++) {
+            badges[i].remove();
+        }
+        for (var n in targets) {
+            if (!targets.hasOwnProperty(n)) continue;
+            var list = targets[n];
+            for (var i = 0; i < list.length; i++) {
+                var el = list[i].targetEl;
+                if (!el) continue;
+                el.style.opacity = "";
+                el.style.pointerEvents = "";
+                delete el._godomDisconnected;
+            }
+        }
     }
 
     var reconnectDelay = 1000;
@@ -118,6 +158,7 @@
     function initTarget(name, msg) {
         if (name === "document.body") {
             // Root component: render into document.body.
+            hasRoot = true;
             // Destroy all existing target contexts first.
             for (var n in targets) {
                 if (targets.hasOwnProperty(n)) {
@@ -661,6 +702,8 @@
             },
 
             applyPatches: applyPatches,
+
+            targetEl: targetEl,
 
             cleanup: function() {
                 nodeMap = {};
