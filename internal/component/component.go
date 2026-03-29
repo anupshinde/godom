@@ -20,7 +20,6 @@ const (
 	NodeEventKind   EventKind = iota // browser input changed
 	MethodCallKind                   // browser event handler (g-click, etc.)
 	RefreshKind                      // background goroutine refresh
-	InitKind                         // new connection needs init tree
 )
 
 // Event is a unit of work sent to a component's event queue.
@@ -29,9 +28,6 @@ type Event struct {
 	NodeID int32
 	Value  string
 	Call   *gproto.MethodCall
-	// Reply sends data to a specific connection (used by InitKind).
-	// Nil for broadcast events.
-	Reply func([]byte) error
 }
 
 // Info holds reflection data about a mounted component.

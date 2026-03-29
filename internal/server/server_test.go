@@ -562,7 +562,9 @@ func TestHandleInit_SendsInitMessage(t *testing.T) {
 	<-done
 
 	wc := &wsConn{conn: serverConn}
-	handleInit(ci, wc.writeBinary)
+	if err := handleInit(wc, ci, ""); err != nil {
+		t.Fatalf("handleInit error: %v", err)
+	}
 
 	// Client should receive the init message
 	client.SetReadDeadline(time.Now().Add(time.Second))
@@ -3134,7 +3136,11 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 			return
 		}
 		wc := pool.add(conn)
-		handleInit(ci, wc.writeBinary)
+		if err := handleInit(wc, ci, ""); err != nil {
+			pool.remove(wc)
+			conn.Close()
+			return
+		}
 		defer func() {
 			pool.remove(wc)
 			conn.Close()
