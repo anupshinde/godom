@@ -830,6 +830,7 @@ func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string
 		Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Props: map[string]any{propKey: propVal}}},
 	}
 	msg := render.EncodePatchMessage([]vdom.Patch{patch})
+	msg.TargetName = ci.SlotName
 	ci.Mu.Unlock()
 
 	data, _ := proto.Marshal(msg)
