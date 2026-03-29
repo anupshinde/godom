@@ -75,19 +75,17 @@ type TextPart struct {
 
 // ParseTemplate parses HTML into a template tree.
 func ParseTemplate(htmlStr string) ([]*TemplateNode, error) {
-	doc, err := html.Parse(strings.NewReader(htmlStr))
-	if err != nil { // unreachable: html.Parse never errors, but kept as defensive check
+	// ParseFragment parses as a body fragment, preserving <style> and <script>
+	// tags in place instead of relocating them to <head>.
+	context := &html.Node{Type: html.ElementNode, Data: "body", DataAtom: atom.Body}
+	fragNodes, err := html.ParseFragment(strings.NewReader(htmlStr), context)
+	if err != nil {
 		return nil, fmt.Errorf("parse HTML: %w", err)
 	}
 
-	body := findBody(doc)
-	if body == nil { // unreachable: html.Parse always synthesizes <body>, but kept as defensive check
-		return nil, fmt.Errorf("no <body> found in HTML")
-	}
-
 	var nodes []*TemplateNode
-	for c := body.FirstChild; c != nil; c = c.NextSibling {
-		if tn := htmlToTemplate(c); tn != nil {
+	for _, n := range fragNodes {
+		if tn := htmlToTemplate(n); tn != nil {
 			nodes = append(nodes, tn)
 		}
 	}
