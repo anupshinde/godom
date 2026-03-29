@@ -449,7 +449,8 @@ See [docs/AI_USAGE.md](docs/AI_USAGE.md) for the full philosophy on how AI was u
 - [docs/plugins.md](docs/plugins.md) — plugin system overview
 - [docs/javascript-libraries.md](docs/javascript-libraries.md) — using JS libraries with godom
 - [docs/drag-drop.md](docs/drag-drop.md) — drag and drop design and implementation
-- [docs/known-issues.md](docs/known-issues.md) — known issues and workarounds
+- [docs/nested-components.md](docs/nested-components.md) — nested component composition in embedded mode
+- [docs/planning/next.md](docs/planning/next.md) — prioritized roadmap
 
 ## License
 

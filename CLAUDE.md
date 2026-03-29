@@ -39,10 +39,8 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 - `docs/javascript-libraries.md` — guide for using JS libraries with godom
 - `docs/drag-drop.md` — drag and drop design decisions and implementation
 - `docs/nested-for.md` — nested g-for loop design
-- `docs/known-issues.md` — known issues and workarounds
-- `docs/planning/plan.md` — phased roadmap
-- `docs/planning/next.md` — future work
-- `docs/planning/ideas/` — longer-term ideas
+- `docs/nested-components.md` — nested component composition in embedded mode, gotchas
+- `docs/planning/next.md` — prioritized roadmap (details tracked in Linear)
 - `docs/transport.md` — WebSocket vs SSE+POST analysis
 - `docs/protocol.md` — wire format (protobuf), transport decisions, media streaming
 - `internal/proto/protocol.proto` — protobuf schema defining the wire format

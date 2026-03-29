@@ -309,7 +309,7 @@ The external page loads `/godom.js` from the godom server and sets `GODOM_WS_URL
 
 The bridge uses `GODOM_WS_URL` (if set) instead of deriving the WebSocket URL from the current page's host. This allows a static HTML page on one server to connect to a godom instance on another port/host.
 
-See `examples/embedded-widget/` for a working example.
+See `examples/embedded-widget/` for a working example. For nested component trees in embedded mode (a layout component whose template contains further `g-component` targets), see [nested-components.md](nested-components.md).
 
 ### Namespace (GODOM_NS)
 

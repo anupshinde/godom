@@ -30,9 +30,7 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 ## Key docs
 - `docs/why.md` — project rationale and motivation
 - `docs/architecture.md` — system design, VDOM pipeline, data flow, wire protocol
-- `docs/planning/plan.md` — phased roadmap
-- `docs/planning/next.md` — future work
-- `docs/planning/ideas/` — longer-term ideas
+- `docs/planning/next.md` — prioritized roadmap (details tracked in Linear)
 - `docs/transport.md` — WebSocket vs SSE+POST analysis
 - `docs/protocol.md` — wire format (protobuf), transport decisions, media streaming
 - `internal/proto/protocol.proto` — protobuf schema defining the wire format
