@@ -52,7 +52,7 @@ func (a *App) Decrement() {
 
 func main() {
     eng := godom.NewEngine()
-    eng.SetUI(ui)
+    eng.SetFS(ui)
     eng.Mount(&App{Step: 1}, "ui/index.html")
     log.Fatal(eng.Start())
 }
@@ -227,12 +227,12 @@ Custom elements are template includes — directives inside the child HTML resol
 
 ### Stateful components
 
-For apps with multiple independent pieces of state, each component gets its own Go struct, its own HTML template, and its own VDOM tree. Components compose via `<g-slot>` — the parent declares insertion points, children render into them.
+For apps with multiple independent pieces of state, each component gets its own Go struct, its own HTML template, and its own VDOM tree. Components compose via `g-component` — the parent declares insertion points, children render into them.
 
 ```go
-eng.SetUI(ui)
+eng.SetFS(ui)
 
-// Child components — registered by name, auto-wired to layout's <g-slot> tags
+// Child components — registered by name, render into matching g-component targets
 counter := &Counter{Step: 1}
 eng.Register("counter", counter, "ui/counter/index.html")
 
@@ -241,18 +241,18 @@ layout := &Layout{}
 eng.Mount(layout, "ui/layout/index.html")
 ```
 
-The parent template declares slots with `<g-slot>`:
+The parent template declares targets with the `g-component` attribute:
 
 ```html
 <!-- ui/layout/index.html -->
 <body>
     <h1>My App</h1>
-    <div class="sidebar"><g-slot type="component:Sidebar" instance="sidebar" /></div>
-    <div class="main"><g-slot type="component:Counter" instance="counter" /></div>
+    <div class="sidebar" g-component="sidebar"></div>
+    <div class="main" g-component="counter"></div>
 </body>
 ```
 
-Child templates are HTML fragments (no `<html>`/`<head>`/`<body>`) — they render into the parent's slot:
+Child templates are HTML fragments (no `<html>`/`<head>`/`<body>`) — they render into the parent's target element:
 
 ```html
 <!-- ui/counter/index.html -->
@@ -284,7 +284,7 @@ eng.NoBrowser = true                    // Don't auto-open browser
 eng.Quiet = true                        // Suppress startup output
 eng.NoGodomEnv = true                   // Skip reading GODOM_* env vars
 eng.RegisterPlugin("chartjs", libJS, bridgeJS)   // Register a plugin with one or more JS scripts
-eng.SetUI(fsys)                                // Set the shared UI filesystem for templates
+eng.SetFS(fsys)                                // Set the shared UI filesystem for templates
 eng.Register("name", child, "ui/child.html")   // Register a named child component with a template
 eng.Mount(&MyApp{}, "ui/index.html")            // Mount root component with entry path
 eng.Start()                                 // Start server, open browser, block forever
@@ -297,6 +297,16 @@ GODOM_PORT=8081 GODOM_HOST=0.0.0.0 ./myapp
 ```
 
 Env vars are only read for fields not already set in code. godom does not parse CLI flags — your binary owns its flags entirely.
+
+For external hosting (embedding godom components in pages not served by godom), set browser-side variables before loading the bundle:
+
+```html
+<script>
+window.GODOM_WS_URL = "ws://localhost:9091/ws";  // Connect to godom on a different origin
+window.GODOM_NS = "myApp";                        // Rename window.godom to window.myApp
+</script>
+<script src="http://localhost:9091/godom.js"></script>
+```
 
 See [docs/configuration.md](docs/configuration.md) for the full reference on settings, environment variables, authentication, and precedence rules.
 
@@ -387,7 +397,9 @@ chartjs.Register(eng)  // registers plugin + embeds Chart.js library
 - [examples/stock-ticker/](examples/stock-ticker/) — live stock ticker dashboard with 30 simulated stocks, per-stock tick intervals, table with color-coded gainers/losers, and external CSS via static file serving
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
-- [examples/multi-component/](examples/multi-component/) — 9-component dashboard with stateful components, `<g-slot>` composition, cross-component callbacks, Chart.js plugin, drag-and-drop reorder, goroutine-driven updates
+- [examples/multi-component/](examples/multi-component/) — 9-component dashboard with stateful components, `g-component` composition, cross-component callbacks, Chart.js plugin, drag-and-drop reorder, goroutine-driven updates
+- [examples/embedded-widget/](examples/embedded-widget/) — godom components embedded in an external HTML page (separate static server, `GODOM_WS_URL`, `/godom.js` script tag, `g-component` targets)
+- [examples/same-component-repeated/](examples/same-component-repeated/) — same component type rendered into multiple `g-component` targets simultaneously
 - [examples/video-player/](examples/video-player/) — video player with Go decoding frames via ffmpeg and rendering on canvas
 
 After cloning the repo (see [Install](#install)), run any example with:

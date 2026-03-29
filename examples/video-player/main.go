@@ -239,7 +239,7 @@ func main() {
 	dur := probeSeconds(videoPath)
 
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	eng.RegisterPlugin("videocanvas", videoBridgeJS)
 
 	root := &App{

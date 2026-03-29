@@ -1,0 +1,1 @@
+GODOM_PORT=9091 GODOM_NO_AUTH=1 go run .

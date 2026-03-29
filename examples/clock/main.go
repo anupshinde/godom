@@ -47,7 +47,7 @@ func (a *App) startClock() {
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	root := &App{}
 	go root.startClock()
 	eng.Mount(root, "ui/index.html")

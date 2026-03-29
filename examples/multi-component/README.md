@@ -1,6 +1,6 @@
 # Multi-Component Demo
 
-A 9-component dashboard demonstrating stateful components with `<g-slot>` composition.
+A 9-component dashboard demonstrating stateful components with `g-component` composition.
 
 ## Running
 
@@ -10,36 +10,36 @@ go run ./examples/multi-component
 
 ## How it works
 
-Each component is an independent Go struct with its own HTML template. The root **Layout** component provides the page HTML with `<g-slot>` placeholders. Child components render into those slots.
+Each component is an independent Go struct with its own HTML template. The root **Layout** component provides the page HTML with `g-component` placeholders. Child components render into those elements.
 
 ### Mounting components
 
 ```go
 eng := godom.NewEngine()
-eng.SetUI(ui)
+eng.SetFS(ui)
 
-// Child components — registered by name, auto-wired to layout's <g-slot> tags
-counter := &Counter{Step: 1}
-eng.Register("counter", counter, "ui/counter/index.html")
-
-// Root component — owns the page with <g-slot> tags
+// Root component — must be mounted first
 layout := &Layout{...}
 eng.Mount(layout, "ui/layout/index.html")
+
+// Child components — registered by name, auto-wired via g-component attributes
+counter := &Counter{Step: 1}
+eng.Register("counter", counter, "ui/counter/index.html")
 ```
 
-`SetUI` sets the shared filesystem for templates. `Register` registers a named child component — it is auto-wired to the parent's `<g-slot>` tag matching its name. `Mount` mounts the root component which provides the full page HTML; children provide fragments.
+`SetFS` sets the shared filesystem for templates. `Mount` mounts the root component which provides the full page HTML. `Register` registers a named child component — it renders into elements with a matching `g-component` attribute in the parent's template.
 
-### Slots in HTML
+### Component targets in HTML
 
-The layout template declares insertion points:
+The layout template declares where child components render:
 
 ```html
-<g-slot type="component:Navbar" instance="navbar" />
-<g-slot type="component:Sidebar" instance="sidebar" />
-<g-slot type="component:Counter" instance="counter" />
+<div g-component="navbar"></div>
+<div g-component="sidebar"></div>
+<div g-component="counter"></div>
 ```
 
-Each child's HTML is a fragment (no `<html>`/`<head>`/`<body>`) that renders into its slot.
+Each child's HTML is a fragment (no `<html>`/`<head>`/`<body>`) that renders into its target element.
 
 ### Cross-component communication
 
@@ -66,7 +66,7 @@ go tips.startTips()
 
 | Component | What it demonstrates |
 |-----------|---------------------|
-| **Layout** | Root component, `g-for` + `<g-slot>` composition, drag-to-reorder |
+| **Layout** | Root component, `g-for` + `g-component` composition, drag-to-reorder |
 | **Navbar** | Static data binding |
 | **Sidebar** | `g-for`, `g-click` with args, `g-class` conditional styling |
 | **Counter** | Click events, two-way binding |

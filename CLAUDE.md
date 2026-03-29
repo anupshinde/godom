@@ -17,7 +17,7 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 - Single binary output via `go build`, opens default browser on start
 
 ## Internal packages
-- `godom.go` — public API: Engine, SetUI, Mount, Register, Start, Component, Refresh, MarkRefresh
+- `godom.go` — public API: Engine, SetFS, Mount, Register, Start, Component, Refresh, MarkRefresh
 - `internal/vdom/` — VDOM node types, template parsing, tree resolution, diffing, merging
 - `internal/component/` — component struct, Info, method dispatch, field access
 - `internal/server/` — HTTP server, WebSocket handling, connection pool, init/update pipeline

@@ -138,7 +138,7 @@ func (a *App) run() {
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	eng.RegisterPlugin("canvas3d", canvasBridgeJS)
 
 	root := &App{}

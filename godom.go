@@ -9,8 +9,6 @@ import (
 	"path"
 	"reflect"
 	"strconv"
-	"strings"
-
 	"github.com/anupshinde/godom/internal/component"
 	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/server"
@@ -37,12 +35,12 @@ type Engine struct {
 	NoBrowser  bool   // don't open browser on start
 	Quiet      bool   // suppress startup output
 	NoGodomEnv bool   // skip reading GODOM_* environment variables for configuration
-	comps      []*server.MountedComponent // mounted components
+	comps      []*component.Info          // mounted components
 	plugins    map[string][]string        // plugin name → JS scripts
 	staticFS   fs.FS                      // embedded UI filesystem for static assets
 	compIndex  map[interface{}]int        // comp pointer → index in comps slice
 	registered map[string]*registration   // instance name → registration (from Register)
-	uiFS       fs.FS                      // shared UI filesystem set via SetUI
+	uiFS       fs.FS                      // shared UI filesystem set via SetFS
 }
 
 // registration holds metadata for a component registered via Register().
@@ -95,9 +93,9 @@ func NewEngine() *Engine {
 	}
 }
 
-// SetUI sets the shared UI filesystem for templates. When set, Register()
+// SetFS sets the shared UI filesystem for templates. When set, Register()
 // uses this filesystem instead of requiring one per call.
-func (a *Engine) SetUI(fsys fs.FS) {
+func (a *Engine) SetFS(fsys fs.FS) {
 	a.uiFS = fsys
 }
 
@@ -111,10 +109,10 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 //
 // For single-component apps, call Mount once. For multi-component apps, Mount the
 // root component and use Register() for child components — they are auto-wired to
-// parent templates based on <g-slot> tags.
+// parent templates via g-component attributes.
 func (a *Engine) Mount(comp interface{}, entryPath string) {
 	if a.uiFS == nil {
-		log.Fatal("godom: call SetUI() before Mount()")
+		log.Fatal("godom: call SetFS() before Mount()")
 	}
 	v := reflect.ValueOf(comp)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
@@ -125,6 +123,8 @@ func (a *Engine) Mount(comp interface{}, entryPath string) {
 	}
 
 	a.mountInternal(comp, a.uiFS, entryPath)
+	// Root component renders into document.body.
+	a.comps[len(a.comps)-1].SlotName = "document.body"
 }
 
 // mountInternal is the shared mount logic used by both Mount and Register.
@@ -175,14 +175,14 @@ func (a *Engine) mountInternal(comp interface{}, fsys fs.FS, entryPath string) {
 	ci.Value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
 
 	idx := len(a.comps)
-	a.comps = append(a.comps, &server.MountedComponent{Info: ci, ParentIdx: -1})
+	a.comps = append(a.comps, ci)
 	a.compIndex[comp] = idx
 }
 
 // Register registers a named component with a template. The name is used in
-// <g-slot type="component:Type" instance="name"> tags in parent templates.
+// g-component="name" attributes on elements in parent templates.
 //
-// Register uses the filesystem set via SetUI() or the one from the first Mount() call.
+// Register uses the filesystem set via SetFS() or the one from the first Mount() call.
 // The entryPath is relative to that filesystem (e.g. "ui/counter/index.html").
 func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	if name == "" {
@@ -205,7 +205,7 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	}
 
 	if a.uiFS == nil {
-		log.Fatal("godom: call SetUI() or Mount() before Register()")
+		log.Fatal("godom: call SetFS() or Mount() before Register()")
 	}
 
 	a.registered[name] = &registration{
@@ -218,8 +218,6 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	a.mountInternal(comp, a.uiFS, entryPath)
 }
 
-// AddToSlot registers a child component to render into a named <g-slot> in the
-// parent component's template. Both parent and child must already be mounted.
 // Start starts the HTTP server, opens the default browser, and blocks forever.
 // If GODOM_VALIDATE_ONLY=1 is set, Start() returns immediately after Mount() validation
 // succeeds — useful for CI and pre-commit checks.
@@ -228,9 +226,16 @@ func (a *Engine) Start() error {
 		return fmt.Errorf("godom: no component mounted, call Mount() before Start()")
 	}
 
-	// Auto-wire registered components to their parents based on g-slot tags.
+	// Auto-wire registered components to their g-component targets.
 	if len(a.registered) > 0 {
 		a.autoWireComponents()
+	}
+
+	// Validate: every component must have a SlotName.
+	for _, ci := range a.comps {
+		if ci.SlotName == "" {
+			log.Fatal("godom: every component must have a SlotName — use Mount() for the root and Register() for children")
+		}
 	}
 
 	if env.Bool("GODOM_VALIDATE_ONLY") {
@@ -292,136 +297,16 @@ func (a *Engine) applyEnv() {
 	}
 }
 
-// slotRef holds a g-slot reference found in a template.
-type slotRef struct {
-	instance string // instance name
-	slotType string // type attribute value (e.g. "component:Counter"), empty for interpolated
-}
-
-// autoWireComponents walks all mounted component templates to find <g-slot>
-// references and automatically wires ParentIdx/SlotName for registered components.
+// autoWireComponents sets SlotName on each registered component's Info.
+// The bridge uses it to find target elements with matching g-component attributes.
 func (a *Engine) autoWireComponents() {
-	// Build a map of instance name → comp index for registered components.
-	regIdx := make(map[string]int) // instance name → index in a.comps
 	for name, reg := range a.registered {
 		idx, ok := a.compIndex[reg.comp]
 		if !ok {
 			log.Fatalf("godom: registered component %q not found in mounted components", name)
 		}
-		regIdx[name] = idx
+		a.comps[idx].SlotName = name
 	}
-
-	// Walk each mounted component's templates looking for g-slot references.
-	for parentIdx, mc := range a.comps {
-		refs := collectSlotRefs(mc.Info.VDOMTemplates)
-		for _, ref := range refs {
-			childIdx, ok := regIdx[ref.instance]
-			if !ok {
-				continue // dynamic name resolved at runtime, or not a registered component
-			}
-
-			// Validate type if specified — format is "component:TypeName"
-			if ref.slotType != "" {
-				expectedType := strings.TrimPrefix(ref.slotType, "component:")
-				reg := a.registered[ref.instance]
-				actualType := reflect.ValueOf(reg.comp).Elem().Type().Name()
-				if actualType != expectedType {
-					log.Fatalf("godom: <g-slot type=%q instance=%q> expects type %s but registered component is %s",
-						ref.slotType, ref.instance, expectedType, actualType)
-				}
-			}
-
-			if a.comps[childIdx].ParentIdx != -1 {
-				log.Fatalf("godom: component %q is referenced by multiple parents", ref.instance)
-			}
-			a.comps[childIdx].ParentIdx = parentIdx
-			a.comps[childIdx].SlotName = ref.instance
-		}
-	}
-
-	// Second pass: resolve dynamic g-slots by evaluating the parent's templates
-	// against its struct. This handles <g-slot instance="{{slot.RegisteredName}}"> inside g-for.
-	for parentIdx, mc := range a.comps {
-		if !hasDynamicSlots(mc.Info.VDOMTemplates) {
-			continue
-		}
-		ctx := &vdom.ResolveContext{
-			State: mc.Info.Value,
-			Vars:  make(map[string]any),
-			IDs:   &vdom.IDCounter{},
-		}
-		resolved := vdom.ResolveTree(mc.Info.VDOMTemplates, ctx)
-		root := &vdom.ElementNode{Tag: "body", Children: resolved}
-		walkResolvedSlots(root, func(slotName string) {
-			childIdx, ok := regIdx[slotName]
-			if !ok || a.comps[childIdx].ParentIdx != -1 {
-				return // not registered, or already wired by static pass
-			}
-			a.comps[childIdx].ParentIdx = parentIdx
-			a.comps[childIdx].SlotName = slotName
-		})
-	}
-
-	// Validate that all registered components were wired.
-	for name, reg := range a.registered {
-		idx := a.compIndex[reg.comp]
-		if a.comps[idx].ParentIdx == -1 {
-			log.Fatalf("godom: registered component %q is not referenced by any <g-slot> tag", name)
-		}
-	}
-}
-
-// hasDynamicSlots returns true if any template node has an interpolated g-slot instance.
-func hasDynamicSlots(templates []*vdom.TemplateNode) bool {
-	var found bool
-	var walk func([]*vdom.TemplateNode)
-	walk = func(nodes []*vdom.TemplateNode) {
-		for _, n := range nodes {
-			if n.IsSlot && strings.Contains(n.SlotExpr, "{") {
-				found = true
-				return
-			}
-			walk(n.Children)
-			walk(n.ForBody)
-		}
-	}
-	walk(templates)
-	return found
-}
-
-// walkResolvedSlots walks a resolved VDOM tree and calls fn for each slot node's name.
-func walkResolvedSlots(node vdom.Node, fn func(string)) {
-	switch n := node.(type) {
-	case *vdom.ElementNode:
-		if n.IsSlot && n.SlotName != "" {
-			fn(n.SlotName)
-		}
-		for _, child := range n.Children {
-			walkResolvedSlots(child, fn)
-		}
-	case *vdom.KeyedElementNode:
-		for _, kc := range n.Children {
-			walkResolvedSlots(kc.Node, fn)
-		}
-	}
-}
-
-// collectSlotRefs extracts all static g-slot references from a template tree.
-// Interpolated instance names (containing "{{") are skipped — they are resolved at runtime.
-func collectSlotRefs(templates []*vdom.TemplateNode) []slotRef {
-	var refs []slotRef
-	var walk func([]*vdom.TemplateNode)
-	walk = func(nodes []*vdom.TemplateNode) {
-		for _, n := range nodes {
-			if n.IsSlot && n.SlotExpr != "" && !strings.Contains(n.SlotExpr, "{") {
-				refs = append(refs, slotRef{instance: n.SlotExpr, slotType: n.SlotType})
-			}
-			walk(n.Children)
-			walk(n.ForBody)
-		}
-	}
-	walk(templates)
-	return refs
 }
 
 // embedsComponent checks if a struct type embeds godom.Component.

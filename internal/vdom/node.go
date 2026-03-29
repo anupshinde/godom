@@ -52,8 +52,6 @@ type ElementNode struct {
 	Namespace string // "" for HTML, "http://www.w3.org/2000/svg" for SVG
 	Facts     Facts
 	Children  []Node
-	IsSlot    bool   // true if this node is a g-slot placeholder
-	SlotName  string // resolved instance name (e.g. "counter")
 }
 
 func (n *ElementNode) NodeType() int { return NodeElement }

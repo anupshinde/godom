@@ -79,6 +79,30 @@ Exit immediately after `Mount()` validation succeeds, without starting the serve
 
 This is env-only — there is no code-level field. It runs before `applyEnv()` and is not affected by `NoGodomEnv`.
 
+## Browser-side settings
+
+These are JavaScript `window` variables set in the HTML page **before** loading the godom JS bundle. They are not Go engine settings — they configure the bridge running in the browser.
+
+### GODOM_WS_URL
+
+Override the WebSocket URL the bridge connects to. By default, the bridge derives the URL from the current page's host (`ws://location.host/ws`). Set this when the HTML page is served from a different origin than the godom server.
+
+```html
+<script>window.GODOM_WS_URL = "ws://localhost:9091/ws";</script>
+<script src="http://localhost:9091/godom.js"></script>
+```
+
+### GODOM_NS
+
+Change the global namespace the bridge registers on. Default is `"godom"` (`window.godom`). Useful when embedding godom in a third-party page to avoid name collisions.
+
+```html
+<script>window.GODOM_NS = "myApp";</script>
+<script src="http://localhost:9091/godom.js"></script>
+```
+
+With this, the bridge uses `window.myApp` instead of `window.godom`. Plugin registration (`godom.register(...)`) still works — the server's bootstrap snippet creates a local `var godom` pointing to the configured namespace.
+
 ## Environment variables
 
 godom reads `GODOM_*` environment variables for any setting not already set in code:

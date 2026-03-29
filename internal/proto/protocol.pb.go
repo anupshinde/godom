@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v5.29.3
-// source: internal/proto/protocol.proto
+// source: protocol.proto
 
 package proto
 
@@ -33,7 +33,7 @@ type ServerMessage struct {
 
 func (x *ServerMessage) Reset() {
 	*x = ServerMessage{}
-	mi := &file_internal_proto_protocol_proto_msgTypes[0]
+	mi := &file_protocol_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45,7 +45,7 @@ func (x *ServerMessage) String() string {
 func (*ServerMessage) ProtoMessage() {}
 
 func (x *ServerMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_protocol_proto_msgTypes[0]
+	mi := &file_protocol_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58,7 +58,7 @@ func (x *ServerMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerMessage.ProtoReflect.Descriptor instead.
 func (*ServerMessage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_protocol_proto_rawDescGZIP(), []int{0}
+	return file_protocol_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *ServerMessage) GetType() string {
@@ -102,7 +102,7 @@ type Command struct {
 
 func (x *Command) Reset() {
 	*x = Command{}
-	mi := &file_internal_proto_protocol_proto_msgTypes[1]
+	mi := &file_protocol_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -114,7 +114,7 @@ func (x *Command) String() string {
 func (*Command) ProtoMessage() {}
 
 func (x *Command) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_protocol_proto_msgTypes[1]
+	mi := &file_protocol_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -127,7 +127,7 @@ func (x *Command) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Command.ProtoReflect.Descriptor instead.
 func (*Command) Descriptor() ([]byte, []int) {
-	return file_internal_proto_protocol_proto_rawDescGZIP(), []int{1}
+	return file_protocol_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Command) GetOp() string {
@@ -241,7 +241,7 @@ type ListItem struct {
 
 func (x *ListItem) Reset() {
 	*x = ListItem{}
-	mi := &file_internal_proto_protocol_proto_msgTypes[2]
+	mi := &file_protocol_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -253,7 +253,7 @@ func (x *ListItem) String() string {
 func (*ListItem) ProtoMessage() {}
 
 func (x *ListItem) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_protocol_proto_msgTypes[2]
+	mi := &file_protocol_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -266,7 +266,7 @@ func (x *ListItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListItem.ProtoReflect.Descriptor instead.
 func (*ListItem) Descriptor() ([]byte, []int) {
-	return file_internal_proto_protocol_proto_rawDescGZIP(), []int{2}
+	return file_protocol_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ListItem) GetHtml() string {
@@ -303,7 +303,7 @@ type EventCommand struct {
 
 func (x *EventCommand) Reset() {
 	*x = EventCommand{}
-	mi := &file_internal_proto_protocol_proto_msgTypes[3]
+	mi := &file_protocol_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -315,7 +315,7 @@ func (x *EventCommand) String() string {
 func (*EventCommand) ProtoMessage() {}
 
 func (x *EventCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_protocol_proto_msgTypes[3]
+	mi := &file_protocol_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -328,7 +328,7 @@ func (x *EventCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventCommand.ProtoReflect.Descriptor instead.
 func (*EventCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_protocol_proto_rawDescGZIP(), []int{3}
+	return file_protocol_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *EventCommand) GetId() string {
@@ -362,17 +362,17 @@ func (x *EventCommand) GetMsg() []byte {
 // VDomMessage is the top-level message for the VDOM pipeline.
 type VDomMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`                                        // "init" or "patch"
-	Patches       []*DomPatch            `protobuf:"bytes,3,rep,name=patches,proto3" json:"patches,omitempty"`                                  // incremental patches (patch only)
-	Tree          []byte                 `protobuf:"bytes,5,opt,name=tree,proto3" json:"tree,omitempty"`                                        // JSON-encoded tree description (init only)
-	TargetNodeId  int32                  `protobuf:"varint,6,opt,name=target_node_id,json=targetNodeId,proto3" json:"target_node_id,omitempty"` // VDOM node ID of slot element to render into (multi-component)
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`                               // "init" or "patch"
+	Patches       []*DomPatch            `protobuf:"bytes,3,rep,name=patches,proto3" json:"patches,omitempty"`                         // incremental patches (patch only)
+	Tree          []byte                 `protobuf:"bytes,5,opt,name=tree,proto3" json:"tree,omitempty"`                               // JSON-encoded tree description (init only)
+	TargetName    string                 `protobuf:"bytes,6,opt,name=target_name,json=targetName,proto3" json:"target_name,omitempty"` // registered component instance name (empty = root, renders into body)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *VDomMessage) Reset() {
 	*x = VDomMessage{}
-	mi := &file_internal_proto_protocol_proto_msgTypes[4]
+	mi := &file_protocol_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -384,7 +384,7 @@ func (x *VDomMessage) String() string {
 func (*VDomMessage) ProtoMessage() {}
 
 func (x *VDomMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_protocol_proto_msgTypes[4]
+	mi := &file_protocol_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -397,7 +397,7 @@ func (x *VDomMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VDomMessage.ProtoReflect.Descriptor instead.
 func (*VDomMessage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_protocol_proto_rawDescGZIP(), []int{4}
+	return file_protocol_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *VDomMessage) GetType() string {
@@ -421,11 +421,11 @@ func (x *VDomMessage) GetTree() []byte {
 	return nil
 }
 
-func (x *VDomMessage) GetTargetNodeId() int32 {
+func (x *VDomMessage) GetTargetName() string {
 	if x != nil {
-		return x.TargetNodeId
+		return x.TargetName
 	}
-	return 0
+	return ""
 }
 
 // DomPatch describes a single DOM mutation produced by the diff algorithm.
@@ -447,7 +447,7 @@ type DomPatch struct {
 
 func (x *DomPatch) Reset() {
 	*x = DomPatch{}
-	mi := &file_internal_proto_protocol_proto_msgTypes[5]
+	mi := &file_protocol_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -459,7 +459,7 @@ func (x *DomPatch) String() string {
 func (*DomPatch) ProtoMessage() {}
 
 func (x *DomPatch) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_protocol_proto_msgTypes[5]
+	mi := &file_protocol_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -472,7 +472,7 @@ func (x *DomPatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DomPatch.ProtoReflect.Descriptor instead.
 func (*DomPatch) Descriptor() ([]byte, []int) {
-	return file_internal_proto_protocol_proto_rawDescGZIP(), []int{5}
+	return file_protocol_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DomPatch) GetNodeId() int32 {
@@ -550,7 +550,7 @@ type NodeEvent struct {
 
 func (x *NodeEvent) Reset() {
 	*x = NodeEvent{}
-	mi := &file_internal_proto_protocol_proto_msgTypes[6]
+	mi := &file_protocol_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -562,7 +562,7 @@ func (x *NodeEvent) String() string {
 func (*NodeEvent) ProtoMessage() {}
 
 func (x *NodeEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_protocol_proto_msgTypes[6]
+	mi := &file_protocol_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -575,7 +575,7 @@ func (x *NodeEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeEvent.ProtoReflect.Descriptor instead.
 func (*NodeEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_protocol_proto_rawDescGZIP(), []int{6}
+	return file_protocol_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *NodeEvent) GetNodeId() int32 {
@@ -605,7 +605,7 @@ type MethodCall struct {
 
 func (x *MethodCall) Reset() {
 	*x = MethodCall{}
-	mi := &file_internal_proto_protocol_proto_msgTypes[7]
+	mi := &file_protocol_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -617,7 +617,7 @@ func (x *MethodCall) String() string {
 func (*MethodCall) ProtoMessage() {}
 
 func (x *MethodCall) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_protocol_proto_msgTypes[7]
+	mi := &file_protocol_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -630,7 +630,7 @@ func (x *MethodCall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MethodCall.ProtoReflect.Descriptor instead.
 func (*MethodCall) Descriptor() ([]byte, []int) {
-	return file_internal_proto_protocol_proto_rawDescGZIP(), []int{7}
+	return file_protocol_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *MethodCall) GetNodeId() int32 {
@@ -654,11 +654,11 @@ func (x *MethodCall) GetArgs() [][]byte {
 	return nil
 }
 
-var File_internal_proto_protocol_proto protoreflect.FileDescriptor
+var File_protocol_proto protoreflect.FileDescriptor
 
-const file_internal_proto_protocol_proto_rawDesc = "" +
+const file_protocol_proto_rawDesc = "" +
 	"\n" +
-	"\x1dinternal/proto/protocol.proto\x12\x05godom\"|\n" +
+	"\x0eprotocol.proto\x12\x05godom\"|\n" +
 	"\rServerMessage\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12*\n" +
 	"\bcommands\x18\x02 \x03(\v2\x0e.godom.CommandR\bcommands\x12+\n" +
@@ -681,12 +681,13 @@ const file_internal_proto_protocol_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x0e\n" +
 	"\x02on\x18\x02 \x01(\tR\x02on\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\tR\x03key\x12\x10\n" +
-	"\x03msg\x18\x04 \x01(\fR\x03msg\"\x86\x01\n" +
+	"\x03msg\x18\x04 \x01(\fR\x03msg\"\x81\x01\n" +
 	"\vVDomMessage\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12)\n" +
 	"\apatches\x18\x03 \x03(\v2\x0f.godom.DomPatchR\apatches\x12\x12\n" +
-	"\x04tree\x18\x05 \x01(\fR\x04tree\x12$\n" +
-	"\x0etarget_node_id\x18\x06 \x01(\x05R\ftargetNodeId\"\x83\x02\n" +
+	"\x04tree\x18\x05 \x01(\fR\x04tree\x12\x1f\n" +
+	"\vtarget_name\x18\x06 \x01(\tR\n" +
+	"targetName\"\x83\x02\n" +
 	"\bDomPatch\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x05R\x06nodeId\x12\x0e\n" +
 	"\x02op\x18\x02 \x01(\tR\x02op\x12\x12\n" +
@@ -710,19 +711,19 @@ const file_internal_proto_protocol_proto_rawDesc = "" +
 	"\x04args\x18\x03 \x03(\fR\x04argsB\tZ\a./protob\x06proto3"
 
 var (
-	file_internal_proto_protocol_proto_rawDescOnce sync.Once
-	file_internal_proto_protocol_proto_rawDescData []byte
+	file_protocol_proto_rawDescOnce sync.Once
+	file_protocol_proto_rawDescData []byte
 )
 
-func file_internal_proto_protocol_proto_rawDescGZIP() []byte {
-	file_internal_proto_protocol_proto_rawDescOnce.Do(func() {
-		file_internal_proto_protocol_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_internal_proto_protocol_proto_rawDesc), len(file_internal_proto_protocol_proto_rawDesc)))
+func file_protocol_proto_rawDescGZIP() []byte {
+	file_protocol_proto_rawDescOnce.Do(func() {
+		file_protocol_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_protocol_proto_rawDesc), len(file_protocol_proto_rawDesc)))
 	})
-	return file_internal_proto_protocol_proto_rawDescData
+	return file_protocol_proto_rawDescData
 }
 
-var file_internal_proto_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
-var file_internal_proto_protocol_proto_goTypes = []any{
+var file_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_protocol_proto_goTypes = []any{
 	(*ServerMessage)(nil), // 0: godom.ServerMessage
 	(*Command)(nil),       // 1: godom.Command
 	(*ListItem)(nil),      // 2: godom.ListItem
@@ -732,7 +733,7 @@ var file_internal_proto_protocol_proto_goTypes = []any{
 	(*NodeEvent)(nil),     // 6: godom.NodeEvent
 	(*MethodCall)(nil),    // 7: godom.MethodCall
 }
-var file_internal_proto_protocol_proto_depIdxs = []int32{
+var file_protocol_proto_depIdxs = []int32{
 	1, // 0: godom.ServerMessage.commands:type_name -> godom.Command
 	3, // 1: godom.ServerMessage.events:type_name -> godom.EventCommand
 	2, // 2: godom.Command.items:type_name -> godom.ListItem
@@ -747,12 +748,12 @@ var file_internal_proto_protocol_proto_depIdxs = []int32{
 	0, // [0:7] is the sub-list for field type_name
 }
 
-func init() { file_internal_proto_protocol_proto_init() }
-func file_internal_proto_protocol_proto_init() {
-	if File_internal_proto_protocol_proto != nil {
+func init() { file_protocol_proto_init() }
+func file_protocol_proto_init() {
+	if File_protocol_proto != nil {
 		return
 	}
-	file_internal_proto_protocol_proto_msgTypes[1].OneofWrappers = []any{
+	file_protocol_proto_msgTypes[1].OneofWrappers = []any{
 		(*Command_StrVal)(nil),
 		(*Command_BoolVal)(nil),
 		(*Command_NumVal)(nil),
@@ -762,17 +763,17 @@ func file_internal_proto_protocol_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_proto_protocol_proto_rawDesc), len(file_internal_proto_protocol_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_protocol_proto_rawDesc), len(file_protocol_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_internal_proto_protocol_proto_goTypes,
-		DependencyIndexes: file_internal_proto_protocol_proto_depIdxs,
-		MessageInfos:      file_internal_proto_protocol_proto_msgTypes,
+		GoTypes:           file_protocol_proto_goTypes,
+		DependencyIndexes: file_protocol_proto_depIdxs,
+		MessageInfos:      file_protocol_proto_msgTypes,
 	}.Build()
-	File_internal_proto_protocol_proto = out.File
-	file_internal_proto_protocol_proto_goTypes = nil
-	file_internal_proto_protocol_proto_depIdxs = nil
+	File_protocol_proto = out.File
+	file_protocol_proto_goTypes = nil
+	file_protocol_proto_depIdxs = nil
 }

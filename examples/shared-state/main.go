@@ -12,7 +12,7 @@ var ui embed.FS
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 
 	layout := &Layout{}
 	eng.Mount(layout, "ui/layout/index.html")

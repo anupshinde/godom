@@ -28,7 +28,7 @@ The bridge never evaluates expressions, resolves data, or makes decisions. It re
 
 ```go
 eng := godom.NewEngine()
-eng.SetUI(ui)                                          // set shared UI filesystem
+eng.SetFS(ui)                                          // set shared UI filesystem
 eng.Mount(&TodoApp{}, "ui/index.html")                 // parse, validate, prepare
 log.Fatal(eng.Start())                                 // serve, open browser, block
 ```
@@ -47,10 +47,11 @@ log.Fatal(eng.Start())                                 // serve, open browser, b
 1. Reads `GODOM_*` environment variables for any settings not already set in code (see [configuration.md](configuration.md))
 2. Generates a random auth token (unless `NoAuth` is set or a fixed `Token` is provided)
 3. Wires the `Refresh()` callback (needs the connection pool, which only exists at start time)
-4. Injects scripts before `</body>`: `protobuf.min.js`, `protocol.js`, then `godom.register()` global (if plugins exist), then plugin scripts in order, then `bridge.js`
-5. Starts an HTTP server on the configured host and port, with token auth middleware on `/` and `/ws`. Non-root paths are served as static files from the embedded UI filesystem (CSS, images, fonts, etc.)
-6. Opens the default browser with the token URL
-7. Blocks forever, handling WebSocket connections
+4. Builds a JS bundle (protobuf + protocol + plugin bootstrap + plugin scripts + bridge), served at `/godom.js`
+5. Injects `<script src="/godom.js"></script>` before `</body>` in the root HTML page
+6. Starts an HTTP server on the configured host and port, with token auth middleware on `/` and `/ws`. Serves `/godom.js` for both the root page and external pages. Non-root paths are served as static files from the embedded UI filesystem (CSS, images, fonts, etc.)
+7. Opens the default browser with the token URL
+8. Blocks forever, handling WebSocket connections
 
 ## Internal packages
 
@@ -92,9 +93,46 @@ When the user clicks a button with `g-click="AddTodo"`:
 7. The bridge applies each patch by looking up target nodes via `nodeMap[nodeID]`
 8. All connected tabs receive the patches (broadcast)
 
-### Two-way binding
+### Browser → Go: two layers
 
-`g-bind="InputText"` creates both a binding (Go → browser: set input value) and an event (browser → Go: send new value on every keystroke via `NodeEvent`). There is no debouncing — every keystroke is a full round trip. See [transport.md](transport.md) for why.
+The browser sends two types of messages to Go, each serving a different purpose. They use different wire tags (see [protocol.md](protocol.md)) and trigger different server-side behavior.
+
+**Layer 1 — Input sync (`NodeEvent`, tag 0x01)**
+
+Automatic and implicit. When an element has `g-bind="Name"`, the bridge sends a `NodeEvent` on every `input` event — every keystroke, every paste, every change. The server receives it, updates the struct field (`Name = "new value"`), and **does not re-render**. No tree resolution, no diff, no patches sent back.
+
+This keeps Go's state perfectly in sync with what the user is typing, cheaply. A text field updating 10 times per second doesn't trigger 10 full render cycles.
+
+The server does broadcast the new value to other connected tabs so they see the typing in real time, but this is a targeted value patch — not a tree diff.
+
+**Layer 2 — Event dispatch (`MethodCall`, tag 0x02)**
+
+Explicit and user-triggered. When the user clicks a button with `g-click="Save"`, the bridge sends a `MethodCall` with the method name and arguments. The server calls the method on the struct via reflection, then **re-renders**: resolves the template tree, diffs against the old tree, and broadcasts patches to all tabs.
+
+This is the intentional state change path. Methods are where business logic lives — add an item, delete a row, toggle a flag. The re-render ensures the UI reflects the new state.
+
+**Why two layers?**
+
+Separating sync from action solves a fundamental tension: inputs change constantly, but re-renders are expensive.
+
+Without Layer 1, you'd need a method for every input (`g-click="OnNameChange"`) or you'd re-render the entire tree on every keystroke. With Layer 1, the user types freely (Go stays in sync via cheap field updates), then clicks a button (Layer 2 calls the method, which reads the already-synced field). The method doesn't need to parse the input — it's already there.
+
+```
+User types "hello" into g-bind="Name"     User clicks g-click="Save"
+          │                                          │
+          ▼                                          ▼
+   Layer 1: NodeEvent                        Layer 2: MethodCall
+   5× "h","e","l","l","o"                    1× Save()
+          │                                          │
+          ▼                                          ▼
+   Update Name field                         Call Save() via reflection
+   Broadcast value to other tabs             Re-render, diff, broadcast patches
+   No re-render                              All tabs update
+```
+
+**Unbound inputs**
+
+Inputs without `g-bind` still participate in Layer 1. The bridge sends `NodeEvent` for any `<input>`, `<textarea>`, or `<select>` — even without a directive. The server stores the value and broadcasts it to other tabs. This means multi-tab sync works for all inputs, not just bound ones. The difference is that unbound input values don't map to a struct field — they're tracked by node ID in the VDOM tree.
 
 ### Server-pushed updates (Refresh)
 
@@ -176,7 +214,7 @@ The template system is a two-phase pipeline:
 1. **Parse once** (`ParseTemplate`) — HTML with `g-*` directives is parsed into `[]*TemplateNode`. This happens at `Mount()` time and the result is reused
 2. **Resolve per render** (`ResolveTree`) — the template tree is evaluated against the current component state, producing concrete `[]Node` with resolved values, unrolled loops, evaluated conditionals, and assigned IDs
 
-Expression resolution order: boolean literals → loop variables → dotted paths on loop variables → struct fields.
+Expression resolution uses a fast path for simple expressions (field access, dotted paths, loop variables, negation, zero-arg methods) via direct reflection. Complex expressions with comparisons (`==`, `!=`, `<`, `>`, `<=`, `>=`) and logical operators (`and`, `or`, `not`) are evaluated by [expr-lang/expr](https://github.com/expr-lang/expr) with compiled program caching.
 
 ## Component model
 
@@ -194,12 +232,12 @@ Parent struct         ──state──►    Child HTML template
 Each component is a self-contained unit: own Go struct, own HTML template, own VDOM tree, own diff cycle. They are like small independent applications that all run inside the same Go process and render through the same bridge.
 
 ```
-eng.SetUI(ui)
+eng.SetFS(ui)
 eng.Register("counter", counter, "ui/counter/index.html")  // child component
 eng.Mount(layout, "ui/layout/index.html")                  // root component
 ```
 
-Components compose via `<g-slot>` — the parent declares named insertion points, children render into them. The root component provides the full HTML page (with `<body>`). Child components provide HTML fragments. On init, components are sent to the browser in topological order (parents before children). Each child targets a specific VDOM node ID in its parent's tree.
+Components compose via `g-component` — the parent declares named insertion points using the `g-component` attribute, children render into them. The root component provides the full HTML page (with `<body>`). Child components provide HTML fragments. On init, each component is sent to the browser with an instance name. The bridge finds target elements via `querySelectorAll('[g-component="name"]')`.
 
 ```
 ┌─────────────────── Go process ───────────────────┐
@@ -232,12 +270,12 @@ Components compose via `<g-slot>` — the parent declares named insertion points
 │                    │                              │
 │    ┌───────────────┼───────────────┐              │
 │    ▼               ▼               ▼              │
-│  [body]     [slot:counter]   [slot:clock]         │
-│  (layout)   (counter DOM)    (clock DOM)          │
+│  [body]     [g-component=    [g-component=        │
+│  (layout)    "counter"]       "clock"]            │
 └───────────────────────────────────────────────────┘
 ```
 
-The bridge doesn't know there are multiple components. It sees one `nodeMap`, one WebSocket, and a sequence of init and patch messages — some targeting the body (root), others targeting slot elements via `targetNodeId`. All components share a single `IDCounter` so node IDs are globally unique. When a browser event arrives, the server searches each component's tree to find which one owns the target node ID, and dispatches the event to that component.
+The bridge doesn't know there are multiple components. It sees one `nodeMap`, one WebSocket, and a sequence of init and patch messages — some targeting the body (root), others targeting elements with a matching `g-component` attribute via `targetName`. All components share a single `IDCounter` so node IDs are globally unique. When a browser event arrives, the server searches each component's tree to find which one owns the target node ID, and dispatches the event to that component.
 
 Cross-component communication uses Go callbacks wired in `main.go`:
 
@@ -246,6 +284,43 @@ sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
 ```
 
 Components don't know about each other's types — they communicate through function values.
+
+### External hosting (Register-only pattern)
+
+Components can render into pages **not served by godom**. The host page includes godom's JS bundle via a script tag and declares `g-component` targets. No `Mount()` or layout component is needed — only `Register()` + `Start()`.
+
+```go
+// No Mount() — the external page provides the HTML shell
+eng.Register("stock", stock, "ui/stock/index.html")
+eng.Register("marquee", marquee, "ui/stock/marquee.html")
+eng.NoBrowser = true
+log.Fatal(eng.Start())
+```
+
+The external page loads `/godom.js` from the godom server and sets `GODOM_WS_URL` to connect cross-origin:
+
+```html
+<script>window.GODOM_WS_URL = "ws://localhost:9091/ws";</script>
+<script src="http://localhost:9091/godom.js"></script>
+
+<div g-component="stock"></div>
+<div g-component="marquee"></div>
+```
+
+The bridge uses `GODOM_WS_URL` (if set) instead of deriving the WebSocket URL from the current page's host. This allows a static HTML page on one server to connect to a godom instance on another port/host.
+
+See `examples/embedded-widget/` for a working example.
+
+### Namespace (GODOM_NS)
+
+The bridge registers itself on `window.godom` by default. For embedding in third-party pages where `window.godom` might conflict, set `GODOM_NS` before loading the bundle:
+
+```html
+<script>window.GODOM_NS = "myApp";</script>
+<script src="http://localhost:9091/godom.js"></script>
+```
+
+The bridge and plugin registration will use `window.myApp` instead of `window.godom`. Plugins that call `godom.register(...)` still work because the server injects a bootstrap snippet that creates a local `var godom` pointing to the configured namespace object.
 
 ## The bridge (bridge.js)
 
@@ -256,8 +331,8 @@ The bridge is vanilla JS with no dependencies. It:
 - On `init`: builds the entire DOM from a JSON tree description, registering every node by ID in `nodeMap`
 - On `patch`: applies patches by looking up target nodes via `nodeMap[nodeID]` — text changes, fact updates, appends, removals, keyed reorders, plugin updates, and full redraws
 - Applies facts: DOM properties, HTML attributes, namespaced attributes (SVG), inline styles, and event listeners
-- Layer 1 (input sync): sends `NodeEvent` with the element's current value on every `input` event
-- Layer 2 (method calls): sends `MethodCall` with method name and JSON-encoded arguments
+- Layer 1 (input sync): sends `NodeEvent` — cheap field update, no re-render (see [two layers](#browser--go-two-layers))
+- Layer 2 (method calls): sends `MethodCall` — calls Go method, triggers re-render (see [two layers](#browser--go-two-layers))
 - Manages HTML5 drag-and-drop: `draggable` sets up `dragstart`/`dragend` with group-specific MIME types; drop handlers filter by group, apply CSS feedback classes (`.g-dragging`, `.g-drag-over`, `.g-drag-over-above`/`.g-drag-over-below`), and send drop data via `MethodCall`
 - Defers plugin `init` calls until the element is actually in the DOM (for libraries that need to measure dimensions)
 - Preserves focus and selection across patch application

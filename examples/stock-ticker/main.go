@@ -229,7 +229,7 @@ func (a *App) startTicker() {
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	root := &App{}
 	go root.startTicker()
 	eng.Mount(root, "ui/index.html")

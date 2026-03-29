@@ -106,7 +106,7 @@ func formatDuration(d time.Duration) string {
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	root := &App{}
 	go root.startMonitor()
 	eng.Mount(root, "ui/index.html")

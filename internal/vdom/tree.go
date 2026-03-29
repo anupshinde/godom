@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"regexp"
 	"strings"
 
 	"sync"
@@ -39,21 +38,16 @@ type TemplateNode struct {
 
 	// For g-for nodes
 	IsFor    bool
-	ForItem  string // loop variable name, e.g. "todo"
-	ForIndex string // index variable name, e.g. "i" (empty if unused)
-	ForList  string // list field, e.g. "Todos"
-	ForKey   string // key expression, e.g. "todo.ID" (empty = positional)
+	ForItem  string          // loop variable name, e.g. "todo"
+	ForIndex string          // index variable name, e.g. "i" (empty if unused)
+	ForList  string          // list field, e.g. "Todos"
+	ForKey   string          // key expression, e.g. "todo.ID" (empty = positional)
 	ForBody  []*TemplateNode // template for each item
 
 	// For plugin nodes
 	IsPlugin   bool
 	PluginName string // plugin name from g-plugin:name
 	PluginExpr string // data expression
-
-	// For g-slot nodes
-	IsSlot   bool
-	SlotExpr string // instance name expression (e.g. "counter" or "{{slot.Name}}")
-	SlotType string // type attribute (e.g. "component:Counter"), required for static names
 
 	// StableID is a UUID assigned at parse time to unbound form inputs.
 	// Used to preserve input values across tree rebuilds.
@@ -63,8 +57,8 @@ type TemplateNode struct {
 // Directive represents a single g-* directive on an element.
 type Directive struct {
 	Type string // "text", "html", "bind", "value", "checked", "if", "show", "hide", "class", "attr", "style", "prop",
-	           // "click", "keydown", "mousedown", "mousemove", "mouseup", "wheel", "scroll", "drop",
-	           // "draggable", "dropzone"
+	// "click", "keydown", "mousedown", "mousemove", "mouseup", "wheel", "scroll", "drop",
+	// "draggable", "dropzone"
 	Name string // modifier name: class name, attr name, style property, key filter, etc.
 	Expr string // expression: field name, method call, etc.
 }
@@ -81,72 +75,21 @@ type TextPart struct {
 
 // ParseTemplate parses HTML into a template tree.
 func ParseTemplate(htmlStr string) ([]*TemplateNode, error) {
-	// Go's html.Parse doesn't treat custom elements as void/self-closing.
-	// <g-slot .../> is parsed as <g-slot ...> (open tag), which
-	// swallows all subsequent siblings as children. Expand to explicit
-	// closing tags so the parser produces correct sibling structure.
-	htmlStr = expandSelfClosingGSlot(htmlStr)
-
-	doc, err := html.Parse(strings.NewReader(htmlStr))
-	if err != nil { // unreachable: html.Parse never errors, but kept as defensive check
+	// ParseFragment parses as a body fragment, preserving <style> and <script>
+	// tags in place instead of relocating them to <head>.
+	context := &html.Node{Type: html.ElementNode, Data: "body", DataAtom: atom.Body}
+	fragNodes, err := html.ParseFragment(strings.NewReader(htmlStr), context)
+	if err != nil {
 		return nil, fmt.Errorf("parse HTML: %w", err)
 	}
 
-	body := findBody(doc)
-	if body == nil { // unreachable: html.Parse always synthesizes <body>, but kept as defensive check
-		return nil, fmt.Errorf("no <body> found in HTML")
-	}
-
 	var nodes []*TemplateNode
-	for c := body.FirstChild; c != nil; c = c.NextSibling {
-		if tn := htmlToTemplate(c); tn != nil {
+	for _, n := range fragNodes {
+		if tn := htmlToTemplate(n); tn != nil {
 			nodes = append(nodes, tn)
 		}
 	}
-	if err := checkDuplicateSlots(nodes); err != nil {
-		return nil, err
-	}
 	return nodes, nil
-}
-
-// checkDuplicateSlots walks the template tree and returns an error if any
-// static slot name appears more than once.
-func checkDuplicateSlots(nodes []*TemplateNode) error {
-	seen := map[string]bool{}
-	var walk func([]*TemplateNode) error
-	walk = func(nodes []*TemplateNode) error {
-		for _, n := range nodes {
-			if n.IsSlot {
-				if n.SlotExpr == "" {
-					return fmt.Errorf("<g-slot> requires a non-empty 'instance' attribute")
-				}
-				isInterpolated := strings.Contains(n.SlotExpr, "{")
-				if isInterpolated {
-					// Interpolated names are dynamic — skip duplicate and type checks
-				} else {
-					// Static name — must be a valid identifier, type attribute is required
-					if !IsValidIdentifier(n.SlotExpr) {
-						return fmt.Errorf("<g-slot instance=%q> must be a valid identifier (letters, digits, underscores; cannot start with a digit)", n.SlotExpr)
-					}
-					if n.SlotType == "" {
-						return fmt.Errorf("<g-slot instance=%q> requires a 'type' attribute for static names", n.SlotExpr)
-					}
-					if !strings.HasPrefix(n.SlotType, "component:") || strings.TrimPrefix(n.SlotType, "component:") == "" {
-						return fmt.Errorf("<g-slot instance=%q> type must be \"component:TypeName\", got %q", n.SlotExpr, n.SlotType)
-					}
-					if seen[n.SlotExpr] {
-						return fmt.Errorf("duplicate <g-slot> instance %q in template", n.SlotExpr)
-					}
-					seen[n.SlotExpr] = true
-				}
-			}
-			if err := walk(n.Children); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	return walk(nodes)
 }
 
 func htmlToTemplate(n *html.Node) *TemplateNode {
@@ -174,16 +117,6 @@ func htmlElementToTemplate(n *html.Node) *TemplateNode {
 
 	if forExpr := getAttrVal(n, "g-for"); forExpr != "" {
 		return parseForTemplate(n, forExpr)
-	}
-
-	// <g-slot type="component:Counter" instance="counter">
-	// <g-slot type="component:Counter" instance="counter"/>
-	// <g-slot instance="{{slot.Name}}"/>  — interpolated, type optional
-	if tag == "g-slot" {
-		instance := getAttrVal(n, "instance")
-		slotType := getAttrVal(n, "type")
-		tn := &TemplateNode{IsSlot: true, SlotExpr: instance, SlotType: slotType}
-		return tn
 	}
 
 	pluginName, pluginExpr := extractPluginDirective(n)
@@ -460,9 +393,9 @@ type ResolveContext struct {
 	InputBindings map[int]InputBinding
 
 	// Unbound input support
-	UnboundValues map[string]any    // stableKey → stored value (passed in from component.Info)
-	NodeStableIDs map[int]string    // nodeID → stableKey (built during resolve, read by server)
-	ForIndices    []int             // current g-for loop index stack (for composite stable keys)
+	UnboundValues map[string]any // stableKey → stored value (passed in from component.Info)
+	NodeStableIDs map[int]string // nodeID → stableKey (built during resolve, read by server)
+	ForIndices    []int          // current g-for loop index stack (for composite stable keys)
 
 	// baseEnv is the expr-lang environment built from struct fields + methods.
 	// Built once per render on first use, reused for every ResolveExpr call.
@@ -555,10 +488,6 @@ func ResolveTemplateNode(t *TemplateNode, ctx *ResolveContext) []Node {
 				return nil
 			}
 		}
-	}
-
-	if t.IsSlot {
-		return []Node{resolveSlotNode(t, ctx)}
 	}
 
 	if t.IsPlugin {
@@ -750,25 +679,6 @@ func resolveForNode(t *TemplateNode, ctx *ResolveContext) []Node {
 	}
 
 	return nodes
-}
-
-func resolveSlotNode(t *TemplateNode, ctx *ResolveContext) Node {
-	id := nextID(ctx)
-
-	// Resolve instance name — supports {{expr}} interpolation like all attributes.
-	// instance="counter" → "counter", instance="{{slot.Name}}" → resolved value.
-	name := resolveAttrValue(t.SlotExpr, ctx)
-
-	// Create a plain div placeholder. Slot metadata lives on the VDOM node
-	// (IsSlot/SlotName), not in DOM attributes. The bridge targets this node
-	// via its VDOM ID (nodeMap lookup), not via getElementById.
-	el := &ElementNode{
-		NodeBase: NodeBase{ID: id},
-		Tag:      "div",
-		IsSlot:   true,
-		SlotName: name,
-	}
-	return el
 }
 
 func resolvePluginNode(t *TemplateNode, ctx *ResolveContext) Node {
@@ -1313,28 +1223,6 @@ func callMethod(v reflect.Value, name string) any {
 	return m.Call(nil)[0].Interface()
 }
 
-// callMethodWithArgs calls a method with pre-resolved arguments and returns its result.
-// Returns nil if the method doesn't exist or has no return value.
-func callMethodWithArgs(v reflect.Value, name string, args []any) any {
-	m := v.MethodByName(name)
-	if !m.IsValid() {
-		return nil
-	}
-	mt := m.Type()
-	if mt.NumOut() != 1 {
-		return nil
-	}
-	in := make([]reflect.Value, len(args))
-	for i, a := range args {
-		if a == nil {
-			in[i] = reflect.Zero(mt.In(i))
-		} else {
-			in[i] = reflect.ValueOf(a)
-		}
-	}
-	return m.Call(in)[0].Interface()
-}
-
 // ParseMapAccess parses "Field[key]" into ("Field", "key", true).
 // Returns ("", "", false) if the expression doesn't match bracket syntax.
 func ParseMapAccess(expr string) (field, key string, ok bool) {
@@ -1543,14 +1431,4 @@ func findBody(n *html.Node) *html.Node {
 		}
 	}
 	return nil
-}
-
-// gSlotSelfCloseRe matches self-closing <g-slot .../> tags.
-var gSlotSelfCloseRe = regexp.MustCompile(`<g-slot\b([^>]*?)/>`)
-
-// expandSelfClosingGSlot rewrites <g-slot .../> → <g-slot ...></g-slot>
-// so Go's html.Parse treats them as proper sibling elements instead of
-// nesting subsequent tags inside the first unclosed g-slot.
-func expandSelfClosingGSlot(s string) string {
-	return gSlotSelfCloseRe.ReplaceAllString(s, `<g-slot$1></g-slot>`)
 }

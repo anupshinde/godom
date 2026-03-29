@@ -91,7 +91,7 @@ func main() {
 	}
 
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	eng.Mount(&App{
 		Markdown:    string(content),
 		EditorOpen:  true,

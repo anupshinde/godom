@@ -33,7 +33,7 @@ func main() {
 	termPort := startTerminalServer(token)
 
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	eng.RegisterPlugin("xterm", xtermAdapterJS)
 
 	root := &App{

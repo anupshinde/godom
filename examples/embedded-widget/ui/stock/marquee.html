@@ -1,0 +1,21 @@
+<style>
+    .gdmarquee { overflow: hidden; white-space: nowrap; }
+    .gdmarquee-track {
+        display: inline-block;
+        animation: gdmarquee-scroll 20s linear infinite;
+        font-family: monospace;
+        font-size: 14px;
+    }
+    .gdmarquee-item { margin-right: 32px; color: #ccc; }
+    .gdmarquee-item-up { color: #4ade80; }
+    .gdmarquee-item-down { color: #f87171; }
+    @keyframes gdmarquee-scroll {
+        0% { transform: translateX(100%); }
+        100% { transform: translateX(-100%); }
+    }
+</style>
+<div class="gdmarquee">
+    <span class="gdmarquee-track">
+        <span class="gdmarquee-item" g-for="s in Stocks" g-class:gdmarquee-item-up="s.IsUp" g-class:gdmarquee-item-down="s.IsDown">{{s.Display}}</span>
+    </span>
+</div>

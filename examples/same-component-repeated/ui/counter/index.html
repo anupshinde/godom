@@ -1,0 +1,11 @@
+<div class="text-center">
+    <div class="text-5xl mb-5" g-text="Count">0</div>
+    <div class="flex gap-3 justify-center mb-5">
+        <button g-click="Decrement" class="px-6 py-2 text-xl border border-gray-300 rounded-md cursor-pointer bg-gray-50 hover:bg-gray-100">-</button>
+        <button g-click="Increment" class="px-6 py-2 text-xl border border-gray-300 rounded-md cursor-pointer bg-gray-50 hover:bg-gray-100">+</button>
+    </div>
+    <div class="text-sm text-gray-500">
+        <label class="mr-2">Step:</label>
+        <input type="number" min="1" max="100" g-bind="Step" class="w-16 px-2 py-1 text-sm border border-gray-300 rounded"/>
+    </div>
+</div>

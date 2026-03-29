@@ -17,10 +17,20 @@ var ui embed.FS
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	chartjs.Register(eng)
 
-	// Child components — registered by name, auto-wired to layout's <g-slot> tags
+	// Layout — root component, must be mounted first
+	layout := &Layout{
+		Slots: []SlotInfo{
+			{RegisteredName: "counter", Title: "Counter"},
+			{RegisteredName: "clock", Title: "Clock"},
+			{RegisteredName: "monitor", Title: "System Monitor"},
+		},
+	}
+	eng.Mount(layout, "ui/layout/index.html")
+
+	// Child components — registered by name, auto-wired via g-component attributes
 	navbar := &Navbar{ComponentCount: 6, Status: "Connected"}
 	eng.Register("navbar", navbar, "ui/navbar/index.html")
 
@@ -49,16 +59,6 @@ func main() {
 
 	tips := &Tips{}
 	eng.Register("tips", tips, "ui/tips/index.html")
-
-	// Layout — root component with orderable slots
-	layout := &Layout{
-		Slots: []SlotInfo{
-			{RegisteredName: "counter", Title: "Counter"},
-			{RegisteredName: "clock", Title: "Clock"},
-			{RegisteredName: "monitor", Title: "System Monitor"},
-		},
-	}
-	eng.Mount(layout, "ui/layout/index.html")
 
 	go clock.startClock()
 	go monitor.startMonitor()

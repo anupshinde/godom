@@ -13,9 +13,10 @@ import (
 
 // Info holds reflection data about a mounted component.
 type Info struct {
-	Mu    sync.Mutex
-	Value reflect.Value // pointer to the user's struct
-	Typ   reflect.Type  // the struct type (not pointer)
+	Mu       sync.Mutex
+	Value    reflect.Value // pointer to the user's struct
+	Typ      reflect.Type  // the struct type (not pointer)
+	SlotName string        // registered instance name (empty = root, renders into body)
 
 	HTMLBody string
 

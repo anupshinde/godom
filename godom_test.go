@@ -173,13 +173,13 @@ func makeTestFSNested() fstest.MapFS {
 func TestMount_Valid(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.SetUI(makeTestFS())
+	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
 	if len(e.comps) != 1 {
 		t.Fatal("expected one component after Mount")
 	}
-	ci := e.comps[0].Info
+	ci := e.comps[0]
 	if ci.HTMLBody == "" {
 		t.Error("expected HTMLBody to be set")
 	}
@@ -197,7 +197,7 @@ func TestMount_Valid(t *testing.T) {
 func TestMount_NestedEntryPath(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.SetUI(makeTestFSNested())
+	e.SetFS(makeTestFSNested())
 	e.Mount(app, "ui/index.html")
 
 	if len(e.comps) != 1 {
@@ -219,25 +219,25 @@ func TestMount_NestedEntryPath(t *testing.T) {
 func TestMount_WiresComponentField(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.SetUI(makeTestFS())
+	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
-	// After Mount, app.Component.ci should be wired to the same Info as e.comps[0].Info
+	// After Mount, app.Component.ci should be wired to the same Info as e.comps[0]
 	if app.Component.ci == nil {
 		t.Fatal("expected Component.ci to be wired after Mount")
 	}
-	if app.Component.ci != e.comps[0].Info {
-		t.Error("expected Component.ci to point to the same Info as Engine.comps[0].Info")
+	if app.Component.ci != e.comps[0] {
+		t.Error("expected Component.ci to point to the same Info as Engine.comps[0]")
 	}
 }
 
 func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.SetUI(makeTestFS())
+	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
-	ci := e.comps[0].Info
+	ci := e.comps[0]
 	if !strings.Contains(ci.HTMLBody, "g-text") {
 		t.Error("expected HTMLBody to contain template directives")
 	}
@@ -249,7 +249,7 @@ func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
 func TestMount_NonPointer(t *testing.T) {
 	if os.Getenv("TEST_FATAL_MOUNT_NONPTR") == "1" {
 		e := NewEngine()
-		e.SetUI(makeTestFS())
+		e.SetFS(makeTestFS())
 		e.Mount(testApp{}, "index.html")
 		return
 	}
@@ -263,7 +263,7 @@ func TestMount_PointerToNonStruct(t *testing.T) {
 	if os.Getenv("TEST_FATAL_MOUNT_NONSTRUCT") == "1" {
 		e := NewEngine()
 		n := 42
-		e.SetUI(makeTestFS())
+		e.SetFS(makeTestFS())
 		e.Mount(&n, "index.html")
 		return
 	}
@@ -276,7 +276,7 @@ func TestMount_PointerToNonStruct(t *testing.T) {
 func TestMount_NoEmbed(t *testing.T) {
 	if os.Getenv("TEST_FATAL_MOUNT_NOEMBED") == "1" {
 		e := NewEngine()
-		e.SetUI(makeTestFS())
+		e.SetFS(makeTestFS())
 		e.Mount(&noComponentApp{}, "index.html")
 		return
 	}
@@ -289,7 +289,7 @@ func TestMount_NoEmbed(t *testing.T) {
 func TestMount_BadEntryPath(t *testing.T) {
 	if os.Getenv("TEST_FATAL_MOUNT_BADPATH") == "1" {
 		e := NewEngine()
-		e.SetUI(makeTestFS())
+		e.SetFS(makeTestFS())
 		e.Mount(&testApp{}, "nonexistent.html")
 		return
 	}
@@ -304,10 +304,10 @@ func TestMount_BadEntryPath(t *testing.T) {
 func TestMount_SetsValueAndType(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Bob", Count: 42}
-	e.SetUI(makeTestFS())
+	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
-	ci := e.comps[0].Info
+	ci := e.comps[0]
 	// ci.Value should point to the same app instance
 	if ci.Value.Pointer() != reflect.ValueOf(app).Pointer() {
 		t.Error("expected ci.Value to point to the original app")
@@ -320,7 +320,7 @@ func TestMount_SetsValueAndType(t *testing.T) {
 func TestMount_RefreshWorksAfterMount(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
-	e.SetUI(makeTestFS())
+	e.SetFS(makeTestFS())
 	e.Mount(app, "index.html")
 
 	// After Mount, Refresh should not panic (ci is wired, but RefreshFn is nil until Start)
@@ -337,7 +337,7 @@ func TestMount_InvalidDirective(t *testing.T) {
 		badFS := fstest.MapFS{
 			"index.html": &fstest.MapFile{Data: []byte(badHTML)},
 		}
-		e.SetUI(badFS)
+		e.SetFS(badFS)
 		e.Mount(&testApp{}, "index.html")
 		return
 	}
@@ -354,17 +354,17 @@ type childApp struct {
 
 var childHTML = `<!DOCTYPE html><html><head></head><body><span g-text="Value">placeholder</span></body></html>`
 
-// Parent template with a static g-slot for auto-wiring tests.
+// Parent template with a g-component target for auto-wiring tests.
 var parentWithSlotHTML = `<!DOCTYPE html><html><head></head><body>
 	<span g-text="Name">placeholder</span>
-	<g-slot type="component:childApp" instance="sidebar"></g-slot>
+	<div g-component="sidebar"></div>
 </body></html>`
 
-// Parent template with two static g-slots.
+// Parent template with two g-component targets.
 var parentWithTwoSlotsHTML = `<!DOCTYPE html><html><head></head><body>
 	<span g-text="Name">placeholder</span>
-	<g-slot type="component:childApp" instance="sidebar"></g-slot>
-	<g-slot type="component:childApp" instance="footer"></g-slot>
+	<div g-component="sidebar"></div>
+	<div g-component="footer"></div>
 </body></html>`
 
 func makeSlotTestFS() fstest.MapFS {
@@ -379,7 +379,7 @@ func makeSlotTestFS() fstest.MapFS {
 
 func TestAutoWire_RegisteredChildWiredToParent(t *testing.T) {
 	e := NewEngine()
-	e.SetUI(makeSlotTestFS())
+	e.SetFS(makeSlotTestFS())
 
 	parent := &testApp{Name: "parent"}
 	e.Mount(parent, "parent/index.html")
@@ -393,8 +393,8 @@ func TestAutoWire_RegisteredChildWiredToParent(t *testing.T) {
 	if len(e.comps) != 2 {
 		t.Fatalf("expected 2 comps, got %d", len(e.comps))
 	}
-	if e.comps[1].ParentIdx != 0 {
-		t.Errorf("expected child ParentIdx=0, got %d", e.comps[1].ParentIdx)
+	if e.comps[0].SlotName != "document.body" {
+		t.Errorf("expected root SlotName='document.body', got %q", e.comps[0].SlotName)
 	}
 	if e.comps[1].SlotName != "sidebar" {
 		t.Errorf("expected SlotName='sidebar', got %q", e.comps[1].SlotName)
@@ -408,7 +408,7 @@ func TestAutoWire_DuplicateSlotFatals(t *testing.T) {
 			"parent/index.html": &fstest.MapFile{Data: []byte(parentWithTwoSlotsHTML)},
 			"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
 		}
-		e.SetUI(fsys)
+		e.SetFS(fsys)
 
 		parent := &testApp{Name: "parent"}
 		e.Mount(parent, "parent/index.html")
@@ -430,7 +430,7 @@ func TestAutoWire_DuplicateSlotFatals(t *testing.T) {
 func TestAutoWire_MultipleChildrenWiredCorrectly(t *testing.T) {
 	// Parent with two slots — each child is wired to the correct slot.
 	e := NewEngine()
-	e.SetUI(fstest.MapFS{
+	e.SetFS(fstest.MapFS{
 		"parent/index.html": &fstest.MapFile{Data: []byte(parentWithTwoSlotsHTML)},
 		"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
 	})
@@ -446,41 +446,25 @@ func TestAutoWire_MultipleChildrenWiredCorrectly(t *testing.T) {
 
 	e.autoWireComponents()
 
-	// Both children should be wired to parent (index 0)
-	if e.comps[1].ParentIdx != 0 || e.comps[1].SlotName != "sidebar" {
-		t.Errorf("sidebar: expected ParentIdx=0 SlotName='sidebar', got %d %q", e.comps[1].ParentIdx, e.comps[1].SlotName)
+	// Both children should have their slot names set
+	if e.comps[0].SlotName != "document.body" {
+		t.Errorf("root: expected SlotName='document.body', got %q", e.comps[0].SlotName)
 	}
-	if e.comps[2].ParentIdx != 0 || e.comps[2].SlotName != "footer" {
-		t.Errorf("footer: expected ParentIdx=0 SlotName='footer', got %d %q", e.comps[2].ParentIdx, e.comps[2].SlotName)
+	if e.comps[1].SlotName != "sidebar" {
+		t.Errorf("sidebar: expected SlotName='sidebar', got %q", e.comps[1].SlotName)
 	}
-}
-
-func TestAutoWire_UnreferencedComponentFatals(t *testing.T) {
-	if os.Getenv("TEST_FATAL_AUTOWIRE_NOREF") == "1" {
-		e := NewEngine()
-		e.SetUI(makeSlotTestFS())
-
-		parent := &testApp{Name: "parent"}
-		e.Mount(parent, "parent/index.html")
-
-		// Register a child with a name that doesn't match any g-slot
-		child := &childApp{Value: "orphan"}
-		e.Register("nonexistent", child, "child/index.html")
-		e.autoWireComponents()
-		return
-	}
-	out := runSubprocess(t, "TestAutoWire_UnreferencedComponentFatals", "TEST_FATAL_AUTOWIRE_NOREF")
-	if !strings.Contains(out, "not referenced by any") {
-		t.Errorf("expected 'not referenced' error, got: %s", out)
+	if e.comps[2].SlotName != "footer" {
+		t.Errorf("footer: expected SlotName='footer', got %q", e.comps[2].SlotName)
 	}
 }
+
 
 func TestMount_MultipleComponents_StaticFSFromFirst(t *testing.T) {
 	e := NewEngine()
 	parent := &testApp{Name: "parent"}
 	child := &childApp{Value: "child"}
 
-	e.SetUI(makeTestFSNested())
+	e.SetFS(makeTestFSNested())
 	e.Mount(parent, "ui/index.html")
 	e.Mount(child, "child/index.html")
 

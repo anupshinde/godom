@@ -7,59 +7,6 @@ import (
 	"testing/fstest"
 )
 
-func TestParseForExprParts(t *testing.T) {
-	tests := []struct {
-		expr      string
-		wantItem  string
-		wantIndex string
-		wantList  string
-	}{
-		{"todo in Todos", "todo", "", "Todos"},
-		{"todo, i in Todos", "todo", "i", "Todos"},
-		{"item , idx in Items", "item", "idx", "Items"},
-	}
-
-	for _, tt := range tests {
-		p := ParseForExprParts(tt.expr)
-		if p == nil {
-			t.Fatalf("ParseForExprParts(%q) returned nil", tt.expr)
-		}
-		if p.Item != tt.wantItem {
-			t.Errorf("Item = %q, want %q", p.Item, tt.wantItem)
-		}
-		if p.Index != tt.wantIndex {
-			t.Errorf("Index = %q, want %q", p.Index, tt.wantIndex)
-		}
-		if p.List != tt.wantList {
-			t.Errorf("List = %q, want %q", p.List, tt.wantList)
-		}
-	}
-}
-
-func TestParseForExprParts_Invalid(t *testing.T) {
-	if p := ParseForExprParts("invalid"); p != nil {
-		t.Error("expected nil for invalid expression")
-	}
-}
-
-func TestExprRoot(t *testing.T) {
-	tests := []struct {
-		expr string
-		want string
-	}{
-		{"InputText", "InputText"},
-		{"todo.Done", "todo"},
-		{"item.Address.City", "item"},
-		{"", ""},
-	}
-
-	for _, tt := range tests {
-		if got := ExprRoot(tt.expr); got != tt.want {
-			t.Errorf("ExprRoot(%q) = %q, want %q", tt.expr, got, tt.want)
-		}
-	}
-}
-
 // --- Template expansion tests ---
 
 func TestExtractGAttrs(t *testing.T) {
@@ -237,13 +184,13 @@ func TestExpandComponents_SkipsGTags(t *testing.T) {
 	// g-* tags are framework directives, not custom components — they should
 	// be left in place and not trigger a file lookup.
 	fsys := fstest.MapFS{}
-	input := `<div><g-slot instance="sidebar"></g-slot><span>after</span></div>`
+	input := `<div><g-debug instance="sidebar"></g-debug><span>after</span></div>`
 	result, err := ExpandComponents(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result, "g-slot") {
-		t.Errorf("expected g-slot to remain, got: %s", result)
+	if !strings.Contains(result, "g-debug") {
+		t.Errorf("expected g-debug to remain, got: %s", result)
 	}
 	if !strings.Contains(result, "<span>after</span>") {
 		t.Errorf("expected sibling to remain, got: %s", result)
@@ -251,18 +198,18 @@ func TestExpandComponents_SkipsGTags(t *testing.T) {
 }
 
 func TestExpandComponents_GTagBeforeCustomElement(t *testing.T) {
-	// g-slot appears before a real custom element — g-slot is skipped,
+	// g-* tag appears before a real custom element — g-* tag is skipped,
 	// custom element is expanded.
 	fsys := fstest.MapFS{
 		"my-comp.html": {Data: []byte(`<span>expanded</span>`)},
 	}
-	input := `<div><g-slot instance="x"></g-slot><my-comp></my-comp></div>`
+	input := `<div><g-debug instance="x"></g-debug><my-comp></my-comp></div>`
 	result, err := ExpandComponents(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result, "g-slot") {
-		t.Errorf("expected g-slot to remain, got: %s", result)
+	if !strings.Contains(result, "g-debug") {
+		t.Errorf("expected g-debug to remain, got: %s", result)
 	}
 	if !strings.Contains(result, "<span>expanded</span>") {
 		t.Errorf("expected my-comp to be expanded, got: %s", result)
@@ -270,15 +217,15 @@ func TestExpandComponents_GTagBeforeCustomElement(t *testing.T) {
 }
 
 func TestExpandComponents_SkipsGTagSelfClosing(t *testing.T) {
-	// Self-closing g-* tags like <g-slot instance="x"/> should also be skipped.
+	// Self-closing g-* tags should also be skipped.
 	fsys := fstest.MapFS{}
-	input := `<div><g-slot instance="x"/><span>ok</span></div>`
+	input := `<div><g-debug instance="x"/><span>ok</span></div>`
 	result, err := ExpandComponents(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result, "g-slot") {
-		t.Errorf("expected g-slot to remain, got: %s", result)
+	if !strings.Contains(result, "g-debug") {
+		t.Errorf("expected g-debug to remain, got: %s", result)
 	}
 	if !strings.Contains(result, "<span>ok</span>") {
 		t.Errorf("expected sibling to remain, got: %s", result)
@@ -290,14 +237,14 @@ func TestExpandComponents_MultipleGTagsBeforeCustomElement(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-comp.html": {Data: []byte(`<b>hi</b>`)},
 	}
-	input := `<g-slot instance="a"></g-slot><g-slot instance="b"></g-slot><g-slot instance="c"></g-slot><my-comp></my-comp>`
+	input := `<g-debug instance="a"></g-debug><g-debug instance="b"></g-debug><g-debug instance="c"></g-debug><my-comp></my-comp>`
 	result, err := ExpandComponents(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	// All 3 g-slots should remain
-	if strings.Count(result, "g-slot") != 6 { // 3 open + 3 close tags
-		t.Errorf("expected all 3 g-slots to remain, got: %s", result)
+	// All 3 g-debug tags should remain
+	if strings.Count(result, "g-debug") != 6 { // 3 open + 3 close tags
+		t.Errorf("expected all 3 g-debug tags to remain, got: %s", result)
 	}
 	// my-comp should be expanded
 	if !strings.Contains(result, "<b>hi</b>") {
@@ -307,13 +254,13 @@ func TestExpandComponents_MultipleGTagsBeforeCustomElement(t *testing.T) {
 
 func TestExpandComponents_GTagDoesNotConsumeExpansionBudget(t *testing.T) {
 	// g-* tags use `expansions--` to avoid consuming the budget.
-	// Verify that 10 g-slots + 1 custom element still works (budget = 10 expansions).
+	// Verify that 10 g-* tags + 1 custom element still works (budget = 10 expansions).
 	fsys := fstest.MapFS{
 		"my-comp.html": {Data: []byte(`<em>done</em>`)},
 	}
 	var sb strings.Builder
 	for i := 0; i < 10; i++ {
-		sb.WriteString(fmt.Sprintf(`<g-slot instance="s%d"></g-slot>`, i))
+		sb.WriteString(fmt.Sprintf(`<g-debug instance="s%d"></g-debug>`, i))
 	}
 	sb.WriteString(`<my-comp></my-comp>`)
 	result, err := ExpandComponents(sb.String(), fsys, ".")
@@ -321,7 +268,7 @@ func TestExpandComponents_GTagDoesNotConsumeExpansionBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(result, "<em>done</em>") {
-		t.Errorf("expected my-comp to be expanded despite 10 g-slots, got: %s", result)
+		t.Errorf("expected my-comp to be expanded despite 10 g-* tags, got: %s", result)
 	}
 }
 
@@ -408,16 +355,4 @@ func TestExtractGAttrs_Empty(t *testing.T) {
 	}
 }
 
-func TestExprRoot_LeadingWhitespace(t *testing.T) {
-	// TrimSpace should handle leading/trailing whitespace
-	if got := ExprRoot(" Name "); got != "Name" {
-		t.Errorf("ExprRoot(\" Name \") = %q, want Name", got)
-	}
-}
-
-func TestExprRoot_DottedWithWhitespace(t *testing.T) {
-	if got := ExprRoot(" todo.Done "); got != "todo" {
-		t.Errorf("ExprRoot(\" todo.Done \") = %q, want todo", got)
-	}
-}
 

@@ -304,7 +304,7 @@ func (f *FormBuilder) updateSelectionFlags() {
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	eng.Port = 8084
 	eng.Mount(&FormBuilder{
 		Title: "My Form",

@@ -59,7 +59,7 @@ func (d *Demo) Remove(from, to float64) {
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetUI(ui)
+	eng.SetFS(ui)
 	eng.Port = 8083
 	eng.Mount(&Demo{
 		Palette: []PaletteColor{

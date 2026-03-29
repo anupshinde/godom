@@ -1,5 +1,6 @@
 // Protocol buffer type definitions for godom VDOM wire protocol.
-// Matches the VDomMessage/DomPatch messages in protocol.proto.
+// IMPORTANT: This file must stay in sync with protocol.proto.
+// Update this file whenever protocol.proto changes.
 var godomProto = (function() {
     var protobuf = self.protobuf; // set by protobuf.min.js (light build)
 
@@ -37,7 +38,7 @@ var godomProto = (function() {
         .add(new Field("type", 1, "string"))
         .add(new Field("patches", 3, "DomPatch", "repeated"))
         .add(new Field("tree", 5, "bytes"))
-        .add(new Field("targetNodeId", 6, "int32"));
+        .add(new Field("targetName", 6, "string"));
 
     root.add(VDomMessage);
     root.add(DomPatch);

@@ -53,7 +53,7 @@ func (a *App) Decrement() { a.Count-- }
 
 func main() {
     eng := godom.NewEngine()
-    eng.SetUI(ui)
+    eng.SetFS(ui)
     eng.Mount(&App{}, "ui/index.html")
     log.Fatal(eng.Start())
 }
@@ -322,7 +322,7 @@ func main() {
     go root.startClock()
 
     eng := godom.NewEngine()
-    eng.SetUI(ui)
+    eng.SetFS(ui)
     eng.Mount(root, "ui/index.html")
     log.Fatal(eng.Start())
 }
@@ -361,6 +361,117 @@ Split large templates by creating HTML files for sub-components:
 ```
 
 Custom elements are template includes — directives inside the child HTML resolve against the parent component's state. Loop variables (`todo`, `i`) are available inside the child template.
+
+---
+
+## Multiple Components
+
+When your app has independent pieces of state, split them into separate components. Each component is its own Go struct with its own HTML template and its own render cycle.
+
+```go
+type Counter struct {
+    godom.Component
+    Count int
+}
+
+func (c *Counter) Increment() { c.Count++ }
+
+type Clock struct {
+    godom.Component
+    Time string
+}
+```
+
+Register components by name and point them at their templates:
+
+```go
+eng := godom.NewEngine()
+eng.SetFS(ui)
+
+eng.Register("counter", &Counter{}, "ui/counter/index.html")
+eng.Register("clock", clock, "ui/clock/index.html")
+eng.Mount(layout, "ui/layout/index.html")
+
+log.Fatal(eng.Start())
+```
+
+The layout template declares where each component renders using the `g-component` attribute:
+
+```html
+<!-- ui/layout/index.html -->
+<body>
+    <h1>Dashboard</h1>
+    <div g-component="counter"></div>
+    <div g-component="clock"></div>
+</body>
+```
+
+Component templates are HTML fragments — no `<html>` or `<body>`:
+
+```html
+<!-- ui/counter/index.html -->
+<div>
+    <span g-text="Count"></span>
+    <button g-click="Increment">+</button>
+</div>
+```
+
+Each component diffs and patches independently. Updating the clock doesn't re-render the counter.
+
+Components can communicate through Go callbacks wired in `main.go`:
+
+```go
+counter.OnChange = func(n int) { status.SetCount(n) }
+```
+
+Components can also share state by embedding a shared struct:
+
+```go
+type SharedState struct {
+    Count int
+}
+
+type CounterA struct {
+    godom.Component
+    *SharedState
+}
+
+type CounterB struct {
+    godom.Component
+    *SharedState
+}
+
+shared := &SharedState{}
+eng.Register("a", &CounterA{SharedState: shared}, "ui/a/index.html")
+eng.Register("b", &CounterB{SharedState: shared}, "ui/b/index.html")
+```
+
+When one component modifies the shared state and calls `Refresh()`, both components update. See `examples/shared-state/` for a working example.
+
+### Without a layout (external hosting)
+
+You can skip `Mount()` entirely and use only `Register()`. This is useful when the HTML page is served by something else (your own server, a CDN, a third-party site):
+
+```go
+eng := godom.NewEngine()
+eng.SetFS(ui)
+eng.Port = 9091
+eng.NoBrowser = true
+
+eng.Register("stock", stock, "ui/stock/index.html")
+log.Fatal(eng.Start())
+```
+
+The external page loads godom's JS bundle and declares the target:
+
+```html
+<script>window.GODOM_WS_URL = "ws://localhost:9091/ws";</script>
+<script src="http://localhost:9091/godom.js"></script>
+
+<div g-component="stock"></div>
+```
+
+See `examples/embedded-widget/` and [configuration.md](configuration.md#browser-side-settings) for details.
 
 ---
 
@@ -409,7 +520,7 @@ import "github.com/anupshinde/godom/plugins/chartjs"
 
 func main() {
     eng := godom.NewEngine()
-    eng.SetUI(ui)
+    eng.SetFS(ui)
     chartjs.Register(eng)
     eng.Mount(&App{}, "ui/index.html")
     log.Fatal(eng.Start())
@@ -471,6 +582,9 @@ Then run `air` instead of `go run .`. When you save a `.go` or `.html` file, Air
 | `system-monitor` | System stats, charts plugin |
 | `video-player` | Canvas rendering, ffmpeg integration |
 | `terminal` | Terminal emulation in the browser |
+| `multi-component` | Stateful components, `g-component`, cross-component callbacks |
+| `embedded-widget` | External hosting, `/godom.js`, `GODOM_WS_URL` |
+| `same-component-repeated` | Same component in multiple DOM targets |
 
 Run any example:
 
