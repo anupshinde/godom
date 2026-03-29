@@ -62,9 +62,7 @@ func (c Component) MarkRefresh(fields ...string) {
 	if c.ci == nil {
 		return
 	}
-	c.ci.Mu.Lock()
-	c.ci.MarkedFields = append(c.ci.MarkedFields, fields...)
-	c.ci.Mu.Unlock()
+	c.ci.AddMarkedFields(fields...)
 }
 
 // Refresh pushes updates to all connected browsers.
@@ -79,8 +77,8 @@ func (c Component) Refresh() {
 	if c.ci == nil {
 		return
 	}
-	if c.ci.RefreshFn != nil {
-		c.ci.RefreshFn()
+	if c.ci.EventCh != nil {
+		c.ci.EventCh <- component.Event{Kind: component.RefreshKind}
 	}
 }
 

@@ -122,18 +122,21 @@ func TestRefresh_NilRefreshFn(t *testing.T) {
 	c.Refresh()
 }
 
-func TestRefresh_DelegatesToRefreshFn(t *testing.T) {
-	called := false
+func TestRefresh_SendsToEventChannel(t *testing.T) {
+	ch := make(chan component.Event, 1)
 	c := Component{ci: &component.Info{
-		RefreshFn: func() {
-			called = true
-		},
+		EventCh: ch,
 	}}
 
 	c.Refresh()
 
-	if !called {
-		t.Error("expected RefreshFn to be called")
+	select {
+	case evt := <-ch:
+		if evt.Kind != component.RefreshKind {
+			t.Errorf("expected RefreshKind, got %v", evt.Kind)
+		}
+	default:
+		t.Error("expected event on channel, got none")
 	}
 }
 
@@ -143,8 +146,9 @@ func TestRefresh_MarkedFieldsPassedThrough(t *testing.T) {
 
 	c.MarkRefresh("Name", "Count")
 
-	if len(ci.MarkedFields) != 2 || ci.MarkedFields[0] != "Name" || ci.MarkedFields[1] != "Count" {
-		t.Errorf("expected MarkedFields [Name Count], got %v", ci.MarkedFields)
+	fields := ci.DrainMarkedFields()
+	if len(fields) != 2 || fields[0] != "Name" || fields[1] != "Count" {
+		t.Errorf("expected MarkedFields [Name Count], got %v", fields)
 	}
 }
 

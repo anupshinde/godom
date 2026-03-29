@@ -14,7 +14,6 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
-	"sync"
 
 	"github.com/anupshinde/godom/internal/component"
 	"github.com/anupshinde/godom/internal/env"
@@ -42,10 +41,6 @@ type Config struct {
 	BridgeJS      string
 	ProtobufMinJS string
 	ProtocolJS    string
-}
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
 // sharedPtrMaps holds the pointer-sharing relationships between components.
@@ -127,9 +122,7 @@ func (sm *sharedPtrMaps) refreshSharedComponents(compIdx int, changedFields []st
 			}
 			seen[sibIdx] = true
 			sib := sm.comps[sibIdx]
-			sib.Mu.Lock()
-			sib.MarkedFields = append(sib.MarkedFields, changedFields...)
-			sib.Mu.Unlock()
+			sib.AddMarkedFields(changedFields...)
 			sib.RefreshFn()
 		}
 	}
@@ -163,6 +156,13 @@ func Run(cfg Config) error {
 	// Build shared pointer maps for auto-refreshing sibling components.
 	sm := buildSharedPtrMaps(cfg.Comps)
 	sm.pool = pool
+
+	// Start event queue processor for each component.
+	for idx, ci := range cfg.Comps {
+		ci.EventCh = make(chan component.Event, 64)
+		idx, ci := idx, ci // capture for closure
+		go processEvents(ci, idx, sm, pool)
+	}
 
 	mux := http.NewServeMux()
 
@@ -267,8 +267,11 @@ func Run(cfg Config) error {
 					log.Printf("godom: node event unmarshal error: %v", err)
 					continue
 				}
-				if ci, compIdx := findComponentByNodeID(cfg.Comps, int(evt.NodeId)); ci != nil {
-					handleNodeEvent(ci, compIdx, evt.NodeId, evt.Value, sm, pool)
+				if ci, _ := findComponentByNodeID(cfg.Comps, int(evt.NodeId)); ci != nil {
+					e := component.Event{Kind: component.NodeEventKind, NodeID: evt.NodeId, Value: evt.Value}
+					if shouldEnqueue(e) {
+						ci.EventCh <- e
+					}
 				}
 
 			case 2: // MethodCall (Layer 2)
@@ -277,8 +280,11 @@ func Run(cfg Config) error {
 					log.Printf("godom: method call unmarshal error: %v", err)
 					continue
 				}
-				if ci, compIdx := findComponentByNodeID(cfg.Comps, int(call.NodeId)); ci != nil {
-					handleMethodCall(ci, compIdx, call, sm, pool)
+				if ci, _ := findComponentByNodeID(cfg.Comps, int(call.NodeId)); ci != nil {
+					e := component.Event{Kind: component.MethodCallKind, Call: call}
+					if shouldEnqueue(e) {
+						ci.EventCh <- e
+					}
 				}
 			}
 		}
@@ -316,39 +322,85 @@ func Run(cfg Config) error {
 		openBrowser(url)
 	}
 
-	return http.Serve(ln, mux)
+	err = http.Serve(ln, mux)
+
+	// Clean shutdown: close event channels so processor goroutines exit.
+	for _, ci := range cfg.Comps {
+		if ci.EventCh != nil {
+			close(ci.EventCh)
+		}
+	}
+
+	return err
 }
 
 // wireRefresh sets up the RefreshFn for a mounted component.
+// RefreshFn sends a RefreshKind event to the component's event queue,
+// ensuring all refreshes are serialized through the processor goroutine.
+// The actual refresh logic lives in executeRefresh.
 func wireRefresh(ci *component.Info, pool *connPool) {
 	ci.RefreshFn = func() {
-		ci.Mu.Lock()
-		fields := ci.MarkedFields
-		ci.MarkedFields = nil
-		if len(fields) > 0 {
-			patches := buildSurgicalPatches(ci, fields)
-			if len(patches) > 0 {
-				ci.Mu.Unlock()
-				msg := render.EncodePatchMessage(patches)
-				msg.TargetName = ci.SlotName
-				data, _ := proto.Marshal(msg)
-				pool.broadcast(data)
-				return
-			}
-		}
-		msg, changedFields := BuildUpdate(ci)
-		ci.LastChangedFields = changedFields
-		ci.Mu.Unlock()
-		if msg != nil {
-			msg.TargetName = ci.SlotName
-			data, _ := proto.Marshal(msg)
-			pool.broadcast(data)
+		if ci.EventCh != nil {
+			ci.EventCh <- component.Event{Kind: component.RefreshKind}
 		}
 	}
 }
 
+// executeRefresh performs the actual refresh: drain marked fields for surgical
+// patches, or fall back to a full BuildUpdate + diff. Called only from
+// processEvents to ensure serialized access — no lock needed.
+func executeRefresh(ci *component.Info, pool *connPool) {
+	fields := ci.DrainMarkedFields()
+	if len(fields) > 0 {
+		patches := buildSurgicalPatches(ci, fields)
+		if len(patches) > 0 {
+			msg := render.EncodePatchMessage(patches)
+			msg.TargetName = ci.SlotName
+			data, _ := proto.Marshal(msg)
+			pool.broadcast(data)
+			return
+		}
+	}
+	msg, changedFields := BuildUpdate(ci)
+	ci.LastChangedFields = changedFields
+	if msg != nil {
+		msg.TargetName = ci.SlotName
+		data, _ := proto.Marshal(msg)
+		pool.broadcast(data)
+	}
+}
 
+// shouldEnqueue decides whether an event should be placed on the channel.
+// Returns true to enqueue, false to drop. Currently allows all events.
+func shouldEnqueue(_ component.Event) bool {
+	return true
+}
 
+// shouldProcess decides whether an event should be processed after being
+// dequeued. Returns true to process, false to skip. Currently allows all events.
+func shouldProcess(_ component.Event) bool {
+	return true
+}
+
+// processEvents is the single goroutine per component that processes events
+// sequentially from the component's event queue. This eliminates race
+// conditions between concurrent event sources (multiple WS connections,
+// background goroutines).
+func processEvents(ci *component.Info, compIdx int, sm *sharedPtrMaps, pool *connPool) {
+	for evt := range ci.EventCh {
+		if !shouldProcess(evt) {
+			continue
+		}
+		switch evt.Kind {
+		case component.NodeEventKind:
+			handleNodeEvent(ci, compIdx, evt.NodeID, evt.Value, sm, pool)
+		case component.MethodCallKind:
+			handleMethodCall(ci, compIdx, evt.Call, sm, pool)
+		case component.RefreshKind:
+			executeRefresh(ci, pool)
+		}
+	}
+}
 
 // findComponentByNodeID finds which component owns a given node ID
 // by searching each component's live tree. Returns the Info and the
@@ -676,66 +728,6 @@ func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
 	return patches
 }
 
-// --- WebSocket helpers ---
-
-type wsConn struct {
-	conn *websocket.Conn
-	wmu  sync.Mutex
-}
-
-func (wc *wsConn) writeBinary(data []byte) error {
-	wc.wmu.Lock()
-	defer wc.wmu.Unlock()
-	return wc.conn.WriteMessage(websocket.BinaryMessage, data)
-}
-
-type connPool struct {
-	mu    sync.RWMutex
-	conns []*wsConn
-}
-
-func (p *connPool) add(conn *websocket.Conn) *wsConn {
-	wc := &wsConn{conn: conn}
-	p.mu.Lock()
-	p.conns = append(p.conns, wc)
-	p.mu.Unlock()
-	return wc
-}
-
-func (p *connPool) remove(wc *wsConn) {
-	p.mu.Lock()
-	for i, c := range p.conns {
-		if c == wc {
-			p.conns = append(p.conns[:i], p.conns[i+1:]...)
-			break
-		}
-	}
-	p.mu.Unlock()
-}
-
-func (p *connPool) broadcast(data []byte) {
-	p.mu.RLock()
-	snapshot := make([]*wsConn, len(p.conns))
-	copy(snapshot, p.conns)
-	p.mu.RUnlock()
-
-	for _, wc := range snapshot {
-		wc.writeBinary(data)
-	}
-}
-
-func (p *connPool) broadcastClose(closeMsg []byte) {
-	p.mu.RLock()
-	snapshot := make([]*wsConn, len(p.conns))
-	copy(snapshot, p.conns)
-	p.mu.RUnlock()
-
-	for _, wc := range snapshot {
-		wc.conn.WriteMessage(websocket.CloseMessage, closeMsg)
-		wc.conn.Close()
-	}
-}
-
 // --- Message handlers ---
 
 func handleInit(wc *wsConn, ci *component.Info, targetName string) error {
@@ -754,19 +746,17 @@ func handleInit(wc *wsConn, ci *component.Info, targetName string) error {
 // tree by ID, update its Props["value"] (or Props["checked"] for checkboxes),
 // and broadcast a facts patch to all clients.
 func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string, sm *sharedPtrMaps, pool *connPool) {
-	ci.Mu.Lock()
+	// No lock needed — called only from processEvents (serialized).
 
 	node := vdom.FindNodeByID(ci.Tree, int(nodeID))
 	if node == nil {
 		log.Printf("godom: node %d not found in tree", nodeID)
-		ci.Mu.Unlock()
 		return
 	}
 
 	el, ok := node.(*vdom.ElementNode)
 	if !ok {
 		log.Printf("godom: node %d is not an element", nodeID)
-		ci.Mu.Unlock()
 		return
 	}
 
@@ -793,17 +783,11 @@ func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string
 			}
 			ci.SetField(setPath, json.RawMessage(raw))
 		}
-		if ci.RefreshFn != nil {
-			ci.Mu.Unlock()
-			ci.RefreshFn()
-			// Refresh siblings sharing embedded pointer state.
-			ci.Mu.Lock()
-			changedFields := ci.LastChangedFields
-			ci.LastChangedFields = nil
-			ci.Mu.Unlock()
-			sm.refreshSharedComponents(compIdx, changedFields)
-			return
-		}
+		executeRefresh(ci, pool)
+		changedFields := ci.LastChangedFields
+		ci.LastChangedFields = nil
+		sm.refreshSharedComponents(compIdx, changedFields)
+		return
 	}
 
 	// Unbound input: update tree directly and broadcast targeted patch
@@ -828,7 +812,6 @@ func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string
 	}
 	msg := render.EncodePatchMessage([]vdom.Patch{patch})
 	msg.TargetName = ci.SlotName
-	ci.Mu.Unlock()
 
 	data, _ := proto.Marshal(msg)
 	pool.broadcast(data)
@@ -839,7 +822,7 @@ func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string
 // If the component shares embedded pointers with siblings, their changed
 // fields are surgically refreshed via MarkRefresh.
 func handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall, sm *sharedPtrMaps, pool *connPool) {
-	ci.Mu.Lock()
+	// No lock needed — called only from processEvents (serialized).
 
 	// Convert protobuf [][]byte to []json.RawMessage
 	args := make([]json.RawMessage, len(call.Args))
@@ -892,10 +875,6 @@ func handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall, 
 		log.Printf("godom: method call %q args=%v", call.Method, args)
 	}
 
-	// Release the lock before calling the user method so that Refresh()
-	// (which also acquires ci.Mu) can run without deadlocking.
-	ci.Mu.Unlock()
-
 	// Call the method, then refresh the component and any siblings
 	// that share embedded pointer state.
 	if err := ci.CallMethod(call.Method, args); err != nil {
@@ -904,14 +883,12 @@ func handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall, 
 	}
 
 	// Refresh the calling component (BuildUpdate + broadcast).
-	ci.RefreshFn()
+	executeRefresh(ci, pool)
 
 	// Surgically refresh siblings that share embedded pointer state,
 	// using the changed fields captured during BuildUpdate above.
-	ci.Mu.Lock()
 	changedFields := ci.LastChangedFields
 	ci.LastChangedFields = nil
-	ci.Mu.Unlock()
 	sm.refreshSharedComponents(compIdx, changedFields)
 }
 

@@ -1602,6 +1602,9 @@ func TestHandleNodeEvent_NilPropsMapInitialized(t *testing.T) {
 	el := node.(*vdom.ElementNode)
 	el.Facts.Props = nil
 
+	// Remove input binding so we test the unbound path (direct Props update).
+	delete(ci.InputBindings, inputNodeID)
+
 	pool := &connPool{}
 	handleNodeEvent(ci, 0, int32(inputNodeID), "hello", &sharedPtrMaps{}, pool)
 
@@ -3060,9 +3063,8 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 
 	// Wire up RefreshFn (mirrors Run)
 	ci.RefreshFn = func() {
+		fields := ci.DrainMarkedFields()
 		ci.Mu.Lock()
-		fields := ci.MarkedFields
-		ci.MarkedFields = nil
 		if len(fields) > 0 {
 			patches := buildSurgicalPatches(ci, fields)
 			if len(patches) > 0 {

@@ -9,7 +9,26 @@ import (
 	"sync"
 
 	"github.com/anupshinde/godom/internal/vdom"
+
+	gproto "github.com/anupshinde/godom/internal/proto"
 )
+
+// EventKind identifies the type of event sent to a component's event queue.
+type EventKind int
+
+const (
+	NodeEventKind   EventKind = iota // browser input changed
+	MethodCallKind                   // browser event handler (g-click, etc.)
+	RefreshKind                      // background goroutine refresh
+)
+
+// Event is a unit of work sent to a component's event queue.
+type Event struct {
+	Kind   EventKind
+	NodeID int32
+	Value  string
+	Call   *gproto.MethodCall
+}
 
 // Info holds reflection data about a mounted component.
 type Info struct {
@@ -25,15 +44,24 @@ type Info struct {
 	// If no fields, full init is broadcast.
 	RefreshFn func()
 
-	// MarkedFields accumulates field names marked for surgical refresh
-	// via MarkRefresh(). Refresh() reads and clears this list.
-	MarkedFields []string
+	// markedFields accumulates field names marked for surgical refresh
+	// via AddMarkedFields(). DrainMarkedFields() reads and clears this list.
+	// Access only through AddMarkedFields/DrainMarkedFields.
+	// Protected by markedMu (separate from Mu to avoid contention with tree ops).
+	markedMu     sync.Mutex
+	markedFields []string
 
 	// LastChangedFields is populated by wireRefresh after a BuildUpdate,
 	// containing the field names that produced patches. Used by
 	// handleMethodCall to surgically refresh sibling components that
 	// share embedded pointer state.
 	LastChangedFields []string
+
+	// EventCh is the event queue for this component. All events (browser
+	// events, background refreshes) are sent here and processed sequentially
+	// by a single goroutine. This eliminates race conditions between
+	// concurrent event sources.
+	EventCh chan Event
 
 	// VDOM fields
 	VDOMTemplates []*vdom.TemplateNode      // parsed once at Mount()
@@ -45,6 +73,22 @@ type Info struct {
 	// Unbound input support
 	UnboundValues map[string]any // stableKey → value (survives tree rebuilds)
 	NodeStableIDs map[int]string // nodeID → stableKey (rebuilt each resolve)
+}
+
+// AddMarkedFields appends field names for surgical refresh. Thread-safe.
+func (ci *Info) AddMarkedFields(fields ...string) {
+	ci.markedMu.Lock()
+	ci.markedFields = append(ci.markedFields, fields...)
+	ci.markedMu.Unlock()
+}
+
+// DrainMarkedFields returns and clears the accumulated marked fields. Thread-safe.
+func (ci *Info) DrainMarkedFields() []string {
+	ci.markedMu.Lock()
+	fields := ci.markedFields
+	ci.markedFields = nil
+	ci.markedMu.Unlock()
+	return fields
 }
 
 // CallMethod calls an exported method on the component by name with the given arguments.
