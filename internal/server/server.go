@@ -185,11 +185,8 @@ func Run(cfg Config) error {
 		fmt.Fprint(w, bundleJS)
 	})
 
-	// Inline into the page HTML.
-	injectedJS := "<script>" + bundleJS + "</script>\n"
-
 	// The root component (first in Comps, mounted via Mount) provides the page HTML.
-	pageHTML := strings.Replace(cfg.Comps[0].HTMLBody, "</body>", injectedJS+"</body>", 1)
+	pageHTML := strings.Replace(cfg.Comps[0].HTMLBody, "</body>", "<script src=\"/godom.js\"></script>\n</body>", 1)
 
 	// Serve static assets (CSS, images, etc.) from the embedded UI filesystem.
 	staticHandler := http.FileServer(http.FS(cfg.StaticFS))

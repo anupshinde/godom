@@ -1940,8 +1940,8 @@ func TestRun_ServesHTML(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	bodyStr := string(body)
 
-	if !strings.Contains(bodyStr, "// bridge") {
-		t.Error("expected injected bridge JS in response")
+	if !strings.Contains(bodyStr, `<script src="/godom.js"></script>`) {
+		t.Error("expected godom.js script tag in response")
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "text/html; charset=utf-8" {
 		t.Errorf("expected content type 'text/html; charset=utf-8', got %q", ct)
@@ -2270,6 +2270,7 @@ func TestRun_PluginScripts(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Page should have script tag, not inline JS.
 	resp, err := http.Get(fmt.Sprintf("http://%s/", ln))
 	if err != nil {
 		t.Fatal(err)
@@ -2279,11 +2280,25 @@ func TestRun_PluginScripts(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	bodyStr := string(body)
 
-	if !strings.Contains(bodyStr, "console.log('chart')") {
-		t.Error("expected plugin script in response")
+	if !strings.Contains(bodyStr, `<script src="/godom.js"></script>`) {
+		t.Error("expected godom.js script tag in page")
 	}
-	if !strings.Contains(bodyStr, "godom.register=") {
-		t.Error("expected godom plugin registration script")
+
+	// /godom.js should contain the plugin script and registration.
+	resp2, err := http.Get(fmt.Sprintf("http://%s/godom.js", ln))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+
+	jsBody, _ := io.ReadAll(resp2.Body)
+	jsStr := string(jsBody)
+
+	if !strings.Contains(jsStr, "console.log('chart')") {
+		t.Error("expected plugin script in /godom.js")
+	}
+	if !strings.Contains(jsStr, "godom.register=") {
+		t.Error("expected godom plugin registration in /godom.js")
 	}
 }
 
@@ -3068,19 +3083,25 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 
 	mux := http.NewServeMux()
 
-	var injectedJS string
-	injectedJS += "<script>" + cfg.ProtobufMinJS + "</script>\n"
-	injectedJS += "<script>" + cfg.ProtocolJS + "</script>\n"
+	// Build the JS bundle (same as Run).
+	var bundleJS string
+	bundleJS += cfg.ProtobufMinJS + "\n" + cfg.ProtocolJS + "\n"
 	if len(cfg.Plugins) > 0 {
-		injectedJS += "<script>var godom=window[window.GODOM_NS||'godom']=window[window.GODOM_NS||'godom']||{};godom._plugins=godom._plugins||{};godom.register=function(n,h){godom._plugins[n]=h};</script>\n"
+		bundleJS += "var godom=window[window.GODOM_NS||'godom']=window[window.GODOM_NS||'godom']||{};godom._plugins=godom._plugins||{};godom.register=function(n,h){godom._plugins[n]=h};\n"
 		for _, pluginScripts := range cfg.Plugins {
 			for _, js := range pluginScripts {
-				injectedJS += "<script>" + js + "</script>\n"
+				bundleJS += js + "\n"
 			}
 		}
 	}
-	injectedJS += "<script>" + cfg.BridgeJS + "</script>\n"
-	pageHTML := strings.Replace(ci.HTMLBody, "</body>", injectedJS+"</body>", 1)
+	bundleJS += cfg.BridgeJS
+
+	mux.HandleFunc("/godom.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		fmt.Fprint(w, bundleJS)
+	})
+
+	pageHTML := strings.Replace(ci.HTMLBody, "</body>", "<script src=\"/godom.js\"></script>\n</body>", 1)
 
 	staticHandler := http.FileServer(http.FS(cfg.StaticFS))
 
