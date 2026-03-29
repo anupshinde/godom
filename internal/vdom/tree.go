@@ -357,13 +357,18 @@ func ParseForExpr(expr string) (item, index, list string) {
 // IDCounter assigns monotonically increasing node IDs.
 // It must persist across renders (never reset) so that
 // existing IDs in the bridge's node map remain valid.
+// Thread-safe — shared across all components.
 type IDCounter struct {
+	mu  sync.Mutex
 	Seq int
 }
 
 func (c *IDCounter) Next() int {
+	c.mu.Lock()
 	c.Seq++
-	return c.Seq
+	id := c.Seq
+	c.mu.Unlock()
+	return id
 }
 
 // Binding records a dependency: "field X affects node Y's property Z."
