@@ -348,16 +348,12 @@ func wireRefresh(ci *component.Info, pool *connPool) {
 
 // executeRefresh performs the actual refresh: drain marked fields for surgical
 // patches, or fall back to a full BuildUpdate + diff. Called only from
-// processEvents to ensure serialized access.
+// processEvents to ensure serialized access — no lock needed.
 func executeRefresh(ci *component.Info, pool *connPool) {
-	// Drain marked fields before acquiring the main lock.
-	// DrainMarkedFields has its own lock for thread safety.
 	fields := ci.DrainMarkedFields()
-	ci.Mu.Lock()
 	if len(fields) > 0 {
 		patches := buildSurgicalPatches(ci, fields)
 		if len(patches) > 0 {
-			ci.Mu.Unlock()
 			msg := render.EncodePatchMessage(patches)
 			msg.TargetName = ci.SlotName
 			data, _ := proto.Marshal(msg)
@@ -367,7 +363,6 @@ func executeRefresh(ci *component.Info, pool *connPool) {
 	}
 	msg, changedFields := BuildUpdate(ci)
 	ci.LastChangedFields = changedFields
-	ci.Mu.Unlock()
 	if msg != nil {
 		msg.TargetName = ci.SlotName
 		data, _ := proto.Marshal(msg)
@@ -751,19 +746,17 @@ func handleInit(wc *wsConn, ci *component.Info, targetName string) error {
 // tree by ID, update its Props["value"] (or Props["checked"] for checkboxes),
 // and broadcast a facts patch to all clients.
 func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string, sm *sharedPtrMaps, pool *connPool) {
-	ci.Mu.Lock()
+	// No lock needed — called only from processEvents (serialized).
 
 	node := vdom.FindNodeByID(ci.Tree, int(nodeID))
 	if node == nil {
 		log.Printf("godom: node %d not found in tree", nodeID)
-		ci.Mu.Unlock()
 		return
 	}
 
 	el, ok := node.(*vdom.ElementNode)
 	if !ok {
 		log.Printf("godom: node %d is not an element", nodeID)
-		ci.Mu.Unlock()
 		return
 	}
 
@@ -790,19 +783,11 @@ func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string
 			}
 			ci.SetField(setPath, json.RawMessage(raw))
 		}
-		if ci.EventCh != nil {
-			ci.Mu.Unlock()
-			// Called directly (not through the channel) because we're already
-			// inside processEvents and need LastChangedFields immediately.
-			executeRefresh(ci, pool)
-			// Refresh siblings sharing embedded pointer state.
-			ci.Mu.Lock()
-			changedFields := ci.LastChangedFields
-			ci.LastChangedFields = nil
-			ci.Mu.Unlock()
-			sm.refreshSharedComponents(compIdx, changedFields)
-			return
-		}
+		executeRefresh(ci, pool)
+		changedFields := ci.LastChangedFields
+		ci.LastChangedFields = nil
+		sm.refreshSharedComponents(compIdx, changedFields)
+		return
 	}
 
 	// Unbound input: update tree directly and broadcast targeted patch
@@ -827,7 +812,6 @@ func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string
 	}
 	msg := render.EncodePatchMessage([]vdom.Patch{patch})
 	msg.TargetName = ci.SlotName
-	ci.Mu.Unlock()
 
 	data, _ := proto.Marshal(msg)
 	pool.broadcast(data)
@@ -838,7 +822,7 @@ func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string
 // If the component shares embedded pointers with siblings, their changed
 // fields are surgically refreshed via MarkRefresh.
 func handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall, sm *sharedPtrMaps, pool *connPool) {
-	ci.Mu.Lock()
+	// No lock needed — called only from processEvents (serialized).
 
 	// Convert protobuf [][]byte to []json.RawMessage
 	args := make([]json.RawMessage, len(call.Args))
@@ -891,10 +875,6 @@ func handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall, 
 		log.Printf("godom: method call %q args=%v", call.Method, args)
 	}
 
-	// Release the lock before calling the user method so that Refresh()
-	// (which also acquires ci.Mu) can run without deadlocking.
-	ci.Mu.Unlock()
-
 	// Call the method, then refresh the component and any siblings
 	// that share embedded pointer state.
 	if err := ci.CallMethod(call.Method, args); err != nil {
@@ -903,16 +883,12 @@ func handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall, 
 	}
 
 	// Refresh the calling component (BuildUpdate + broadcast).
-	// Called directly (not through the channel) because we're already
-	// inside processEvents and need LastChangedFields immediately.
 	executeRefresh(ci, pool)
 
 	// Surgically refresh siblings that share embedded pointer state,
 	// using the changed fields captured during BuildUpdate above.
-	ci.Mu.Lock()
 	changedFields := ci.LastChangedFields
 	ci.LastChangedFields = nil
-	ci.Mu.Unlock()
 	sm.refreshSharedComponents(compIdx, changedFields)
 }
 

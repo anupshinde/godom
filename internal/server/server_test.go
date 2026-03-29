@@ -1602,6 +1602,9 @@ func TestHandleNodeEvent_NilPropsMapInitialized(t *testing.T) {
 	el := node.(*vdom.ElementNode)
 	el.Facts.Props = nil
 
+	// Remove input binding so we test the unbound path (direct Props update).
+	delete(ci.InputBindings, inputNodeID)
+
 	pool := &connPool{}
 	handleNodeEvent(ci, 0, int32(inputNodeID), "hello", &sharedPtrMaps{}, pool)
 
