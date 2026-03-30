@@ -83,6 +83,7 @@ func mergeChildren(dst *ElementNode, srcKids []Node, remap map[int]int) {
 		if canMerge(dst.Children[i], srcKids[i]) {
 			mergeTree(dst.Children[i], srcKids[i], remap)
 		} else {
+			MarkRemoved(dst.Children[i])
 			dst.Children[i] = srcKids[i]
 		}
 	}
@@ -94,6 +95,9 @@ func mergeChildren(dst *ElementNode, srcKids []Node, remap map[int]int) {
 
 	// Truncate removed children.
 	if len(dst.Children) > len(srcKids) {
+		for i := len(srcKids); i < len(dst.Children); i++ {
+			MarkRemoved(dst.Children[i])
+		}
 		dst.Children = dst.Children[:len(srcKids)]
 	}
 }
@@ -107,19 +111,28 @@ func mergeKeyedChildren(dst *KeyedElementNode, srcKids []KeyedChild, remap map[i
 
 	// Build new children list, reusing old nodes where keys match.
 	merged := make([]KeyedChild, len(srcKids))
+	usedOld := make(map[int]bool, len(srcKids))
 	for i, sk := range srcKids {
 		if oi, ok := oldByKey[sk.Key]; ok {
+			usedOld[oi] = true
 			// Key exists in old — merge data into old node, keep old ID.
 			oldNode := dst.Children[oi].Node
 			if canMerge(oldNode, sk.Node) {
 				mergeTree(oldNode, sk.Node, remap)
 				merged[i] = KeyedChild{Key: sk.Key, Node: oldNode}
 			} else {
+				MarkRemoved(oldNode)
 				merged[i] = sk
 			}
 		} else {
 			// New key — use src node directly.
 			merged[i] = sk
+		}
+	}
+	// Mark old keyed children that were not reused as removed.
+	for i, kc := range dst.Children {
+		if !usedOld[i] {
+			MarkRemoved(kc.Node)
 		}
 	}
 	dst.Children = merged

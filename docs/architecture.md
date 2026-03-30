@@ -148,7 +148,7 @@ This uses the same `VDomMessage` patch format as user-triggered changes — the 
 
 Each component instance has a buffered event channel (`EventCh`) and a single processor goroutine. All browser input changes (`NodeEventKind`), method calls (`MethodCallKind`), and background refreshes (`RefreshKind`) are sent to this channel and processed sequentially.
 
-This eliminates race conditions between concurrent sources (multiple browser tabs, background goroutines) without requiring locks on the component's state. Two exceptions use `ci.Mu` directly: `findComponentByNodeID` (reads the VDOM tree from the WebSocket read loop to determine which component owns a node ID) and `handleInit` (writes the tree on new connection — must be synchronous to preserve mount order).
+This eliminates race conditions between concurrent sources (multiple browser tabs, background goroutines) without requiring locks on the component's state. Node-to-component routing uses a lazily-populated `nodeLookup` index (O(1) on hit, tree traversal on first miss). One exception uses `ci.Mu` directly: `handleInit` (writes the tree on new connection — must be synchronous to preserve mount order).
 
 Two filter hooks control event flow:
 - `shouldEnqueue(event)` — called before sending to the channel (for future deduplication)

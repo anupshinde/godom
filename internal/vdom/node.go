@@ -17,17 +17,20 @@ type Node interface {
 	NodeType() int
 	NodeID() int
 	DescendantsCount() int
+	IsRemoved() bool
 }
 
 // NodeBase holds fields common to all node types.
 // Embed this in every concrete node.
 type NodeBase struct {
-	ID          int // stable identity, assigned by Go, used to address the node in the bridge
-	Descendants int // cached count, set by ComputeDescendants
+	ID          int  // stable identity, assigned by Go, used to address the node in the bridge
+	Descendants int  // cached count, set by ComputeDescendants
+	Removed     bool // true after the node has been removed from the live tree
 }
 
 func (b *NodeBase) NodeID() int          { return b.ID }
 func (b *NodeBase) DescendantsCount() int { return b.Descendants }
+func (b *NodeBase) IsRemoved() bool       { return b.Removed }
 
 // ---------------------------------------------------------------------------
 // Text
@@ -61,11 +64,40 @@ func (n *ElementNode) AppendChild(child Node) {
 	n.Children = append(n.Children, child)
 }
 
+// MarkRemoved recursively marks a node and all its descendants as removed.
+func MarkRemoved(n Node) {
+	if n == nil {
+		return
+	}
+	switch v := n.(type) {
+	case *TextNode:
+		v.Removed = true
+	case *ElementNode:
+		v.Removed = true
+		for _, c := range v.Children {
+			MarkRemoved(c)
+		}
+	case *KeyedElementNode:
+		v.Removed = true
+		for _, kc := range v.Children {
+			MarkRemoved(kc.Node)
+		}
+	case *PluginNode:
+		v.Removed = true
+	case *LazyNode:
+		v.Removed = true
+		if v.Cached != nil {
+			MarkRemoved(v.Cached)
+		}
+	}
+}
+
 // RemoveChild removes the child at the given index. Returns false if out of bounds.
 func (n *ElementNode) RemoveChild(index int) bool {
 	if index < 0 || index >= len(n.Children) {
 		return false
 	}
+	MarkRemoved(n.Children[index])
 	n.Children = append(n.Children[:index], n.Children[index+1:]...)
 	return true
 }
@@ -75,6 +107,7 @@ func (n *ElementNode) ReplaceChild(index int, child Node) bool {
 	if index < 0 || index >= len(n.Children) {
 		return false
 	}
+	MarkRemoved(n.Children[index])
 	n.Children[index] = child
 	return true
 }
@@ -83,6 +116,7 @@ func (n *ElementNode) ReplaceChild(index int, child Node) bool {
 func (n *ElementNode) RemoveChildByID(id int) bool {
 	for i, c := range n.Children {
 		if c.NodeID() == id {
+			MarkRemoved(c)
 			n.Children = append(n.Children[:i], n.Children[i+1:]...)
 			return true
 		}
