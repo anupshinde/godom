@@ -44,12 +44,12 @@ type Config struct {
 }
 
 // serverCtx holds shared state used by event processors and handlers.
-// Avoids threading pool, sm, cache, and comps through every function.
+// Avoids threading pool, sm, lookup, and comps through every function.
 type serverCtx struct {
-	pool  *connPool
-	sm    *sharedPtrMaps
-	cache *nodeCache
-	comps []*component.Info
+	pool   *connPool
+	sm     *sharedPtrMaps
+	lookup *nodeLookup
+	comps  []*component.Info
 }
 
 // sharedPtrMaps holds the pointer-sharing relationships between components.
@@ -169,7 +169,7 @@ func Run(cfg Config) error {
 	ctx := &serverCtx{
 		pool:  pool,
 		sm:    sm,
-		cache: newNodeCache(),
+		lookup: newNodeLookup(),
 		comps: cfg.Comps,
 	}
 
@@ -283,7 +283,7 @@ func Run(cfg Config) error {
 					log.Printf("godom: node event unmarshal error: %v", err)
 					continue
 				}
-				if ci := findComponent(int(evt.NodeId), ctx.comps, ctx.cache); ci != nil {
+				if ci := findComponent(int(evt.NodeId), ctx.comps, ctx.lookup); ci != nil {
 					e := component.Event{Kind: component.NodeEventKind, NodeID: evt.NodeId, Value: evt.Value}
 					if shouldEnqueue(e) {
 						ci.EventCh <- e
@@ -296,7 +296,7 @@ func Run(cfg Config) error {
 					log.Printf("godom: method call unmarshal error: %v", err)
 					continue
 				}
-				if ci := findComponent(int(call.NodeId), ctx.comps, ctx.cache); ci != nil {
+				if ci := findComponent(int(call.NodeId), ctx.comps, ctx.lookup); ci != nil {
 					e := component.Event{Kind: component.MethodCallKind, Call: call}
 					if shouldEnqueue(e) {
 						ci.EventCh <- e
@@ -378,7 +378,7 @@ func (s *serverCtx) executeRefresh(ci *component.Info) {
 		}
 	}
 	msg, changedFields := BuildUpdate(ci)
-	s.cache.evictRemoved()
+	s.lookup.evictRemoved()
 	ci.LastChangedFields = changedFields
 	if msg != nil {
 		msg.TargetName = ci.SlotName
@@ -644,7 +644,7 @@ func (s *serverCtx) buildSurgicalPatches(ci *component.Info, fields []string) []
 			case "class":
 				// For class toggling, we need to add/remove the class name
 				// This is simplified — a full implementation would track existing classes
-				node := findNode(b.NodeID, ci, s.cache)
+				node := findNode(b.NodeID, ci, s.lookup)
 				if el, ok := node.(*vdom.ElementNode); ok {
 					existing, _ := el.Facts.Props["className"].(string)
 					if truthy && !strings.Contains(existing, b.Prop) {
@@ -665,7 +665,7 @@ func (s *serverCtx) buildSurgicalPatches(ci *component.Info, fields []string) []
 			}
 
 			// Also update the live tree so it stays in sync
-			node := findNode(b.NodeID, ci, s.cache)
+			node := findNode(b.NodeID, ci, s.lookup)
 			switch b.Kind {
 			case "style":
 				if el, ok := node.(*vdom.ElementNode); ok {
@@ -759,7 +759,7 @@ func handleInit(wc *wsConn, ci *component.Info, targetName string) error {
 func (s *serverCtx) handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string) {
 	// No lock needed — called only from processEvents (serialized).
 
-	node := findNode(int(nodeID), ci, s.cache)
+	node := findNode(int(nodeID), ci, s.lookup)
 	if node == nil {
 		log.Printf("godom: node %d not found in tree", nodeID)
 		return
@@ -850,7 +850,7 @@ func (s *serverCtx) handleMethodCall(ci *component.Info, compIdx int, call *gpro
 				if b.Kind != "bind" && b.Kind != "prop" {
 					continue
 				}
-				node := findNode(b.NodeID, ci, s.cache)
+				node := findNode(b.NodeID, ci, s.lookup)
 				if node == nil {
 					continue
 				}

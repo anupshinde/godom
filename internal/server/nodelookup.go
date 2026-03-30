@@ -7,26 +7,27 @@ import (
 	"github.com/anupshinde/godom/internal/vdom"
 )
 
-// cachedEntry holds a cached node lookup result.
-type cachedEntry struct {
+// lookupEntry holds a node lookup result.
+type lookupEntry struct {
 	Node vdom.Node
 	Comp *component.Info
 }
 
-// nodeCache provides O(1) lookups for nodeID → node and nodeID → component.
-// Falls back to tree traversal on cache miss, then caches the result.
-// Stale entries (removed nodes/components) are evicted on access.
-type nodeCache struct {
+// nodeLookup provides O(1) lookups for nodeID → node and nodeID → component.
+// Lazily populated on first access via tree traversal, then serves subsequent
+// lookups directly. Stale entries (removed nodes/components) are evicted on
+// access and swept after BuildUpdate.
+type nodeLookup struct {
 	mu      sync.RWMutex
-	entries map[int]*cachedEntry
+	entries map[int]*lookupEntry
 }
 
-func newNodeCache() *nodeCache {
-	return &nodeCache{entries: make(map[int]*cachedEntry)}
+func newNodeLookup() *nodeLookup {
+	return &nodeLookup{entries: make(map[int]*lookupEntry)}
 }
 
 // get returns the cached entry for a nodeID, or nil if not cached or stale.
-func (nc *nodeCache) get(nodeID int) *cachedEntry {
+func (nc *nodeLookup) get(nodeID int) *lookupEntry {
 	nc.mu.RLock()
 	e, ok := nc.entries[nodeID]
 	nc.mu.RUnlock()
@@ -44,19 +45,19 @@ func (nc *nodeCache) get(nodeID int) *cachedEntry {
 }
 
 // put stores a node and its owning component in the cache.
-func (nc *nodeCache) put(nodeID int, node vdom.Node, comp *component.Info) {
+func (nc *nodeLookup) put(nodeID int, node vdom.Node, comp *component.Info) {
 	nc.mu.Lock()
-	nc.entries[nodeID] = &cachedEntry{
+	nc.entries[nodeID] = &lookupEntry{
 		Node: node,
 		Comp: comp,
 	}
 	nc.mu.Unlock()
 }
 
-// evictRemoved walks the cache and removes entries for nodes or components
+// evictRemoved walks the lookup and removes entries for nodes or components
 // that have been marked as removed. Called after BuildUpdate when the tree
 // structure may have changed.
-func (nc *nodeCache) evictRemoved() {
+func (nc *nodeLookup) evictRemoved() {
 	nc.mu.Lock()
 	for id, e := range nc.entries {
 		if e.Node.IsRemoved() || e.Comp.Removed {
@@ -68,7 +69,7 @@ func (nc *nodeCache) evictRemoved() {
 
 // findNode looks up a node by ID. Checks the cache first, falls back to
 // tree traversal on the given component, then caches the result.
-func findNode(nodeID int, ci *component.Info, cache *nodeCache) vdom.Node {
+func findNode(nodeID int, ci *component.Info, cache *nodeLookup) vdom.Node {
 	if e := cache.get(nodeID); e != nil {
 		return e.Node
 	}
@@ -81,7 +82,7 @@ func findNode(nodeID int, ci *component.Info, cache *nodeCache) vdom.Node {
 
 // findComponent looks up which component owns a nodeID. Checks the cache
 // first, falls back to searching all components' trees, then caches the result.
-func findComponent(nodeID int, comps []*component.Info, cache *nodeCache) *component.Info {
+func findComponent(nodeID int, comps []*component.Info, cache *nodeLookup) *component.Info {
 	if e := cache.get(nodeID); e != nil {
 		return e.Comp
 	}
