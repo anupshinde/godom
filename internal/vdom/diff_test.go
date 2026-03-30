@@ -1448,6 +1448,7 @@ type fakeNode struct{}
 func (f *fakeNode) NodeType() int         { return -1 }
 func (f *fakeNode) NodeID() int           { return 0 }
 func (f *fakeNode) DescendantsCount() int { return 0 }
+func (f *fakeNode) IsRemoved() bool       { return false }
 
 func TestLazyNode_DescendantsCount(t *testing.T) {
 	t.Run("with cached", func(t *testing.T) {

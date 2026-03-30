@@ -133,3 +133,121 @@ func TestRemoveChildByID(t *testing.T) {
 		t.Error("expected empty children after removing ID=30")
 	}
 }
+
+// --- MarkRemoved ---
+
+func TestMarkRemoved_SingleNode(t *testing.T) {
+	n := &TextNode{NodeBase: NodeBase{ID: 1}, Text: "hello"}
+	if n.IsRemoved() {
+		t.Fatal("expected node not removed initially")
+	}
+	MarkRemoved(n)
+	if !n.IsRemoved() {
+		t.Fatal("expected node to be removed after MarkRemoved")
+	}
+}
+
+func TestMarkRemoved_Recursive(t *testing.T) {
+	grandchild := &TextNode{NodeBase: NodeBase{ID: 3}, Text: "text"}
+	child := &ElementNode{NodeBase: NodeBase{ID: 2}, Tag: "span", Children: []Node{grandchild}}
+	root := &ElementNode{NodeBase: NodeBase{ID: 1}, Tag: "div", Children: []Node{child}}
+
+	MarkRemoved(root)
+
+	if !root.IsRemoved() {
+		t.Error("expected root to be removed")
+	}
+	if !child.IsRemoved() {
+		t.Error("expected child to be removed")
+	}
+	if !grandchild.IsRemoved() {
+		t.Error("expected grandchild to be removed")
+	}
+}
+
+func TestMarkRemoved_KeyedChildren(t *testing.T) {
+	child1 := &ElementNode{NodeBase: NodeBase{ID: 2}, Tag: "li"}
+	child2 := &ElementNode{NodeBase: NodeBase{ID: 3}, Tag: "li"}
+	keyed := &KeyedElementNode{
+		NodeBase: NodeBase{ID: 1},
+		Tag:      "ul",
+		Children: []KeyedChild{
+			{Key: "a", Node: child1},
+			{Key: "b", Node: child2},
+		},
+	}
+
+	MarkRemoved(keyed)
+
+	if !keyed.IsRemoved() {
+		t.Error("expected keyed parent to be removed")
+	}
+	if !child1.IsRemoved() {
+		t.Error("expected keyed child1 to be removed")
+	}
+	if !child2.IsRemoved() {
+		t.Error("expected keyed child2 to be removed")
+	}
+}
+
+func TestMarkRemoved_PluginNode(t *testing.T) {
+	n := &PluginNode{NodeBase: NodeBase{ID: 1}, Name: "chart", Tag: "canvas"}
+	MarkRemoved(n)
+	if !n.IsRemoved() {
+		t.Error("expected plugin node to be removed")
+	}
+}
+
+func TestMarkRemoved_LazyNode(t *testing.T) {
+	cached := &TextNode{NodeBase: NodeBase{ID: 2}, Text: "cached"}
+	n := &LazyNode{NodeBase: NodeBase{ID: 1}, Cached: cached}
+	MarkRemoved(n)
+	if !n.IsRemoved() {
+		t.Error("expected lazy node to be removed")
+	}
+	if !cached.IsRemoved() {
+		t.Error("expected cached node to be removed")
+	}
+}
+
+func TestMarkRemoved_Nil(t *testing.T) {
+	// Should not panic
+	MarkRemoved(nil)
+}
+
+func TestRemoveChild_MarksRemoved(t *testing.T) {
+	child := &TextNode{NodeBase: NodeBase{ID: 2}, Text: "hello"}
+	parent := &ElementNode{NodeBase: NodeBase{ID: 1}, Tag: "div", Children: []Node{child}}
+
+	parent.RemoveChild(0)
+
+	if !child.IsRemoved() {
+		t.Error("expected removed child to be marked as removed")
+	}
+}
+
+func TestReplaceChild_MarksOldRemoved(t *testing.T) {
+	old := &TextNode{NodeBase: NodeBase{ID: 2}, Text: "old"}
+	new := &TextNode{NodeBase: NodeBase{ID: 3}, Text: "new"}
+	parent := &ElementNode{NodeBase: NodeBase{ID: 1}, Tag: "div", Children: []Node{old}}
+
+	parent.ReplaceChild(0, new)
+
+	if !old.IsRemoved() {
+		t.Error("expected replaced child to be marked as removed")
+	}
+	if new.IsRemoved() {
+		t.Error("expected new child to not be marked as removed")
+	}
+}
+
+func TestRemoveChildByID_MarksRemoved(t *testing.T) {
+	child := &TextNode{NodeBase: NodeBase{ID: 2}, Text: "hello"}
+	parent := &ElementNode{NodeBase: NodeBase{ID: 1}, Tag: "div", Children: []Node{child}}
+
+	parent.RemoveChildByID(2)
+
+	if !child.IsRemoved() {
+		t.Error("expected removed child to be marked as removed")
+	}
+}
