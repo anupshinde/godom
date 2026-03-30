@@ -39,6 +39,10 @@ type Info struct {
 
 	HTMLBody string
 
+	// Removed is set when the component is unloaded (not used today, but
+	// needed for dynamic mount/unmount and navigation view switching).
+	Removed bool
+
 	// RefreshFn is set by Start() to broadcast current state to all clients.
 	// If fields are given, only those fields' bound nodes are patched (surgical).
 	// If no fields, full init is broadcast.
