@@ -639,7 +639,7 @@ func TestHandleNodeEvent_UpdatesTreeAndBroadcasts(t *testing.T) {
 	pool.add(serverConn)
 
 	// Fire node event
-	handleNodeEvent(ci, 0, int32(inputNodeID), "42", &sharedPtrMaps{}, pool)
+	handleNodeEvent(ci, 0, int32(inputNodeID), "42", &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Verify the live tree was updated
 	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
@@ -691,7 +691,7 @@ func TestHandleNodeEvent_NodeNotFound(t *testing.T) {
 
 	pool := &connPool{}
 	// Should not panic with a nonexistent node ID
-	handleNodeEvent(ci, 0, 99999, "value", &sharedPtrMaps{}, pool)
+	handleNodeEvent(ci, 0, 99999, "value", &sharedPtrMaps{}, pool, newNodeCache())
 }
 
 // --- handleMethodCall tests ---
@@ -737,7 +737,7 @@ func TestHandleMethodCall_CallsMethod(t *testing.T) {
 	}
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Verify method was called: Count should be 3 (0 + Step=3)
 	if app.Count != 3 {
@@ -800,7 +800,7 @@ func TestHandleMethodCall_RebuildReflectsNewState(t *testing.T) {
 	}
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// The broadcast should contain a tree with the new count "5"
 	client.SetReadDeadline(time.Now().Add(time.Second))
@@ -832,7 +832,7 @@ func TestHandleMethodCall_InvalidMethod(t *testing.T) {
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: "NonExistent"}
 	// Should not panic — logs error and returns
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Count should not have changed
 	if app.Count != 0 {
@@ -911,7 +911,7 @@ func TestHandleMethodCall_SkipsRebuildWhenRefreshed(t *testing.T) {
 	app.refreshFn = ci.RefreshFn
 
 	call := &gproto.MethodCall{Method: "IncrementAndRefresh"}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Method was called
 	if app.Count != 1 {
@@ -968,7 +968,7 @@ func TestHandleMethodCall_SyncsBindValues(t *testing.T) {
 	ci.RefreshFn = func() {}
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Step should have been synced from tree prop to struct field
 	if app.Step != 10 {
@@ -1025,7 +1025,7 @@ func TestBuildSurgicalPatches_TextBinding(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Name = "Bob"
-	patches := buildSurgicalPatches(ci, []string{"Name"})
+	patches := buildSurgicalPatches(ci, []string{"Name"}, newNodeCache())
 
 	var hasTextPatch bool
 	for _, p := range patches {
@@ -1047,7 +1047,7 @@ func TestBuildSurgicalPatches_AttrBinding(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Color = "blue"
-	patches := buildSurgicalPatches(ci, []string{"Color"})
+	patches := buildSurgicalPatches(ci, []string{"Color"}, newNodeCache())
 
 	var hasAttrPatch bool
 	for _, p := range patches {
@@ -1070,7 +1070,7 @@ func TestBuildSurgicalPatches_ShowBinding(t *testing.T) {
 
 	// Visible → false means display should be "none"
 	app.Visible = false
-	patches := buildSurgicalPatches(ci, []string{"Visible"})
+	patches := buildSurgicalPatches(ci, []string{"Visible"}, newNodeCache())
 
 	var hasShowPatch bool
 	for _, p := range patches {
@@ -1093,7 +1093,7 @@ func TestBuildSurgicalPatches_HideBinding(t *testing.T) {
 
 	// Hidden → true means display should be "none"
 	app.Hidden = true
-	patches := buildSurgicalPatches(ci, []string{"Hidden"})
+	patches := buildSurgicalPatches(ci, []string{"Hidden"}, newNodeCache())
 
 	var hasHidePatch bool
 	for _, p := range patches {
@@ -1115,7 +1115,7 @@ func TestBuildSurgicalPatches_ClassBinding(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Active = true
-	patches := buildSurgicalPatches(ci, []string{"Active"})
+	patches := buildSurgicalPatches(ci, []string{"Active"}, newNodeCache())
 
 	var hasClassPatch bool
 	for _, p := range patches {
@@ -1141,7 +1141,7 @@ func TestBuildSurgicalPatches_StyleBinding(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Width = "200px"
-	patches := buildSurgicalPatches(ci, []string{"Width"})
+	patches := buildSurgicalPatches(ci, []string{"Width"}, newNodeCache())
 
 	var hasStylePatch bool
 	for _, p := range patches {
@@ -1162,7 +1162,7 @@ func TestBuildSurgicalPatches_NoBindings(t *testing.T) {
 	ci := makeSurgicalCI(app)
 	ci.Tree = buildTree(ci)
 
-	patches := buildSurgicalPatches(ci, []string{"NonExistentField"})
+	patches := buildSurgicalPatches(ci, []string{"NonExistentField"}, newNodeCache())
 	if len(patches) != 0 {
 		t.Errorf("expected no patches for unbound field, got %d", len(patches))
 	}
@@ -1173,7 +1173,7 @@ func TestBuildSurgicalPatches_EmptyFields(t *testing.T) {
 	ci := makeSurgicalCI(app)
 	ci.Tree = buildTree(ci)
 
-	patches := buildSurgicalPatches(ci, []string{})
+	patches := buildSurgicalPatches(ci, []string{}, newNodeCache())
 	if len(patches) != 0 {
 		t.Errorf("expected no patches for empty fields, got %d", len(patches))
 	}
@@ -1185,7 +1185,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTree(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Name = "Bob"
-	_ = buildSurgicalPatches(ci, []string{"Name"})
+	_ = buildSurgicalPatches(ci, []string{"Name"}, newNodeCache())
 
 	// Verify the live tree was updated in place
 	// Find text node with "Bob" in the live tree
@@ -1206,7 +1206,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTreeStyle(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Width = "200px"
-	_ = buildSurgicalPatches(ci, []string{"Width"})
+	_ = buildSurgicalPatches(ci, []string{"Width"}, newNodeCache())
 
 	// Verify the live tree's style was updated
 	bindings := ci.Bindings["Width"]
@@ -1228,7 +1228,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTreeAttr(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Color = "blue"
-	_ = buildSurgicalPatches(ci, []string{"Color"})
+	_ = buildSurgicalPatches(ci, []string{"Color"}, newNodeCache())
 
 	bindings := ci.Bindings["Color"]
 	for _, b := range bindings {
@@ -1250,7 +1250,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTreeShowHide(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Visible = false
-	_ = buildSurgicalPatches(ci, []string{"Visible"})
+	_ = buildSurgicalPatches(ci, []string{"Visible"}, newNodeCache())
 
 	bindings := ci.Bindings["Visible"]
 	for _, b := range bindings {
@@ -1266,7 +1266,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTreeShowHide(t *testing.T) {
 
 	// Now set Visible=true, display should be removed
 	app.Visible = true
-	_ = buildSurgicalPatches(ci, []string{"Visible"})
+	_ = buildSurgicalPatches(ci, []string{"Visible"}, newNodeCache())
 
 	for _, b := range bindings {
 		if b.Kind == "show" {
@@ -1287,7 +1287,7 @@ func TestBuildSurgicalPatches_MultipleFields(t *testing.T) {
 
 	app.Name = "Bob"
 	app.Width = "200px"
-	patches := buildSurgicalPatches(ci, []string{"Name", "Width"})
+	patches := buildSurgicalPatches(ci, []string{"Name", "Width"}, newNodeCache())
 
 	// Should have patches for both fields
 	if len(patches) < 2 {
@@ -1304,7 +1304,7 @@ func TestBuildSurgicalPatches_PropBindingViaGValue(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.InputVal = "world"
-	patches := buildSurgicalPatches(ci, []string{"InputVal"})
+	patches := buildSurgicalPatches(ci, []string{"InputVal"}, newNodeCache())
 
 	var hasPropPatch bool
 	for _, p := range patches {
@@ -1329,7 +1329,7 @@ func TestBuildSurgicalPatches_UpdatesLiveTreeProp(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.InputVal = "world"
-	_ = buildSurgicalPatches(ci, []string{"InputVal"})
+	_ = buildSurgicalPatches(ci, []string{"InputVal"}, newNodeCache())
 
 	bindings := ci.Bindings["InputVal"]
 	foundProp := false
@@ -1370,7 +1370,7 @@ func TestBuildSurgicalPatches_LiveTreeNilStyleMap(t *testing.T) {
 	}
 
 	app.Width = "300px"
-	_ = buildSurgicalPatches(ci, []string{"Width"})
+	_ = buildSurgicalPatches(ci, []string{"Width"}, newNodeCache())
 
 	for _, b := range ci.Bindings["Width"] {
 		if b.Kind == "style" {
@@ -1404,7 +1404,7 @@ func TestBuildSurgicalPatches_LiveTreeNilPropMap(t *testing.T) {
 	}
 
 	app.InputVal = "Charlie"
-	_ = buildSurgicalPatches(ci, []string{"InputVal"})
+	_ = buildSurgicalPatches(ci, []string{"InputVal"}, newNodeCache())
 
 	for _, b := range ci.Bindings["InputVal"] {
 		if b.Kind == "prop" {
@@ -1438,7 +1438,7 @@ func TestBuildSurgicalPatches_LiveTreeNilAttrMap(t *testing.T) {
 	}
 
 	app.Color = "green"
-	_ = buildSurgicalPatches(ci, []string{"Color"})
+	_ = buildSurgicalPatches(ci, []string{"Color"}, newNodeCache())
 
 	for _, b := range ci.Bindings["Color"] {
 		if b.Kind == "attr" {
@@ -1484,7 +1484,7 @@ func TestBuildSurgicalPatches_EmptyExprFallsBackToFieldName(t *testing.T) {
 	})
 
 	app.Name = "Dave"
-	patches := buildSurgicalPatches(ci, []string{"Name"})
+	patches := buildSurgicalPatches(ci, []string{"Name"}, newNodeCache())
 
 	var foundText bool
 	for _, p := range patches {
@@ -1550,7 +1550,7 @@ func TestHandleNodeEvent_StoresUnboundValues(t *testing.T) {
 	pool := &connPool{}
 
 	// Fire node event — should store value in UnboundValues
-	handleNodeEvent(ci, 0, int32(inputNodeID), "99", &sharedPtrMaps{}, pool)
+	handleNodeEvent(ci, 0, int32(inputNodeID), "99", &sharedPtrMaps{}, pool, newNodeCache())
 
 	if ci.UnboundValues == nil {
 		t.Fatal("expected UnboundValues to be initialized")
@@ -1606,7 +1606,7 @@ func TestHandleNodeEvent_NilPropsMapInitialized(t *testing.T) {
 	delete(ci.InputBindings, inputNodeID)
 
 	pool := &connPool{}
-	handleNodeEvent(ci, 0, int32(inputNodeID), "hello", &sharedPtrMaps{}, pool)
+	handleNodeEvent(ci, 0, int32(inputNodeID), "hello", &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Props should now be initialized with the value
 	if el.Facts.Props == nil {
@@ -1638,7 +1638,7 @@ func TestHandleNodeEvent_NotElementNode(t *testing.T) {
 
 	pool := &connPool{}
 	// Should not panic — logs and returns
-	handleNodeEvent(ci, 0, int32(textNodeID), "value", &sharedPtrMaps{}, pool)
+	handleNodeEvent(ci, 0, int32(textNodeID), "value", &sharedPtrMaps{}, pool, newNodeCache())
 }
 
 // --- handleMethodCall: method with arguments ---
@@ -1675,7 +1675,7 @@ func TestHandleMethodCall_WithArgs(t *testing.T) {
 		Method: "SetResult",
 		Args:   [][]byte{[]byte(`"hello world"`)},
 	}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	if app.Result != "hello world" {
 		t.Errorf("expected Result='hello world', got %q", app.Result)
@@ -1720,7 +1720,7 @@ func TestHandleMethodCall_BindSyncWithExpr(t *testing.T) {
 	ci.RefreshFn = func() {}
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// The bind sync should have set Step=7
 	if app.Step != 7 {
@@ -1756,7 +1756,7 @@ func TestHandleMethodCall_BindSyncNilProps(t *testing.T) {
 	ci.RefreshFn = func() {}
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Step should remain 5 (nil props → sync skipped)
 	if app.Step != 5 {
@@ -1790,7 +1790,7 @@ func TestHandleMethodCall_BindSyncNoValueProp(t *testing.T) {
 	ci.RefreshFn = func() {}
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Step should remain 3 (no "value" prop → sync skipped)
 	if app.Step != 3 {
@@ -1833,7 +1833,7 @@ func TestHandleMethodCall_BindSyncSkipsNonElementNode(t *testing.T) {
 
 	// Should not panic — bind sync skips non-element nodes
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Step should remain 1 (sync skipped), so Count = 0 + 1 = 1
 	if app.Step != 1 {
@@ -1862,7 +1862,7 @@ func TestHandleMethodCall_DebugLogging(t *testing.T) {
 	defer func() { env.Debug = prev }()
 
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	if app.Count != 1 {
 		t.Errorf("expected Count=1, got %d", app.Count)
@@ -1889,7 +1889,7 @@ func TestBuildSurgicalPatches_ClassBindingWithExistingClass(t *testing.T) {
 	}
 
 	app.Active = true
-	patches := buildSurgicalPatches(ci, []string{"Active"})
+	patches := buildSurgicalPatches(ci, []string{"Active"}, newNodeCache())
 
 	var hasClassPatch bool
 	for _, p := range patches {
@@ -2412,7 +2412,7 @@ func TestHandleNodeEvent_TextNodeNotElement(t *testing.T) {
 
 	pool := &connPool{}
 	// Should log but not panic
-	handleNodeEvent(ci, 0, int32(textNodeID), "value", &sharedPtrMaps{}, pool)
+	handleNodeEvent(ci, 0, int32(textNodeID), "value", &sharedPtrMaps{}, pool, newNodeCache())
 }
 
 // --- handleMethodCall with args ---
@@ -2427,7 +2427,7 @@ func TestHandleMethodCall_EmptyMethod(t *testing.T) {
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: ""}
 	// Should not panic — empty method name
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 }
 
 // --- buildSurgicalPatches: prop binding (g-bind generates "bind" + "prop" bindings) ---
@@ -2440,7 +2440,7 @@ func TestBuildSurgicalPatches_PropBinding(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Name = "Bob"
-	patches := buildSurgicalPatches(ci, []string{"Name"})
+	patches := buildSurgicalPatches(ci, []string{"Name"}, newNodeCache())
 
 	// Check what binding kinds exist for Name
 	bindings := ci.Bindings["Name"]
@@ -2488,7 +2488,7 @@ func TestBuildSurgicalPatches_ShowTrue(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Visible = true
-	patches := buildSurgicalPatches(ci, []string{"Visible"})
+	patches := buildSurgicalPatches(ci, []string{"Visible"}, newNodeCache())
 
 	var hasShowPatch bool
 	for _, p := range patches {
@@ -2514,7 +2514,7 @@ func TestBuildSurgicalPatches_HideFalse(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Hidden = false
-	patches := buildSurgicalPatches(ci, []string{"Hidden"})
+	patches := buildSurgicalPatches(ci, []string{"Hidden"}, newNodeCache())
 
 	var hasHidePatch bool
 	for _, p := range patches {
@@ -2540,7 +2540,7 @@ func TestBuildSurgicalPatches_ClassRemove(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Active = false
-	patches := buildSurgicalPatches(ci, []string{"Active"})
+	patches := buildSurgicalPatches(ci, []string{"Active"}, newNodeCache())
 
 	var hasClassPatch bool
 	for _, p := range patches {
@@ -2572,7 +2572,7 @@ func TestHandleMethodCall_NilTree(t *testing.T) {
 
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Method should still execute
 	if app.Count != 1 {
@@ -2599,7 +2599,7 @@ func TestHandleMethodCall_BindNodeMissing(t *testing.T) {
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: "Increment"}
 	// Should not panic — skips the missing node
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	if app.Count != 1 {
 		t.Errorf("expected Count=1, got %d", app.Count)
@@ -2628,7 +2628,7 @@ func TestHandleMethodCall_BindNodeNilProps(t *testing.T) {
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: "Increment"}
 	// Should not panic — skips the nil Props
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Step should remain 5 (not synced since Props was nil)
 	if app.Step != 5 {
@@ -2656,7 +2656,7 @@ func TestHandleMethodCall_BindValueMissing(t *testing.T) {
 	ci.RefreshFn = func() {}
 	pool := &connPool{}
 	call := &gproto.MethodCall{Method: "Increment"}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Step should remain 5 (no value to sync)
 	if app.Step != 5 {
@@ -2789,7 +2789,7 @@ func TestBuildSurgicalPatches_ClassBindingNodeGone(t *testing.T) {
 	}
 
 	// Should not panic even with missing node
-	patches := buildSurgicalPatches(ci, []string{"Active"})
+	patches := buildSurgicalPatches(ci, []string{"Active"}, newNodeCache())
 	// No class patch should be generated (node not found)
 	for _, p := range patches {
 		if p.Type == vdom.PatchFacts {
@@ -3066,7 +3066,7 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 		fields := ci.DrainMarkedFields()
 		ci.Mu.Lock()
 		if len(fields) > 0 {
-			patches := buildSurgicalPatches(ci, fields)
+			patches := buildSurgicalPatches(ci, fields, newNodeCache())
 			if len(patches) > 0 {
 				ci.Mu.Unlock()
 				msg := render.EncodePatchMessage(patches)
@@ -3161,13 +3161,13 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 				if err := proto.Unmarshal(payload, evt); err != nil {
 					continue
 				}
-				handleNodeEvent(ci, 0, evt.NodeId, evt.Value, &sharedPtrMaps{}, pool)
+				handleNodeEvent(ci, 0, evt.NodeId, evt.Value, &sharedPtrMaps{}, pool, newNodeCache())
 			case 2:
 				call := &gproto.MethodCall{}
 				if err := proto.Unmarshal(payload, call); err != nil {
 					continue
 				}
-				handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+				handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 			}
 		}
 	})
@@ -3320,10 +3320,10 @@ func TestBuildUpdate_RemapsNodeStableIDs_ElseBranch(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// findComponentByNodeID tests
+// findComponent / findNode cache tests
 // ---------------------------------------------------------------------------
 
-func TestFindComponentByNodeID_Found(t *testing.T) {
+func TestFindComponent_Found(t *testing.T) {
 	ci1 := &component.Info{}
 	ci1.Tree = &vdom.ElementNode{
 		NodeBase: vdom.NodeBase{ID: 10}, Tag: "div",
@@ -3334,39 +3334,116 @@ func TestFindComponentByNodeID_Found(t *testing.T) {
 	}
 
 	comps := []*component.Info{ci1, ci2}
+	cache := newNodeCache()
 
-	found, idx := findComponentByNodeID(comps, 20)
+	found := findComponent(20, comps, cache)
 	if found != ci2 {
 		t.Error("expected to find ci2 for node ID 20")
 	}
-	if idx != 1 {
-		t.Errorf("expected index 1, got %d", idx)
-	}
 }
 
-func TestFindComponentByNodeID_NotFound(t *testing.T) {
+func TestFindComponent_NotFound(t *testing.T) {
 	ci := &component.Info{}
 	ci.Tree = &vdom.ElementNode{
 		NodeBase: vdom.NodeBase{ID: 10}, Tag: "div",
 	}
 	comps := []*component.Info{ci}
+	cache := newNodeCache()
 
-	found, idx := findComponentByNodeID(comps, 999)
+	found := findComponent(999, comps, cache)
 	if found != nil {
 		t.Error("expected nil for non-existent node ID")
 	}
-	if idx != -1 {
-		t.Errorf("expected index -1, got %d", idx)
-	}
 }
 
-func TestFindComponentByNodeID_Empty(t *testing.T) {
-	found, idx := findComponentByNodeID(nil, 1)
+func TestFindComponent_Empty(t *testing.T) {
+	cache := newNodeCache()
+	found := findComponent(1, nil, cache)
 	if found != nil {
 		t.Error("expected nil for empty comps")
 	}
-	if idx != -1 {
-		t.Errorf("expected index -1, got %d", idx)
+}
+
+func TestFindComponent_CacheHit(t *testing.T) {
+	ci := &component.Info{}
+	ci.Tree = &vdom.ElementNode{
+		NodeBase: vdom.NodeBase{ID: 10}, Tag: "div",
+	}
+	comps := []*component.Info{ci}
+	cache := newNodeCache()
+
+	// First call — cache miss, traverses tree.
+	found1 := findComponent(10, comps, cache)
+	// Second call — cache hit.
+	found2 := findComponent(10, comps, cache)
+
+	if found1 != ci || found2 != ci {
+		t.Error("expected cache to return same component")
+	}
+}
+
+func TestFindComponent_EvictsRemovedNode(t *testing.T) {
+	child := &vdom.ElementNode{NodeBase: vdom.NodeBase{ID: 20}, Tag: "span"}
+	root := &vdom.ElementNode{
+		NodeBase: vdom.NodeBase{ID: 10}, Tag: "div",
+		Children: []vdom.Node{child},
+	}
+	ci := &component.Info{}
+	ci.Tree = root
+	comps := []*component.Info{ci}
+	cache := newNodeCache()
+
+	// Populate cache for the child node.
+	found := findNode(20, ci, cache)
+	if found != child {
+		t.Fatal("expected to find child node")
+	}
+
+	// Remove the child from the tree (sets Removed flag via MarkRemoved).
+	root.RemoveChild(0)
+
+	// Cache should evict the stale entry on next access.
+	e := cache.get(20)
+	if e != nil {
+		t.Error("expected cache entry to be evicted for removed node")
+	}
+
+	// findComponent should also return nil since the node is gone.
+	comp := findComponent(20, comps, cache)
+	if comp != nil {
+		t.Error("expected nil for removed node")
+	}
+}
+
+func TestFindNode_Found(t *testing.T) {
+	child := &vdom.TextNode{NodeBase: vdom.NodeBase{ID: 5}, Text: "hello"}
+	root := &vdom.ElementNode{
+		NodeBase: vdom.NodeBase{ID: 1}, Tag: "div",
+		Children: []vdom.Node{child},
+	}
+	ci := &component.Info{Tree: root}
+	cache := newNodeCache()
+
+	found := findNode(5, ci, cache)
+	if found != child {
+		t.Error("expected to find child node")
+	}
+}
+
+func TestFindNode_CacheHit(t *testing.T) {
+	child := &vdom.TextNode{NodeBase: vdom.NodeBase{ID: 5}, Text: "hello"}
+	root := &vdom.ElementNode{
+		NodeBase: vdom.NodeBase{ID: 1}, Tag: "div",
+		Children: []vdom.Node{child},
+	}
+	ci := &component.Info{Tree: root}
+	cache := newNodeCache()
+
+	found1 := findNode(5, ci, cache)
+	found2 := findNode(5, ci, cache)
+
+	if found1 != child || found2 != child {
+		t.Error("expected cache to return same node")
 	}
 }
 
@@ -3456,7 +3533,7 @@ func TestHandleNodeEvent_CheckboxUpdatesCheckedAsBool(t *testing.T) {
 	}
 
 	pool := &connPool{}
-	handleNodeEvent(ci, 0, int32(nodeID), "false", &sharedPtrMaps{}, pool)
+	handleNodeEvent(ci, 0, int32(nodeID), "false", &sharedPtrMaps{}, pool, newNodeCache())
 
 	// Verify Props["checked"] is bool false, not string "false"
 	node := vdom.FindNodeByID(ci.Tree, nodeID)
@@ -3489,7 +3566,7 @@ func TestHandleNodeEvent_CheckboxTrueSetsBoolTrue(t *testing.T) {
 	}
 
 	pool := &connPool{}
-	handleNodeEvent(ci, 0, int32(nodeID), "true", &sharedPtrMaps{}, pool)
+	handleNodeEvent(ci, 0, int32(nodeID), "true", &sharedPtrMaps{}, pool, newNodeCache())
 
 	node := vdom.FindNodeByID(ci.Tree, nodeID)
 	el := node.(*vdom.ElementNode)
@@ -3515,7 +3592,7 @@ func TestHandleNodeEvent_BoundInputSyncsStruct(t *testing.T) {
 	if titleNodeID == 0 {
 		t.Fatal("could not find Title binding")
 	}
-	handleNodeEvent(ci, 0, int32(titleNodeID), "new title", &sharedPtrMaps{}, pool)
+	handleNodeEvent(ci, 0, int32(titleNodeID), "new title", &sharedPtrMaps{}, pool, newNodeCache())
 	if app.Title != "new title" {
 		t.Errorf("expected struct Title='new title', got %q", app.Title)
 	}
@@ -3525,7 +3602,7 @@ func TestHandleNodeEvent_BoundInputSyncsStruct(t *testing.T) {
 	if agreeNodeID == 0 {
 		t.Fatal("could not find Agree binding")
 	}
-	handleNodeEvent(ci, 0, int32(agreeNodeID), "false", &sharedPtrMaps{}, pool)
+	handleNodeEvent(ci, 0, int32(agreeNodeID), "false", &sharedPtrMaps{}, pool, newNodeCache())
 	if app.Agree != false {
 		t.Errorf("expected struct Agree=false, got %v", app.Agree)
 	}
@@ -3535,7 +3612,7 @@ func TestHandleNodeEvent_BoundInputSyncsStruct(t *testing.T) {
 	if colorNodeID == 0 {
 		t.Fatal("could not find Color binding")
 	}
-	handleNodeEvent(ci, 0, int32(colorNodeID), "blue", &sharedPtrMaps{}, pool)
+	handleNodeEvent(ci, 0, int32(colorNodeID), "blue", &sharedPtrMaps{}, pool, newNodeCache())
 	if app.Color != "blue" {
 		t.Errorf("expected struct Color='blue', got %q", app.Color)
 	}
@@ -3560,7 +3637,7 @@ func TestHandleNodeEvent_UnboundInputDoesNotSyncStruct(t *testing.T) {
 	}
 
 	pool := &connPool{}
-	handleNodeEvent(ci, 0, int32(inputNodeID), "99", &sharedPtrMaps{}, pool)
+	handleNodeEvent(ci, 0, int32(inputNodeID), "99", &sharedPtrMaps{}, pool, newNodeCache())
 
 	// The tree should be updated (targeted patch path)
 	node := vdom.FindNodeByID(ci.Tree, inputNodeID)
@@ -3644,7 +3721,7 @@ func TestHandleMethodCall_SyncsPropBindings(t *testing.T) {
 	// Call a method — handleMethodCall should sync Dark from tree to struct
 	call := &gproto.MethodCall{Method: "ToggleDark"}
 	pool := &connPool{}
-	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool)
+	handleMethodCall(ci, 0, call, &sharedPtrMaps{}, pool, newNodeCache())
 
 	// ToggleDark flips Dark. If sync worked, Dark was set to true from tree,
 	// then ToggleDark flipped it to false.
@@ -3661,7 +3738,7 @@ func TestBuildSurgicalPatches_BindKind(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Name = "Bob"
-	patches := buildSurgicalPatches(ci, []string{"Name"})
+	patches := buildSurgicalPatches(ci, []string{"Name"}, newNodeCache())
 
 	// Should have both a text patch (g-text) and a facts/props patch (g-bind)
 	var hasTextPatch, hasBindPatch bool
@@ -3695,7 +3772,7 @@ func TestBuildSurgicalPatches_BindKind_UpdatesLiveTree(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Name = "Bob"
-	_ = buildSurgicalPatches(ci, []string{"Name"})
+	_ = buildSurgicalPatches(ci, []string{"Name"}, newNodeCache())
 
 	// Find the g-bind node and check its tree was updated
 	for _, b := range ci.Bindings["Name"] {
@@ -3719,7 +3796,7 @@ func TestBuildSurgicalPatches_CheckedBool(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Agree = false
-	patches := buildSurgicalPatches(ci, []string{"Agree"})
+	patches := buildSurgicalPatches(ci, []string{"Agree"}, newNodeCache())
 
 	var foundCheckedPatch bool
 	for _, p := range patches {
@@ -3749,7 +3826,7 @@ func TestBuildSurgicalPatches_CheckedBool_UpdatesLiveTree(t *testing.T) {
 	ci.Tree = buildTree(ci)
 
 	app.Agree = false
-	_ = buildSurgicalPatches(ci, []string{"Agree"})
+	_ = buildSurgicalPatches(ci, []string{"Agree"}, newNodeCache())
 
 	for _, b := range ci.Bindings["Agree"] {
 		if b.Kind == "prop" && b.Prop == "checked" {

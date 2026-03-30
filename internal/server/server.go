@@ -157,11 +157,14 @@ func Run(cfg Config) error {
 	sm := buildSharedPtrMaps(cfg.Comps)
 	sm.pool = pool
 
+	// Node cache for O(1) lookups (nodeID → node + component).
+	cache := newNodeCache()
+
 	// Start event queue processor for each component.
 	for idx, ci := range cfg.Comps {
 		ci.EventCh = make(chan component.Event, 64)
 		idx, ci := idx, ci // capture for closure
-		go processEvents(ci, idx, sm, pool)
+		go processEvents(ci, idx, sm, pool, cache)
 	}
 
 	mux := http.NewServeMux()
@@ -267,7 +270,7 @@ func Run(cfg Config) error {
 					log.Printf("godom: node event unmarshal error: %v", err)
 					continue
 				}
-				if ci, _ := findComponentByNodeID(cfg.Comps, int(evt.NodeId)); ci != nil {
+				if ci := findComponent(int(evt.NodeId), cfg.Comps, cache); ci != nil {
 					e := component.Event{Kind: component.NodeEventKind, NodeID: evt.NodeId, Value: evt.Value}
 					if shouldEnqueue(e) {
 						ci.EventCh <- e
@@ -280,7 +283,7 @@ func Run(cfg Config) error {
 					log.Printf("godom: method call unmarshal error: %v", err)
 					continue
 				}
-				if ci, _ := findComponentByNodeID(cfg.Comps, int(call.NodeId)); ci != nil {
+				if ci := findComponent(int(call.NodeId), cfg.Comps, cache); ci != nil {
 					e := component.Event{Kind: component.MethodCallKind, Call: call}
 					if shouldEnqueue(e) {
 						ci.EventCh <- e
@@ -349,10 +352,10 @@ func wireRefresh(ci *component.Info, pool *connPool) {
 // executeRefresh performs the actual refresh: drain marked fields for surgical
 // patches, or fall back to a full BuildUpdate + diff. Called only from
 // processEvents to ensure serialized access — no lock needed.
-func executeRefresh(ci *component.Info, pool *connPool) {
+func executeRefresh(ci *component.Info, pool *connPool, cache *nodeCache) {
 	fields := ci.DrainMarkedFields()
 	if len(fields) > 0 {
-		patches := buildSurgicalPatches(ci, fields)
+		patches := buildSurgicalPatches(ci, fields, cache)
 		if len(patches) > 0 {
 			msg := render.EncodePatchMessage(patches)
 			msg.TargetName = ci.SlotName
@@ -386,36 +389,23 @@ func shouldProcess(_ component.Event) bool {
 // sequentially from the component's event queue. This eliminates race
 // conditions between concurrent event sources (multiple WS connections,
 // background goroutines).
-func processEvents(ci *component.Info, compIdx int, sm *sharedPtrMaps, pool *connPool) {
+func processEvents(ci *component.Info, compIdx int, sm *sharedPtrMaps, pool *connPool, cache *nodeCache) {
 	for evt := range ci.EventCh {
 		if !shouldProcess(evt) {
 			continue
 		}
 		switch evt.Kind {
 		case component.NodeEventKind:
-			handleNodeEvent(ci, compIdx, evt.NodeID, evt.Value, sm, pool)
+			handleNodeEvent(ci, compIdx, evt.NodeID, evt.Value, sm, pool, cache)
 		case component.MethodCallKind:
-			handleMethodCall(ci, compIdx, evt.Call, sm, pool)
+			handleMethodCall(ci, compIdx, evt.Call, sm, pool, cache)
 		case component.RefreshKind:
-			executeRefresh(ci, pool)
+			executeRefresh(ci, pool, cache)
 		}
 	}
 }
 
-// findComponentByNodeID finds which component owns a given node ID
-// by searching each component's live tree. Returns the Info and the
-// component index (for shared-pointer lookups).
-func findComponentByNodeID(comps []*component.Info, nodeID int) (*component.Info, int) {
-	for idx, ci := range comps {
-		ci.Mu.Lock()
-		node := vdom.FindNodeByID(ci.Tree, nodeID)
-		ci.Mu.Unlock()
-		if node != nil {
-			return ci, idx
-		}
-	}
-	return nil, -1
-}
+
 
 // --- VDOM orchestration ---
 
@@ -564,7 +554,7 @@ func buildTree(ci *component.Info) *vdom.ElementNode {
 
 // buildSurgicalPatches reads the current field values and produces targeted
 // patches for only the nodes bound to those fields. No tree rebuild, no diff.
-func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
+func buildSurgicalPatches(ci *component.Info, fields []string, cache *nodeCache) []vdom.Patch {
 	var patches []vdom.Patch
 
 	for _, field := range fields {
@@ -640,7 +630,7 @@ func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
 			case "class":
 				// For class toggling, we need to add/remove the class name
 				// This is simplified — a full implementation would track existing classes
-				node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+				node := findNode(b.NodeID, ci, cache)
 				if el, ok := node.(*vdom.ElementNode); ok {
 					existing, _ := el.Facts.Props["className"].(string)
 					if truthy && !strings.Contains(existing, b.Prop) {
@@ -661,7 +651,7 @@ func buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
 			}
 
 			// Also update the live tree so it stays in sync
-			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			node := findNode(b.NodeID, ci, cache)
 			switch b.Kind {
 			case "style":
 				if el, ok := node.(*vdom.ElementNode); ok {
@@ -745,10 +735,10 @@ func handleInit(wc *wsConn, ci *component.Info, targetName string) error {
 // handleNodeEvent processes a Layer 1 node event: find the node in the live
 // tree by ID, update its Props["value"] (or Props["checked"] for checkboxes),
 // and broadcast a facts patch to all clients.
-func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string, sm *sharedPtrMaps, pool *connPool) {
+func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string, sm *sharedPtrMaps, pool *connPool, cache *nodeCache) {
 	// No lock needed — called only from processEvents (serialized).
 
-	node := vdom.FindNodeByID(ci.Tree, int(nodeID))
+	node := findNode(int(nodeID), ci, cache)
 	if node == nil {
 		log.Printf("godom: node %d not found in tree", nodeID)
 		return
@@ -783,7 +773,7 @@ func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string
 			}
 			ci.SetField(setPath, json.RawMessage(raw))
 		}
-		executeRefresh(ci, pool)
+		executeRefresh(ci, pool, cache)
 		changedFields := ci.LastChangedFields
 		ci.LastChangedFields = nil
 		sm.refreshSharedComponents(compIdx, changedFields)
@@ -821,7 +811,7 @@ func handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string
 // component, then rebuild the tree and broadcast to all clients.
 // If the component shares embedded pointers with siblings, their changed
 // fields are surgically refreshed via MarkRefresh.
-func handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall, sm *sharedPtrMaps, pool *connPool) {
+func handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall, sm *sharedPtrMaps, pool *connPool, cache *nodeCache) {
 	// No lock needed — called only from processEvents (serialized).
 
 	// Convert protobuf [][]byte to []json.RawMessage
@@ -839,7 +829,7 @@ func handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall, 
 				if b.Kind != "bind" && b.Kind != "prop" {
 					continue
 				}
-				node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+				node := findNode(b.NodeID, ci, cache)
 				if node == nil {
 					continue
 				}
@@ -883,7 +873,7 @@ func handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall, 
 	}
 
 	// Refresh the calling component (BuildUpdate + broadcast).
-	executeRefresh(ci, pool)
+	executeRefresh(ci, pool, cache)
 
 	// Surgically refresh siblings that share embedded pointer state,
 	// using the changed fields captured during BuildUpdate above.
