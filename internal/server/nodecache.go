@@ -2,7 +2,6 @@ package server
 
 import (
 	"sync"
-	"time"
 
 	"github.com/anupshinde/godom/internal/component"
 	"github.com/anupshinde/godom/internal/vdom"
@@ -10,9 +9,8 @@ import (
 
 // cachedEntry holds a cached node lookup result.
 type cachedEntry struct {
-	Node         vdom.Node
-	Comp         *component.Info
-	LastAccessed time.Time
+	Node vdom.Node
+	Comp *component.Info
 }
 
 // nodeCache provides O(1) lookups for nodeID → node and nodeID → component.
@@ -42,10 +40,6 @@ func (nc *nodeCache) get(nodeID int) *cachedEntry {
 		nc.mu.Unlock()
 		return nil
 	}
-	// Update access time (write lock needed).
-	nc.mu.Lock()
-	e.LastAccessed = time.Now()
-	nc.mu.Unlock()
 	return e
 }
 
@@ -53,9 +47,8 @@ func (nc *nodeCache) get(nodeID int) *cachedEntry {
 func (nc *nodeCache) put(nodeID int, node vdom.Node, comp *component.Info) {
 	nc.mu.Lock()
 	nc.entries[nodeID] = &cachedEntry{
-		Node:         node,
-		Comp:         comp,
-		LastAccessed: time.Now(),
+		Node: node,
+		Comp: comp,
 	}
 	nc.mu.Unlock()
 }
