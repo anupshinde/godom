@@ -60,6 +60,19 @@ func (nc *nodeCache) put(nodeID int, node vdom.Node, comp *component.Info) {
 	nc.mu.Unlock()
 }
 
+// evictRemoved walks the cache and removes entries for nodes or components
+// that have been marked as removed. Called after BuildUpdate when the tree
+// structure may have changed.
+func (nc *nodeCache) evictRemoved() {
+	nc.mu.Lock()
+	for id, e := range nc.entries {
+		if e.Node.IsRemoved() || e.Comp.Removed {
+			delete(nc.entries, id)
+		}
+	}
+	nc.mu.Unlock()
+}
+
 // findNode looks up a node by ID. Checks the cache first, falls back to
 // tree traversal on the given component, then caches the result.
 func findNode(nodeID int, ci *component.Info, cache *nodeCache) vdom.Node {

@@ -378,6 +378,7 @@ func (s *serverCtx) executeRefresh(ci *component.Info) {
 		}
 	}
 	msg, changedFields := BuildUpdate(ci)
+	s.cache.evictRemoved()
 	ci.LastChangedFields = changedFields
 	if msg != nil {
 		msg.TargetName = ci.SlotName
