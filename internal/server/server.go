@@ -736,8 +736,10 @@ func (s *serverCtx) buildSurgicalPatches(ci *component.Info, fields []string) []
 // handleInit builds and sends the init tree to a specific connection.
 // Not routed through the event queue because init must be synchronous —
 // the browser needs the root DOM before child components can render into
-// their g-component targets (mount order). Uses ci.Mu to prevent races
-// with the processor goroutine that also writes ci.Tree via BuildUpdate.
+// their g-component targets (mount order). Even if we sent this through
+// the channel, we'd need to block until it completes — so a lock is
+// the simpler and more direct way to achieve the same thing. Uses ci.Mu
+// to prevent races with the processor goroutine that writes ci.Tree.
 func handleInit(wc *wsConn, ci *component.Info, targetName string) error {
 	ci.Mu.Lock()
 	msg := BuildInit(ci)
