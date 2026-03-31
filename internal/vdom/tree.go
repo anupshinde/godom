@@ -16,7 +16,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Template tree — parsed once at Mount() time, reused on every render.
+// Template tree — parsed once at Register() time, reused on every render.
 // ---------------------------------------------------------------------------
 
 // TemplateNode represents one node in the parsed template tree.

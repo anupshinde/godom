@@ -50,7 +50,7 @@ type Config struct {
 
 	// Route-based serving (from eng.Route())
 	Routes  []RouteConfig
-	UserMux http.Handler // custom mux from eng.SetMux()
+	UserMux *http.ServeMux // custom mux from eng.SetMux()
 }
 
 // serverCtx holds shared state used by event processors and handlers.
@@ -190,7 +190,10 @@ func Run(cfg Config) error {
 		go ctx.processEvents(ci, idx)
 	}
 
-	mux := http.NewServeMux()
+	mux := cfg.UserMux
+	if mux == nil {
+		mux = http.NewServeMux()
+	}
 
 	// Build the JS bundle once: protobuf, protocol, plugins, bridge.
 	var bundleJS string

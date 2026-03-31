@@ -2,6 +2,7 @@ package godom
 
 import (
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"reflect"
@@ -40,7 +41,7 @@ func TestNewEngine(t *testing.T) {
 		t.Error("expected non-nil plugins map")
 	}
 	if len(e.comps) != 0 {
-		t.Error("expected empty comps before Mount")
+		t.Error("expected empty comps before Register")
 	}
 }
 
@@ -152,7 +153,35 @@ func TestRefresh_MarkedFieldsPassedThrough(t *testing.T) {
 	}
 }
 
-// --- Mount ---
+func TestMarkRefresh_NilCI(t *testing.T) {
+	c := Component{ci: nil}
+	// Should not panic
+	c.MarkRefresh("Name")
+}
+
+func TestMarkRefresh_Accumulates(t *testing.T) {
+	ci := &component.Info{}
+	c := Component{ci: ci}
+
+	c.MarkRefresh("Name")
+	c.MarkRefresh("Count")
+
+	fields := ci.DrainMarkedFields()
+	if len(fields) != 2 {
+		t.Fatalf("expected 2 accumulated fields, got %d", len(fields))
+	}
+	if fields[0] != "Name" || fields[1] != "Count" {
+		t.Errorf("expected [Name Count], got %v", fields)
+	}
+
+	// After drain, should be empty
+	fields = ci.DrainMarkedFields()
+	if len(fields) != 0 {
+		t.Errorf("expected empty after drain, got %v", fields)
+	}
+}
+
+// --- Register ---
 
 var testHTML = `<!DOCTYPE html><html><head><title>Test</title></head><body>
 	<span g-text="Name">placeholder</span>
@@ -174,14 +203,14 @@ func makeTestFSNested() fstest.MapFS {
 	}
 }
 
-func TestMount_Valid(t *testing.T) {
+func TestRegister_Valid(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
 	e.SetFS(makeTestFS())
-	e.Mount(app, "index.html")
+	e.Register("main", app, "index.html")
 
 	if len(e.comps) != 1 {
-		t.Fatal("expected one component after Mount")
+		t.Fatal("expected one component after Register")
 	}
 	ci := e.comps[0]
 	if ci.HTMLBody == "" {
@@ -198,14 +227,14 @@ func TestMount_Valid(t *testing.T) {
 	}
 }
 
-func TestMount_NestedEntryPath(t *testing.T) {
+func TestRegister_NestedEntryPath(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
 	e.SetFS(makeTestFSNested())
-	e.Mount(app, "ui/index.html")
+	e.Register("main", app, "ui/index.html")
 
 	if len(e.comps) != 1 {
-		t.Fatal("expected one component after Mount")
+		t.Fatal("expected one component after Register")
 	}
 	// staticFS should be the "ui/" subdirectory — verify by reading a file from it
 	if e.staticFS == nil {
@@ -220,26 +249,26 @@ func TestMount_NestedEntryPath(t *testing.T) {
 	}
 }
 
-func TestMount_WiresComponentField(t *testing.T) {
+func TestRegister_WiresComponentField(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
 	e.SetFS(makeTestFS())
-	e.Mount(app, "index.html")
+	e.Register("main", app, "index.html")
 
-	// After Mount, app.Component.ci should be wired to the same Info as e.comps[0]
+	// After Register, app.Component.ci should be wired to the same Info as e.comps[0]
 	if app.Component.ci == nil {
-		t.Fatal("expected Component.ci to be wired after Mount")
+		t.Fatal("expected Component.ci to be wired after Register")
 	}
 	if app.Component.ci != e.comps[0] {
 		t.Error("expected Component.ci to point to the same Info as Engine.comps[0]")
 	}
 }
 
-func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
+func TestRegister_SetsHTMLBodyFromTemplate(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
 	e.SetFS(makeTestFS())
-	e.Mount(app, "index.html")
+	e.Register("main", app, "index.html")
 
 	ci := e.comps[0]
 	if !strings.Contains(ci.HTMLBody, "g-text") {
@@ -250,66 +279,64 @@ func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
 	}
 }
 
-func TestMount_NonPointer(t *testing.T) {
-	if os.Getenv("TEST_FATAL_MOUNT_NONPTR") == "1" {
+func TestRegister_NonPointer(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_NONPTR") == "1" {
 		e := NewEngine()
 		e.SetFS(makeTestFS())
-		e.Mount(testApp{}, "index.html")
+		e.Register("main", testApp{}, "index.html")
 		return
 	}
-	out := runSubprocess(t, "TestMount_NonPointer", "TEST_FATAL_MOUNT_NONPTR")
+	out := runSubprocess(t, "TestRegister_NonPointer", "TEST_FATAL_REGISTER_NONPTR")
 	if !strings.Contains(out, "requires a pointer to a struct") {
 		t.Errorf("expected error about pointer to struct, got: %s", out)
 	}
 }
 
-func TestMount_PointerToNonStruct(t *testing.T) {
-	if os.Getenv("TEST_FATAL_MOUNT_NONSTRUCT") == "1" {
+func TestRegister_PointerToNonStruct(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_NONSTRUCT") == "1" {
 		e := NewEngine()
 		n := 42
 		e.SetFS(makeTestFS())
-		e.Mount(&n, "index.html")
+		e.Register("main", &n, "index.html")
 		return
 	}
-	out := runSubprocess(t, "TestMount_PointerToNonStruct", "TEST_FATAL_MOUNT_NONSTRUCT")
+	out := runSubprocess(t, "TestRegister_PointerToNonStruct", "TEST_FATAL_REGISTER_NONSTRUCT")
 	if !strings.Contains(out, "requires a pointer to a struct") {
 		t.Errorf("expected error about pointer to struct, got: %s", out)
 	}
 }
 
-func TestMount_NoEmbed(t *testing.T) {
-	if os.Getenv("TEST_FATAL_MOUNT_NOEMBED") == "1" {
+func TestRegister_NoEmbed(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_NOEMBED") == "1" {
 		e := NewEngine()
 		e.SetFS(makeTestFS())
-		e.Mount(&noComponentApp{}, "index.html")
+		e.Register("main", &noComponentApp{}, "index.html")
 		return
 	}
-	out := runSubprocess(t, "TestMount_NoEmbed", "TEST_FATAL_MOUNT_NOEMBED")
+	out := runSubprocess(t, "TestRegister_NoEmbed", "TEST_FATAL_REGISTER_NOEMBED")
 	if !strings.Contains(out, "must embed godom.Component") {
 		t.Errorf("expected error about embedding Component, got: %s", out)
 	}
 }
 
-func TestMount_BadEntryPath(t *testing.T) {
-	if os.Getenv("TEST_FATAL_MOUNT_BADPATH") == "1" {
+func TestRegister_BadEntryPath(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_BADPATH") == "1" {
 		e := NewEngine()
 		e.SetFS(makeTestFS())
-		e.Mount(&testApp{}, "nonexistent.html")
+		e.Register("main", &testApp{}, "nonexistent.html")
 		return
 	}
-	out := runSubprocess(t, "TestMount_BadEntryPath", "TEST_FATAL_MOUNT_BADPATH")
+	out := runSubprocess(t, "TestRegister_BadEntryPath", "TEST_FATAL_REGISTER_BADPATH")
 	if !strings.Contains(out, "failed to read") {
 		t.Errorf("expected error about failed to read, got: %s", out)
 	}
 }
 
-// --- Start ---
-
-func TestMount_SetsValueAndType(t *testing.T) {
+func TestRegister_SetsValueAndType(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Bob", Count: 42}
 	e.SetFS(makeTestFS())
-	e.Mount(app, "index.html")
+	e.Register("main", app, "index.html")
 
 	ci := e.comps[0]
 	// ci.Value should point to the same app instance
@@ -321,18 +348,18 @@ func TestMount_SetsValueAndType(t *testing.T) {
 	}
 }
 
-func TestMount_RefreshWorksAfterMount(t *testing.T) {
+func TestRegister_RefreshWorksAfterRegister(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
 	e.SetFS(makeTestFS())
-	e.Mount(app, "index.html")
+	e.Register("main", app, "index.html")
 
-	// After Mount, Refresh should not panic (ci is wired, but RefreshFn is nil until Start)
+	// After Register, Refresh should not panic (ci is wired, but RefreshFn is nil until Start)
 	app.Refresh()
 }
 
-func TestMount_InvalidDirective(t *testing.T) {
-	if os.Getenv("TEST_FATAL_MOUNT_BADDIR") == "1" {
+func TestRegister_InvalidDirective(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_BADDIR") == "1" {
 		e := NewEngine()
 		// g-click references a method that doesn't exist on the struct
 		badHTML := `<!DOCTYPE html><html><head></head><body>
@@ -342,12 +369,65 @@ func TestMount_InvalidDirective(t *testing.T) {
 			"index.html": &fstest.MapFile{Data: []byte(badHTML)},
 		}
 		e.SetFS(badFS)
-		e.Mount(&testApp{}, "index.html")
+		e.Register("main", &testApp{}, "index.html")
 		return
 	}
-	out := runSubprocess(t, "TestMount_InvalidDirective", "TEST_FATAL_MOUNT_BADDIR")
+	out := runSubprocess(t, "TestRegister_InvalidDirective", "TEST_FATAL_REGISTER_BADDIR")
 	if !strings.Contains(out, "NonExistentMethod") {
 		t.Errorf("expected error mentioning NonExistentMethod, got: %s", out)
+	}
+}
+
+func TestRegister_EmptyName(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_EMPTY") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		e.Register("", &testApp{}, "index.html")
+		return
+	}
+	out := runSubprocess(t, "TestRegister_EmptyName", "TEST_FATAL_REGISTER_EMPTY")
+	if !strings.Contains(out, "non-empty name") {
+		t.Errorf("expected non-empty name error, got: %s", out)
+	}
+}
+
+func TestRegister_InvalidIdentifier(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_BADID") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		e.Register("123invalid", &testApp{}, "index.html")
+		return
+	}
+	out := runSubprocess(t, "TestRegister_InvalidIdentifier", "TEST_FATAL_REGISTER_BADID")
+	if !strings.Contains(out, "valid identifier") {
+		t.Errorf("expected valid identifier error, got: %s", out)
+	}
+}
+
+func TestRegister_NoFS(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_NOFS") == "1" {
+		e := NewEngine()
+		// Don't call SetFS
+		e.Register("main", &testApp{}, "index.html")
+		return
+	}
+	out := runSubprocess(t, "TestRegister_NoFS", "TEST_FATAL_REGISTER_NOFS")
+	if !strings.Contains(out, "call SetFS() before Register()") {
+		t.Errorf("expected SetFS error, got: %s", out)
+	}
+}
+
+func TestRegister_DuplicateNameFatals(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_DUP") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		e.Register("main", &testApp{}, "index.html")
+		e.Register("main", &testApp{}, "index.html")
+		return
+	}
+	out := runSubprocess(t, "TestRegister_DuplicateNameFatals", "TEST_FATAL_REGISTER_DUP")
+	if !strings.Contains(out, "already registered") {
+		t.Errorf("expected 'already registered' error, got: %s", out)
 	}
 }
 
@@ -358,89 +438,48 @@ type childApp struct {
 
 var childHTML = `<!DOCTYPE html><html><head></head><body><span g-text="Value">placeholder</span></body></html>`
 
-// Parent template with a g-component target for auto-wiring tests.
-var parentWithSlotHTML = `<!DOCTYPE html><html><head></head><body>
-	<span g-text="Name">placeholder</span>
-	<div g-component="sidebar"></div>
-</body></html>`
+func TestRegister_MultipleComponents_StaticFSFromFirst(t *testing.T) {
+	e := NewEngine()
+	parent := &testApp{Name: "parent"}
+	child := &childApp{Value: "child"}
 
-// Parent template with two g-component targets.
-var parentWithTwoSlotsHTML = `<!DOCTYPE html><html><head></head><body>
-	<span g-text="Name">placeholder</span>
-	<div g-component="sidebar"></div>
-	<div g-component="footer"></div>
-</body></html>`
+	e.SetFS(makeTestFSNested())
+	e.Register("parent", parent, "ui/index.html")
+	e.Register("child", child, "child/index.html")
 
-func makeSlotTestFS() fstest.MapFS {
-	return fstest.MapFS{
-		"parent/index.html": &fstest.MapFile{Data: []byte(parentWithSlotHTML)},
-		"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
+	// staticFS should be derived from the first Register call only
+	if e.staticFS == nil {
+		t.Fatal("expected staticFS to be set")
+	}
+	// It should be the "ui/" subdirectory from the first registered component
+	data, err := fs.ReadFile(e.staticFS, "style.css")
+	if err != nil {
+		t.Errorf("expected staticFS from first register, got error: %v", err)
+	}
+	if string(data) != "body{}" {
+		t.Errorf("unexpected content: %q", string(data))
 	}
 }
 
-
 // --- Auto-wiring tests ---
 
-func TestAutoWire_RegisteredChildWiredToParent(t *testing.T) {
+func TestAutoWire_SetsSlotName(t *testing.T) {
 	e := NewEngine()
-	e.SetFS(makeSlotTestFS())
-
-	parent := &testApp{Name: "parent"}
-	e.Mount(parent, "parent/index.html")
+	e.SetFS(makeTestFS())
 
 	child := &childApp{Value: "child"}
 	e.Register("sidebar", child, "child/index.html")
 
-	// Trigger auto-wiring (normally happens in Start)
 	e.autoWireComponents()
 
-	if len(e.comps) != 2 {
-		t.Fatalf("expected 2 comps, got %d", len(e.comps))
-	}
-	if e.comps[0].SlotName != "document.body" {
-		t.Errorf("expected root SlotName='document.body', got %q", e.comps[0].SlotName)
-	}
-	if e.comps[1].SlotName != "sidebar" {
-		t.Errorf("expected SlotName='sidebar', got %q", e.comps[1].SlotName)
-	}
-}
-
-func TestAutoWire_DuplicateSlotFatals(t *testing.T) {
-	if os.Getenv("TEST_FATAL_AUTOWIRE_DUP") == "1" {
-		e := NewEngine()
-		fsys := fstest.MapFS{
-			"parent/index.html": &fstest.MapFile{Data: []byte(parentWithTwoSlotsHTML)},
-			"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
-		}
-		e.SetFS(fsys)
-
-		parent := &testApp{Name: "parent"}
-		e.Mount(parent, "parent/index.html")
-
-		// Register two children with the same slot name — should fatal
-		child1 := &childApp{Value: "c1"}
-		child2 := &childApp{Value: "c2"}
-		e.Register("sidebar", child1, "child/index.html")
-		e.Register("sidebar", child2, "child/index.html")
-		e.autoWireComponents()
-		return
-	}
-	out := runSubprocess(t, "TestAutoWire_DuplicateSlotFatals", "TEST_FATAL_AUTOWIRE_DUP")
-	if !strings.Contains(out, "already registered") {
-		t.Errorf("expected 'already registered' error, got: %s", out)
+	if e.comps[0].SlotName != "sidebar" {
+		t.Errorf("expected SlotName='sidebar', got %q", e.comps[0].SlotName)
 	}
 }
 
 func TestAutoWire_MultipleChildrenWiredCorrectly(t *testing.T) {
-	// Parent with two slots — each child is wired to the correct slot.
 	e := NewEngine()
-	e.SetFS(fstest.MapFS{
-		"parent/index.html": &fstest.MapFile{Data: []byte(parentWithTwoSlotsHTML)},
-		"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
-	})
-
-	parent := &testApp{Name: "parent"}
-	e.Mount(parent, "parent/index.html")
+	e.SetFS(makeTestFS())
 
 	child1 := &childApp{Value: "c1"}
 	e.Register("sidebar", child1, "child/index.html")
@@ -450,41 +489,314 @@ func TestAutoWire_MultipleChildrenWiredCorrectly(t *testing.T) {
 
 	e.autoWireComponents()
 
-	// Both children should have their slot names set
-	if e.comps[0].SlotName != "document.body" {
-		t.Errorf("root: expected SlotName='document.body', got %q", e.comps[0].SlotName)
+	if e.comps[0].SlotName != "sidebar" {
+		t.Errorf("sidebar: expected SlotName='sidebar', got %q", e.comps[0].SlotName)
 	}
-	if e.comps[1].SlotName != "sidebar" {
-		t.Errorf("sidebar: expected SlotName='sidebar', got %q", e.comps[1].SlotName)
-	}
-	if e.comps[2].SlotName != "footer" {
-		t.Errorf("footer: expected SlotName='footer', got %q", e.comps[2].SlotName)
+	if e.comps[1].SlotName != "footer" {
+		t.Errorf("footer: expected SlotName='footer', got %q", e.comps[1].SlotName)
 	}
 }
 
+// --- Route ---
 
-func TestMount_MultipleComponents_StaticFSFromFirst(t *testing.T) {
-	e := NewEngine()
-	parent := &testApp{Name: "parent"}
-	child := &childApp{Value: "child"}
+var layoutHTML = `<!DOCTYPE html><html><head><title>{{.Title}}</title></head><body>{{block "content" .}}{{end}}</body></html>`
+var pageHTML = `{{define "content"}}<h1>{{.Title}}</h1><div g-component="widget"></div>{{end}}`
 
-	e.SetFS(makeTestFSNested())
-	e.Mount(parent, "ui/index.html")
-	e.Mount(child, "child/index.html")
-
-	// staticFS should be derived from the first Mount call only
-	if e.staticFS == nil {
-		t.Fatal("expected staticFS to be set")
+func makeRouteTestFS() fstest.MapFS {
+	return fstest.MapFS{
+		"layout.html":      &fstest.MapFile{Data: []byte(layoutHTML)},
+		"page.html":        &fstest.MapFile{Data: []byte(pageHTML)},
+		"child/index.html": &fstest.MapFile{Data: []byte(childHTML)},
 	}
-	// It should be the "ui/" subdirectory from the first mount
+}
+
+type pageData struct {
+	Title string
+}
+
+func TestRoute_Valid(t *testing.T) {
+	e := NewEngine()
+	e.SetFS(makeRouteTestFS())
+
+	e.Route("/", &pageData{Title: "Home"}, "layout.html", "page.html")
+
+	if len(e.routes) != 1 {
+		t.Fatal("expected one route")
+	}
+	r := e.routes[0]
+	if r.pattern != "/" {
+		t.Errorf("expected pattern '/', got %q", r.pattern)
+	}
+	// Template data should be rendered into the HTML
+	if !strings.Contains(r.templateHTML, "<title>Home</title>") {
+		t.Error("expected rendered title in HTML")
+	}
+	if !strings.Contains(r.templateHTML, "<h1>Home</h1>") {
+		t.Error("expected rendered h1 in HTML")
+	}
+	if !strings.Contains(r.templateHTML, `g-component="widget"`) {
+		t.Error("expected g-component attribute in HTML")
+	}
+}
+
+func TestRoute_NilData(t *testing.T) {
+	e := NewEngine()
+	simpleHTML := `<!DOCTYPE html><html><head></head><body><p>Static</p></body></html>`
+	e.SetFS(fstest.MapFS{
+		"simple.html": &fstest.MapFile{Data: []byte(simpleHTML)},
+	})
+
+	e.Route("/about", nil, "simple.html")
+
+	if len(e.routes) != 1 {
+		t.Fatal("expected one route")
+	}
+	if !strings.Contains(e.routes[0].templateHTML, "Static") {
+		t.Error("expected static content in HTML")
+	}
+}
+
+func TestRoute_MultipleRoutes(t *testing.T) {
+	e := NewEngine()
+	e.SetFS(makeRouteTestFS())
+
+	e.Route("/", &pageData{Title: "Home"}, "layout.html", "page.html")
+	e.Route("/settings", &pageData{Title: "Settings"}, "layout.html", "page.html")
+
+	if len(e.routes) != 2 {
+		t.Fatalf("expected 2 routes, got %d", len(e.routes))
+	}
+	if !strings.Contains(e.routes[0].templateHTML, "Home") {
+		t.Error("first route should contain Home")
+	}
+	if !strings.Contains(e.routes[1].templateHTML, "Settings") {
+		t.Error("second route should contain Settings")
+	}
+}
+
+func TestRoute_SetsStaticFS(t *testing.T) {
+	e := NewEngine()
+	e.SetFS(makeTestFSNested())
+
+	e.Route("/", nil, "ui/index.html")
+
+	if e.staticFS == nil {
+		t.Fatal("expected staticFS to be set from Route")
+	}
 	data, err := fs.ReadFile(e.staticFS, "style.css")
 	if err != nil {
-		t.Errorf("expected staticFS from first mount, got error: %v", err)
+		t.Errorf("expected staticFS to contain style.css, got error: %v", err)
 	}
 	if string(data) != "body{}" {
 		t.Errorf("unexpected content: %q", string(data))
 	}
 }
+
+func TestRoute_NoFS(t *testing.T) {
+	if os.Getenv("TEST_FATAL_ROUTE_NOFS") == "1" {
+		e := NewEngine()
+		e.Route("/", nil, "index.html")
+		return
+	}
+	out := runSubprocess(t, "TestRoute_NoFS", "TEST_FATAL_ROUTE_NOFS")
+	if !strings.Contains(out, "call SetFS() before Route()") {
+		t.Errorf("expected SetFS error, got: %s", out)
+	}
+}
+
+func TestRoute_NoTemplateFiles(t *testing.T) {
+	if os.Getenv("TEST_FATAL_ROUTE_NOTMPL") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		e.Route("/", nil)
+		return
+	}
+	out := runSubprocess(t, "TestRoute_NoTemplateFiles", "TEST_FATAL_ROUTE_NOTMPL")
+	if !strings.Contains(out, "requires at least one template file") {
+		t.Errorf("expected template file error, got: %s", out)
+	}
+}
+
+func TestRoute_LayoutComposition(t *testing.T) {
+	// Verify that {{block}}/{{define}} actually composes layout + page content.
+	e := NewEngine()
+	e.SetFS(makeRouteTestFS())
+
+	e.Route("/", &pageData{Title: "Dashboard"}, "layout.html", "page.html")
+
+	html := e.routes[0].templateHTML
+	// Layout structure should be present
+	if !strings.Contains(html, "<!DOCTYPE html>") {
+		t.Error("expected DOCTYPE from layout")
+	}
+	if !strings.Contains(html, "<title>Dashboard</title>") {
+		t.Error("expected title rendered from data in layout head")
+	}
+	// Page content block should be inlined into the layout body
+	if !strings.Contains(html, "<h1>Dashboard</h1>") {
+		t.Error("expected page content block rendered inside layout")
+	}
+	// The body should contain both layout structure and page content
+	if !strings.Contains(html, "</body>") {
+		t.Error("expected closing body tag from layout")
+	}
+}
+
+func TestRoute_StaticFSNotOverriddenBySecondRoute(t *testing.T) {
+	// First Route sets staticFS; second Route with a different path should not override it.
+	e := NewEngine()
+	e.SetFS(fstest.MapFS{
+		"ui/page.html":    &fstest.MapFile{Data: []byte(`<html><body>page</body></html>`)},
+		"ui/style.css":    &fstest.MapFile{Data: []byte("body{}")},
+		"other/page.html": &fstest.MapFile{Data: []byte(`<html><body>other</body></html>`)},
+	})
+
+	e.Route("/", nil, "ui/page.html")
+	e.Route("/other", nil, "other/page.html")
+
+	// staticFS should still be "ui/" from the first route
+	data, err := fs.ReadFile(e.staticFS, "style.css")
+	if err != nil {
+		t.Errorf("staticFS should be from first route (ui/), got error: %v", err)
+	}
+	if string(data) != "body{}" {
+		t.Errorf("unexpected content: %q", string(data))
+	}
+}
+
+func TestRoute_InvalidTemplateSyntax(t *testing.T) {
+	if os.Getenv("TEST_FATAL_ROUTE_BADSYNTAX") == "1" {
+		e := NewEngine()
+		e.SetFS(fstest.MapFS{
+			"bad.html": &fstest.MapFile{Data: []byte(`<html>{{.Unclosed`)},
+		})
+		e.Route("/", nil, "bad.html")
+		return
+	}
+	out := runSubprocess(t, "TestRoute_InvalidTemplateSyntax", "TEST_FATAL_ROUTE_BADSYNTAX")
+	if !strings.Contains(out, "failed to parse template") {
+		t.Errorf("expected parse error, got: %s", out)
+	}
+}
+
+func TestRouteAndRegister_Together(t *testing.T) {
+	// The main use case: routes serve pages, components attach via g-component.
+	e := NewEngine()
+	e.SetFS(makeRouteTestFS())
+
+	e.Route("/", &pageData{Title: "Home"}, "layout.html", "page.html")
+
+	child := &childApp{Value: "live"}
+	e.Register("widget", child, "child/index.html")
+
+	// Routes and components should both be populated
+	if len(e.routes) != 1 {
+		t.Fatalf("expected 1 route, got %d", len(e.routes))
+	}
+	if len(e.comps) != 1 {
+		t.Fatalf("expected 1 component, got %d", len(e.comps))
+	}
+
+	// Route HTML should have the g-component target
+	if !strings.Contains(e.routes[0].templateHTML, `g-component="widget"`) {
+		t.Error("route HTML should contain g-component target for the registered component")
+	}
+
+	// Component should be wired
+	if child.Component.ci == nil {
+		t.Error("expected component ci to be wired after Register")
+	}
+}
+
+func TestStart_RoutesOnlyNoComponents(t *testing.T) {
+	// Routes without any Register — valid configuration (static pages, no live components).
+	e := NewEngine()
+	simpleHTML := `<!DOCTYPE html><html><body><p>Static page</p></body></html>`
+	e.SetFS(fstest.MapFS{
+		"page.html": &fstest.MapFile{Data: []byte(simpleHTML)},
+	})
+	e.Route("/", nil, "page.html")
+
+	// Start should not return an error for the "no routes or components" check.
+	// It will try to bind a port and block, so we can't fully test Start(),
+	// but we can verify the pre-checks pass by checking the error message isn't
+	// the "no routes or components" one.
+	// The actual error will come from GODOM_VALIDATE_ONLY.
+	t.Setenv("GODOM_VALIDATE_ONLY", "1")
+
+	// This will call os.Exit(0) in a subprocess
+	if os.Getenv("TEST_START_ROUTES_ONLY") == "1" {
+		e.Start()
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestStart_RoutesOnlyNoComponents$", "-test.v")
+	cmd.Env = append(os.Environ(), "TEST_START_ROUTES_ONLY=1", "GODOM_VALIDATE_ONLY=1")
+	out, _ := cmd.CombinedOutput()
+	outStr := string(out)
+	if strings.Contains(outStr, "no routes or components") {
+		t.Error("Start should accept routes-only configuration")
+	}
+}
+
+func TestRoute_RootPatternStaticFS(t *testing.T) {
+	// When template is at root level (no subdirectory), staticFS should be the whole FS.
+	e := NewEngine()
+	fsys := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(`<html><body>hi</body></html>`)},
+		"style.css":  &fstest.MapFile{Data: []byte("body{}")},
+	}
+	e.SetFS(fsys)
+	e.Route("/", nil, "index.html")
+
+	// staticFS should be the whole FS (dir of "index.html" is ".")
+	data, err := fs.ReadFile(e.staticFS, "style.css")
+	if err != nil {
+		t.Errorf("expected staticFS to be whole FS, got error: %v", err)
+	}
+	if string(data) != "body{}" {
+		t.Errorf("unexpected content: %q", string(data))
+	}
+}
+
+func TestRoute_BadTemplateFile(t *testing.T) {
+	if os.Getenv("TEST_FATAL_ROUTE_BADTMPL") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		e.Route("/", nil, "nonexistent.html")
+		return
+	}
+	out := runSubprocess(t, "TestRoute_BadTemplateFile", "TEST_FATAL_ROUTE_BADTMPL")
+	if !strings.Contains(out, "failed to read template") {
+		t.Errorf("expected read error, got: %s", out)
+	}
+}
+
+// --- Start ---
+
+func TestStart_NoRoutesOrComponents(t *testing.T) {
+	e := NewEngine()
+	err := e.Start()
+	if err == nil {
+		t.Fatal("expected error when calling Start without Route or Register")
+	}
+	if !strings.Contains(err.Error(), "no routes or components") {
+		t.Errorf("expected 'no routes or components' error, got: %v", err)
+	}
+}
+
+// --- SetMux ---
+
+func TestSetMux(t *testing.T) {
+	e := NewEngine()
+	mux := http.NewServeMux()
+	e.SetMux(mux)
+
+	if e.userMux != mux {
+		t.Error("expected userMux to be set")
+	}
+}
+
+// --- applyEnv ---
 
 func TestApplyEnv_ReadsEnvVars(t *testing.T) {
 	t.Setenv("GODOM_PORT", "9090")
@@ -582,17 +894,6 @@ func TestApplyEnv_InvalidPort(t *testing.T) {
 	}
 }
 
-func TestStart_NoMount(t *testing.T) {
-	e := NewEngine()
-	err := e.Start()
-	if err == nil {
-		t.Fatal("expected error when calling Start without Mount")
-	}
-	if !strings.Contains(err.Error(), "no component mounted") {
-		t.Errorf("expected 'no component mounted' error, got: %v", err)
-	}
-}
-
 // --- Helpers ---
 
 // runSubprocess re-runs the named test in a subprocess with the given env var set to "1".
@@ -607,4 +908,3 @@ func runSubprocess(t *testing.T, testName, envVar string) string {
 	}
 	return string(out)
 }
-

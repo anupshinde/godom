@@ -46,7 +46,7 @@ type Engine struct {
 	registered map[string]*registration   // instance name → registration (from Register)
 	uiFS       fs.FS                      // shared UI filesystem set via SetFS
 	routes     []routeEntry               // routes registered via Route()
-	userMux    http.Handler               // custom mux from SetMux()
+	userMux    *http.ServeMux              // custom mux from SetMux()
 }
 
 // routeEntry holds a route registered via Route().
@@ -110,10 +110,9 @@ func (a *Engine) SetFS(fsys fs.FS) {
 	a.uiFS = fsys
 }
 
-// SetMux sets a custom HTTP mux (Chi, Gorilla, standard http.ServeMux, etc.).
-// godom registers its own routes (/ws, /godom.js, Route patterns) on this mux.
-// If not set, godom creates a default http.NewServeMux().
-func (a *Engine) SetMux(mux http.Handler) {
+// SetMux sets a custom HTTP mux. godom registers its own handlers (/ws, /godom.js,
+// Route patterns) on it. If not set, godom creates a default http.NewServeMux().
+func (a *Engine) SetMux(mux *http.ServeMux) {
 	a.userMux = mux
 }
 
@@ -236,7 +235,7 @@ func (a *Engine) mountInternal(comp interface{}, fsys fs.FS, entryPath string) {
 // Register registers a named component with a template. The name is used in
 // g-component="name" attributes on elements in parent templates.
 //
-// Register uses the filesystem set via SetFS() or the one from the first Mount() call.
+// Register uses the filesystem set via SetFS().
 // The entryPath is relative to that filesystem (e.g. "ui/counter/index.html").
 func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	if name == "" {
@@ -259,7 +258,7 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	}
 
 	if a.uiFS == nil {
-		log.Fatal("godom: call SetFS() or Mount() before Register()")
+		log.Fatal("godom: call SetFS() before Register()")
 	}
 
 	a.registered[name] = &registration{
@@ -268,7 +267,7 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 		entryPath: entryPath,
 	}
 
-	// Mount the component internally
+	// Register the component internally
 	a.mountInternal(comp, a.uiFS, entryPath)
 }
 
@@ -288,7 +287,7 @@ func (a *Engine) Start() error {
 	// Validate: every component must have a SlotName.
 	for _, ci := range a.comps {
 		if ci.SlotName == "" {
-			log.Fatal("godom: every component must have a SlotName — use Mount() for the root and Register() for children")
+			log.Fatal("godom: every component must have a SlotName — use Register() to name components")
 		}
 	}
 
