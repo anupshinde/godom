@@ -11,7 +11,8 @@
         .box { position: fixed; width: 80px; height: 80px; background: #4a90d9; border-radius: 8px; cursor: grab; user-select: none; z-index: 10; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 600; }
         .box:active { cursor: grabbing; }
         .content { position: relative; z-index: 20; padding: 0 20px; }
-        input { width: calc(100% - 20px); padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 12px; }
+        input[type="text"] { width: calc(100% - 20px); padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 12px; }
+        label { display: block; margin-bottom: 12px; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -21,9 +22,14 @@
         <input type="text" placeholder="Type something..." g-bind="Inputs[first]" />
         <input type="text" placeholder="Another input..." g-bind="Inputs[second]" />
         <input type="text" placeholder="Unbound input" />
+        <label><input type="checkbox" g-checked="Agreed" /> I agree to the terms</label>
         <button g-click="Ping">Ping (<span g-text="PingCount">0</span>)</button>
         <button g-click="AddItem">Add Input</button>
         <button g-click="DoNothing">Do Nothing</button>
+        <button g-click="Process" g-attr:disabled="Processing">
+            <span g-if="!Processing">Run Long Task</span>
+            <span g-if="Processing">Processing… <span g-text="Countdown">0</span>s</span>
+        </button>
         <div g-for="item, i in Items">
             <input type="text" g-attr:placeholder="i" />
         </div>

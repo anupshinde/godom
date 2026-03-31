@@ -814,7 +814,14 @@ func resolveFacts(t *TemplateNode, ctx *ResolveContext, nodeID int) Facts {
 			if f.Attrs == nil {
 				f.Attrs = make(map[string]string)
 			}
-			f.Attrs[d.Name] = fmt.Sprint(val)
+			if b, ok := val.(bool); ok {
+				if b {
+					f.Attrs[d.Name] = d.Name // e.g. disabled="disabled"
+				}
+				// false: omit from map; diff will emit "" to remove if previously set
+			} else {
+				f.Attrs[d.Name] = fmt.Sprint(val)
+			}
 			ctx.addBinding(d.Expr, nodeID, "attr", d.Name)
 
 		case "style":
