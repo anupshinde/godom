@@ -25,12 +25,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// RouteConfig holds a pre-rendered route registered via eng.Route().
-type RouteConfig struct {
-	Pattern string // URL pattern (e.g. "/dashboard")
-	HTML    string // pre-rendered HTML from html/template
-}
-
 // Config holds everything the server needs to run.
 type Config struct {
 	Comps     []*component.Info
@@ -48,9 +42,9 @@ type Config struct {
 	ProtobufMinJS string
 	ProtocolJS    string
 
-	// Route-based serving (from eng.Route())
-	Routes  []RouteConfig
-	UserMux *http.ServeMux // custom mux from eng.SetMux()
+	UserMux    *http.ServeMux // custom mux from eng.SetMux(); nil = godom creates one
+	WSPath     string         // WebSocket endpoint path (default "/ws")
+	ScriptPath string         // godom.js script path (default "/godom.js")
 }
 
 // serverCtx holds shared state used by event processors and handlers.
@@ -206,57 +200,15 @@ func Run(cfg Config) error {
 			}
 		}
 	}
-	bundleJS += cfg.BridgeJS
+	bundleJS += strings.Replace(cfg.BridgeJS, "__GODOM_WS_PATH__", cfg.WSPath, 1)
 
-	// Serve as external script at /godom.js.
-	mux.HandleFunc("/godom.js", func(w http.ResponseWriter, r *http.Request) {
+	// Serve as external script.
+	mux.HandleFunc(cfg.ScriptPath, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript")
 		fmt.Fprint(w, bundleJS)
 	})
 
-	// Serve static assets (CSS, images, etc.) from the embedded UI filesystem.
-	var staticHandler http.Handler
-	if cfg.StaticFS != nil {
-		staticHandler = http.FileServer(http.FS(cfg.StaticFS))
-	}
-
-	// injectScript adds the godom.js script tag before </body>.
-	injectScript := func(html string) string {
-		return strings.Replace(html, "</body>", "<script src=\"/godom.js\"></script>\n</body>", 1)
-	}
-
-	if len(cfg.Routes) > 0 {
-		// Route-based serving: each route gets its own handler.
-		for _, route := range cfg.Routes {
-			pageHTML := injectScript(route.HTML)
-			pattern := route.Pattern
-			mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-				// For the root pattern "/", serve static files for non-root paths.
-				if pattern == "/" && r.URL.Path != "/" {
-					if staticHandler != nil {
-						staticHandler.ServeHTTP(w, r)
-					} else {
-						http.NotFound(w, r)
-					}
-					return
-				}
-				if !cfg.NoAuth {
-					if !checkAuth(token, w, r) {
-						http.Error(w, "Unauthorized", http.StatusUnauthorized)
-						return
-					}
-					if r.URL.Query().Get("token") != "" {
-						http.Redirect(w, r, pattern, http.StatusFound)
-						return
-					}
-				}
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				fmt.Fprint(w, pageHTML)
-			})
-		}
-	}
-
-	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(cfg.WSPath, func(w http.ResponseWriter, r *http.Request) {
 		if !cfg.NoAuth && !checkAuth(token, w, r) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -336,6 +288,19 @@ func Run(cfg Config) error {
 		}
 	})
 
+	// When user provides their own mux, they own the server and auth —
+	// just return after registering handlers and starting lifecycle.
+	if cfg.UserMux != nil {
+		return nil
+	}
+
+	// Serve static assets (CSS, images, etc.) from the embedded UI filesystem.
+	if cfg.StaticFS != nil {
+		staticHandler := http.FileServer(http.FS(cfg.StaticFS))
+		mux.Handle("/", staticHandler)
+	}
+
+	// Default mode: godom owns the server.
 	host := cfg.Host
 	if host == "" {
 		host = "localhost"

@@ -111,7 +111,7 @@
     var reconnectDelay = 1000;
 
     function connect() {
-        var wsUrl = window.GODOM_WS_URL || (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
+        var wsUrl = window.GODOM_WS_URL || (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "__GODOM_WS_PATH__";
         ws = new WebSocket(wsUrl);
         ws.binaryType = "arraybuffer";
 
