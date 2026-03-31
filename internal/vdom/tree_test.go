@@ -1185,6 +1185,34 @@ func TestResolve_GAttr(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("bool false omits attribute", func(t *testing.T) {
+		boolTmpl := &TemplateNode{
+			Tag:        "button",
+			Directives: []Directive{{Type: "attr", Name: "disabled", Expr: "Done"}},
+		}
+		state := &testDirectiveState{Done: false}
+		ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+		nodes := ResolveTemplateNode(boolTmpl, ctx)
+		el := nodes[0].(*ElementNode)
+		if _, exists := el.Facts.Attrs["disabled"]; exists {
+			t.Errorf("expected attribute to be absent for bool false, got %q", el.Facts.Attrs["disabled"])
+		}
+	})
+
+	t.Run("bool true sets attribute to its name", func(t *testing.T) {
+		boolTmpl := &TemplateNode{
+			Tag:        "button",
+			Directives: []Directive{{Type: "attr", Name: "disabled", Expr: "Done"}},
+		}
+		state := &testDirectiveState{Done: true}
+		ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+		nodes := ResolveTemplateNode(boolTmpl, ctx)
+		el := nodes[0].(*ElementNode)
+		if el.Facts.Attrs["disabled"] != "disabled" {
+			t.Errorf("expected 'disabled', got %q", el.Facts.Attrs["disabled"])
+		}
+	})
 }
 
 func TestResolve_GKeydown(t *testing.T) {

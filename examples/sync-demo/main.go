@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/anupshinde/godom"
 )
@@ -22,6 +23,9 @@ type App struct {
 	PingCount int
 	Items     []string
 	Inputs    map[string]any
+	Processing bool
+	Countdown  int
+	Agreed     bool
 
 	dragging bool
 	posX     float64
@@ -66,6 +70,24 @@ func (a *App) AddItem() {
 
 func (a *App) DoNothing() {
 	fmt.Println("DoNothing does nothing")
+}
+
+func (a *App) Process() {
+	if a.Processing {
+		return
+	}
+	a.Processing = true
+	a.Countdown = 10
+	go func() {
+		for a.Countdown > 0 {
+			time.Sleep(1 * time.Second)
+			a.Countdown--
+			a.MarkRefresh("Countdown")
+			a.Refresh()
+		}
+		a.Processing = false
+		a.Refresh()
+	}()
 }
 
 func main() {
