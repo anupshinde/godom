@@ -1,14 +1,18 @@
 package godom
 
 import (
+	"bytes"
 	_ "embed"
 	"fmt"
+	htmltemplate "html/template"
 	"io/fs"
 	"log"
+	"net/http"
 	"os"
 	"path"
 	"reflect"
 	"strconv"
+
 	"github.com/anupshinde/godom/internal/component"
 	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/server"
@@ -41,6 +45,15 @@ type Engine struct {
 	compIndex  map[interface{}]int        // comp pointer → index in comps slice
 	registered map[string]*registration   // instance name → registration (from Register)
 	uiFS       fs.FS                      // shared UI filesystem set via SetFS
+	routes     []routeEntry               // routes registered via Route()
+	userMux    http.Handler               // custom mux from SetMux()
+}
+
+// routeEntry holds a route registered via Route().
+type routeEntry struct {
+	pattern      string                // URL pattern (e.g. "/dashboard")
+	data         interface{}           // template data (plain struct, NOT a godom component)
+	templateHTML string                // rendered HTML from html/template (computed at startup)
 }
 
 // registration holds metadata for a component registered via Register().
@@ -97,35 +110,78 @@ func (a *Engine) SetFS(fsys fs.FS) {
 	a.uiFS = fsys
 }
 
+// SetMux sets a custom HTTP mux (Chi, Gorilla, standard http.ServeMux, etc.).
+// godom registers its own routes (/ws, /godom.js, Route patterns) on this mux.
+// If not set, godom creates a default http.NewServeMux().
+func (a *Engine) SetMux(mux http.Handler) {
+	a.userMux = mux
+}
+
+// Route registers a URL pattern with an HTML template rendered via Go html/template.
+// The data parameter is a plain struct for server-side template rendering (e.g. {{.Title}}).
+// It is NOT a godom component — godom components are registered separately via Register().
+//
+// Templates use Go's html/template {{block}}/{{define}} pattern for layouts.
+// Multiple template files are parsed together (e.g. layout + page content).
+//
+// Example:
+//
+//	eng.Route("/dashboard", dashboardData, "ui/layout.html", "ui/dashboard.html")
+//	eng.Route("/about", nil, "ui/layout.html", "ui/about.html")
+func (a *Engine) Route(pattern string, data interface{}, templateFiles ...string) {
+	if a.uiFS == nil {
+		log.Fatal("godom: call SetFS() before Route()")
+	}
+	if len(templateFiles) == 0 {
+		log.Fatal("godom: Route requires at least one template file")
+	}
+
+	// Parse templates from the embedded FS.
+	tmpl := htmltemplate.New("")
+	for _, f := range templateFiles {
+		content, err := fs.ReadFile(a.uiFS, f)
+		if err != nil {
+			log.Fatalf("godom: Route %q: failed to read template %q: %v", pattern, f, err)
+		}
+		_, err = tmpl.Parse(string(content))
+		if err != nil {
+			log.Fatalf("godom: Route %q: failed to parse template %q: %v", pattern, f, err)
+		}
+	}
+
+	// Render the template to HTML at startup.
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		log.Fatalf("godom: Route %q: failed to execute template: %v", pattern, err)
+	}
+
+	// Derive staticFS from the first template file's directory (same logic as mountInternal).
+	if a.staticFS == nil {
+		dir := path.Dir(templateFiles[0])
+		if dir == "." {
+			a.staticFS = a.uiFS
+		} else {
+			sub, err := fs.Sub(a.uiFS, dir)
+			if err != nil {
+				log.Fatalf("godom: invalid template path %q: %v", templateFiles[0], err)
+			}
+			a.staticFS = sub
+		}
+	}
+
+	a.routes = append(a.routes, routeEntry{
+		pattern:      pattern,
+		data:         data,
+		templateHTML: buf.String(),
+	})
+}
+
 // RegisterPlugin registers a named plugin with one or more JS scripts.
 func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts
 }
 
-// Mount registers the root component with an embedded filesystem and HTML template.
-// The entryPath is the path to the index.html file within fsys (e.g. "ui/index.html").
-//
-// For single-component apps, call Mount once. For multi-component apps, Mount the
-// root component and use Register() for child components — they are auto-wired to
-// parent templates via g-component attributes.
-func (a *Engine) Mount(comp interface{}, entryPath string) {
-	if a.uiFS == nil {
-		log.Fatal("godom: call SetFS() before Mount()")
-	}
-	v := reflect.ValueOf(comp)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		log.Fatal("godom: Mount requires a pointer to a struct")
-	}
-	if !embedsComponent(v.Elem().Type()) {
-		log.Fatal("godom: mounted struct must embed godom.Component")
-	}
-
-	a.mountInternal(comp, a.uiFS, entryPath)
-	// Root component renders into document.body.
-	a.comps[len(a.comps)-1].SlotName = "document.body"
-}
-
-// mountInternal is the shared mount logic used by both Mount and Register.
+// mountInternal is the shared mount logic used by Register.
 func (a *Engine) mountInternal(comp interface{}, fsys fs.FS, entryPath string) {
 	v := reflect.ValueOf(comp)
 	t := v.Elem().Type()
@@ -217,11 +273,11 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 }
 
 // Start starts the HTTP server, opens the default browser, and blocks forever.
-// If GODOM_VALIDATE_ONLY=1 is set, Start() returns immediately after Mount() validation
+// If GODOM_VALIDATE_ONLY=1 is set, Start() returns immediately after validation
 // succeeds — useful for CI and pre-commit checks.
 func (a *Engine) Start() error {
-	if len(a.comps) == 0 {
-		return fmt.Errorf("godom: no component mounted, call Mount() before Start()")
+	if len(a.routes) == 0 && len(a.comps) == 0 {
+		return fmt.Errorf("godom: no routes or components — call Route() and/or Register() before Start()")
 	}
 
 	// Auto-wire registered components to their g-component targets.
@@ -245,6 +301,15 @@ func (a *Engine) Start() error {
 
 	a.applyEnv()
 
+	// Build route configs for the server.
+	var routeCfgs []server.RouteConfig
+	for _, r := range a.routes {
+		routeCfgs = append(routeCfgs, server.RouteConfig{
+			Pattern: r.pattern,
+			HTML:    r.templateHTML,
+		})
+	}
+
 	cfg := server.Config{
 		Comps:         a.comps,
 		Plugins:       a.plugins,
@@ -258,6 +323,8 @@ func (a *Engine) Start() error {
 		BridgeJS:      bridgeJS,
 		ProtobufMinJS: protobufMinJS,
 		ProtocolJS:    protocolJS,
+		Routes:        routeCfgs,
+		UserMux:       a.userMux,
 	}
 
 	return server.Run(cfg)
