@@ -39,7 +39,6 @@ type Engine struct {
 	NoGodomEnv bool   // skip reading GODOM_* environment variables for configuration
 	comps      []*component.Info          // mounted components
 	plugins    map[string][]string        // plugin name → JS scripts
-	staticFS   fs.FS                      // embedded UI filesystem for static assets
 	compIndex  map[interface{}]int        // comp pointer → index in comps slice
 	registered map[string]*registration   // instance name → registration (from Register)
 	uiFS       fs.FS                      // shared UI filesystem set via SetFS
@@ -126,20 +125,6 @@ func (a *Engine) mountInternal(comp interface{}, fsys fs.FS, entryPath string) {
 	v := reflect.ValueOf(comp)
 	t := v.Elem().Type()
 
-	// Derive static FS from the first mounted component's entry path.
-	if a.staticFS == nil {
-		dir := path.Dir(entryPath)
-		if dir == "." {
-			a.staticFS = fsys
-		} else {
-			sub, err := fs.Sub(fsys, dir)
-			if err != nil {
-				log.Fatalf("godom: invalid entry path %q: %v", entryPath, err)
-			}
-			a.staticFS = sub
-		}
-	}
-
 	indexHTML, err := fs.ReadFile(fsys, entryPath)
 	if err != nil {
 		log.Fatalf("godom: failed to read %s: %v", entryPath, err)
@@ -212,10 +197,11 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	a.mountInternal(comp, a.uiFS, entryPath)
 }
 
-// Start starts the HTTP server, opens the default browser, and blocks forever.
-// If GODOM_VALIDATE_ONLY=1 is set, Start() returns immediately after validation
+// Run initializes the component lifecycle, registers /ws and /godom.js handlers
+// on the mux set via SetMux, and starts event processors.
+// If GODOM_VALIDATE_ONLY=1 is set, Run() returns immediately after validation
 // succeeds — useful for CI and pre-commit checks.
-func (a *Engine) Start() error {
+func (a *Engine) Run() error {
 	if len(a.comps) == 0 {
 		return fmt.Errorf("godom: no components registered — call Register() before Start()")
 	}
@@ -254,15 +240,16 @@ func (a *Engine) Start() error {
 	}
 
 	cfg := server.Config{
-		Comps:         a.comps,
-		Plugins:       a.plugins,
-		StaticFS:      a.staticFS,
-		Port:          a.Port,
-		Host:          a.Host,
-		NoAuth:        a.NoAuth,
-		Token:         a.Token,
-		NoBrowser:     a.NoBrowser,
-		Quiet:         a.Quiet,
+		Comps:   a.comps,
+		Plugins: a.plugins,
+		Startup: server.StartupConfig{
+			Port:      a.Port,
+			Host:      a.Host,
+			NoAuth:    a.NoAuth,
+			Token:     a.Token,
+			NoBrowser: a.NoBrowser,
+			Quiet:     a.Quiet,
+		},
 		BridgeJS:      bridgeJS,
 		ProtobufMinJS: protobufMinJS,
 		ProtocolJS:    protocolJS,
@@ -272,6 +259,12 @@ func (a *Engine) Start() error {
 	}
 
 	return server.Run(cfg)
+}
+
+// Cleanup closes event channels so component goroutines exit.
+// Call this when your server is shutting down.
+func (a *Engine) Cleanup() {
+	server.Cleanup(a.comps)
 }
 
 // applyEnv reads GODOM_* environment variables for fields not set in code.

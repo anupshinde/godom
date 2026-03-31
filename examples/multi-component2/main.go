@@ -51,9 +51,10 @@ func main() {
 		WSPath:     "/godom/ws",
 		ScriptPath: "/godom/godom.js",
 	})
-	eng.Start()
+	eng.Run()
 
 	// User owns the server.
 	fmt.Println("http://localhost:8080")
+	defer eng.Cleanup()
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }

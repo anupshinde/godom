@@ -1,11 +1,8 @@
 package server
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -27,15 +24,9 @@ import (
 
 // Config holds everything the server needs to run.
 type Config struct {
-	Comps     []*component.Info
-	Plugins   map[string][]string
-	StaticFS  fs.FS
-	Port      int
-	Host      string
-	NoAuth    bool
-	Token     string
-	NoBrowser bool
-	Quiet     bool
+	Comps   []*component.Info
+	Plugins map[string][]string
+	Startup StartupConfig
 
 	// Embedded JS scripts (passed from root via //go:embed)
 	BridgeJS      string
@@ -143,15 +134,12 @@ func (sm *sharedPtrMaps) refreshSharedComponents(compIdx int, changedFields []st
 
 // Run starts the HTTP server, opens the browser, and blocks forever.
 func Run(cfg Config) error {
-	pool := &connPool{}
-	var token string
-	if !cfg.NoAuth {
-		if cfg.Token != "" {
-			token = cfg.Token
-		} else {
-			token = generateToken()
-		}
+	if cfg.UserMux == nil {
+		log.Fatal("godom: SetMux() must be called before Start()")
 	}
+
+	pool := &connPool{}
+	token := cfg.Startup.resolveToken()
 
 	// All components share a single IDCounter so node IDs are globally
 	// unique across the bridge's nodeMap.
@@ -185,9 +173,6 @@ func Run(cfg Config) error {
 	}
 
 	mux := cfg.UserMux
-	if mux == nil {
-		mux = http.NewServeMux()
-	}
 
 	// Build the JS bundle once: protobuf, protocol, plugins, bridge.
 	var bundleJS string
@@ -209,7 +194,7 @@ func Run(cfg Config) error {
 	})
 
 	mux.HandleFunc(cfg.WSPath, func(w http.ResponseWriter, r *http.Request) {
-		if !cfg.NoAuth && !checkAuth(token, w, r) {
+		if !cfg.Startup.NoAuth && !checkAuth(token, w, r) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -288,61 +273,17 @@ func Run(cfg Config) error {
 		}
 	})
 
-	// When user provides their own mux, they own the server and auth —
-	// just return after registering handlers and starting lifecycle.
-	if cfg.UserMux != nil {
-		return nil
-	}
+	return nil
+}
 
-	// Serve static assets (CSS, images, etc.) from the embedded UI filesystem.
-	if cfg.StaticFS != nil {
-		staticHandler := http.FileServer(http.FS(cfg.StaticFS))
-		mux.Handle("/", staticHandler)
-	}
-
-	// Default mode: godom owns the server.
-	host := cfg.Host
-	if host == "" {
-		host = "localhost"
-	}
-
-	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, cfg.Port))
-	if err != nil {
-		return fmt.Errorf("godom: failed to listen: %w", err)
-	}
-
-	port := ln.Addr().(*net.TCPAddr).Port
-	urlHost := host
-	if host == "0.0.0.0" {
-		if ip := localIP(); ip != "" {
-			urlHost = ip
-		} else {
-			urlHost = "localhost"
-		}
-	}
-	url := fmt.Sprintf("http://%s:%d", urlHost, port)
-	if !cfg.NoAuth {
-		url += "?token=" + token
-	}
-	if !cfg.Quiet {
-		fmt.Printf("godom running at\n%s\n", url)
-		printQR(url)
-	}
-
-	if !cfg.NoBrowser {
-		openBrowser(url)
-	}
-
-	err = http.Serve(ln, mux)
-
-	// Clean shutdown: close event channels so processor goroutines exit.
-	for _, ci := range cfg.Comps {
+// Cleanup closes event channels so processor goroutines exit cleanly.
+// Call this when the server is shutting down.
+func Cleanup(comps []*component.Info) {
+	for _, ci := range comps {
 		if ci.EventCh != nil {
 			close(ci.EventCh)
 		}
 	}
-
-	return err
 }
 
 // wireRefresh sets up the RefreshFn for a mounted component.
@@ -900,13 +841,6 @@ func (s *serverCtx) handleMethodCall(ci *component.Info, compIdx int, call *gpro
 
 // --- Helpers ---
 
-func generateToken() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		log.Fatalf("godom: failed to generate auth token: %v", err)
-	}
-	return hex.EncodeToString(b)
-}
 
 func checkAuth(token string, w http.ResponseWriter, r *http.Request) bool {
 	if c, err := r.Cookie("godom_token"); err == nil && c.Value == token {
