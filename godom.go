@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -278,14 +279,16 @@ func (a *Engine) ListenAndServe() error {
 
 	host := utils.GetURLHost(a.Host)
 
-	srv := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", host, a.Port),
-		Handler: handler,
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, a.Port))
+	if err != nil {
+		return fmt.Errorf("godom: failed to listen: %w", err)
 	}
 
-	utils.PrintUrlQRAndOpen(host, a.Port, a.NoAuth, a.FixedAuthToken, a.NoBrowser, a.Quiet)
+	port := ln.Addr().(*net.TCPAddr).Port
+	utils.PrintUrlQRAndOpen(host, port, a.NoAuth, a.FixedAuthToken, a.NoBrowser, a.Quiet)
 
-	return srv.ListenAndServe()
+	srv := &http.Server{Handler: handler}
+	return srv.Serve(ln)
 }
 
 // QuickServe is the convenience path for single-component apps. It registers
