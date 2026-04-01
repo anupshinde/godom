@@ -272,10 +272,13 @@ func Run(cfg Config) error {
 	return nil
 }
 
-// Cleanup closes event channels so processor goroutines exit cleanly.
-// Call this when the server is shutting down.
+// Cleanup calls Cleanup() on any component that implements it,
+// then closes event channels so processor goroutines exit cleanly.
 func Cleanup(comps []*component.Info) {
 	for _, ci := range comps {
+		if c, ok := ci.Value.Interface().(interface{ Cleanup() }); ok {
+			c.Cleanup()
+		}
 		if ci.EventCh != nil {
 			close(ci.EventCh)
 		}

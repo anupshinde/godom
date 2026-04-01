@@ -8,16 +8,23 @@ import (
 
 type Clock struct {
 	godom.Component
-	Time string
-	Date string
+	Time   string
+	Date   string
+	ticker *time.Ticker
 }
 
 func (c *Clock) startClock() {
-	ticker := time.NewTicker(1 * time.Second)
-	for range ticker.C {
+	c.ticker = time.NewTicker(1 * time.Second)
+	for range c.ticker.C {
 		now := time.Now()
 		c.Time = now.Format("15:04:05")
 		c.Date = now.Format("Monday, January 2, 2006")
 		c.Refresh()
+	}
+}
+
+func (c *Clock) Cleanup() {
+	if c.ticker != nil {
+		c.ticker.Stop()
 	}
 }
