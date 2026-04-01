@@ -288,6 +288,31 @@ func (a *Engine) ListenAndServe() error {
 	return srv.ListenAndServe()
 }
 
+// QuickServe is the convenience path for single-component apps. It registers
+// the component, creates a minimal page, sets up the mux, and serves.
+//
+// Example:
+//
+//	eng := godom.NewEngine()
+//	eng.SetFS(ui)
+//	log.Fatal(eng.QuickServe(&App{Step: 1}, "ui/index.html"))
+func (a *Engine) QuickServe(comp interface{}, templateFile string) error {
+	a.Register("_root", comp, templateFile)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(`<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body g-component="_root"><script src="/godom.js"></script></body></html>`))
+	})
+
+	a.SetMux(mux, nil)
+	if err := a.Run(); err != nil {
+		return err
+	}
+
+	return a.ListenAndServe()
+}
+
 // AuthMiddleware wraps an http.Handler with the configured auth function.
 // If no auth is configured, returns the handler unwrapped.
 // Must be called after Run().
