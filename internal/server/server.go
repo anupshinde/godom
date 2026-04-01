@@ -137,6 +137,16 @@ func Run(cfg Config) error {
 
 	pool := &connPool{}
 
+	// Ensure document.body component is first — the bridge needs the root
+	// DOM before children can find their g-component targets.
+	for i, ci := range cfg.Comps {
+		if ci.SlotName == "document.body" && i > 0 {
+			copy(cfg.Comps[1:i+1], cfg.Comps[:i])
+			cfg.Comps[0] = ci
+			break
+		}
+	}
+
 	// All components share a single IDCounter so node IDs are globally
 	// unique across the bridge's nodeMap.
 	sharedIDCounter := &vdom.IDCounter{}
