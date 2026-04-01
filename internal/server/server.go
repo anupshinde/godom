@@ -132,7 +132,7 @@ func (sm *sharedPtrMaps) refreshSharedComponents(compIdx int, changedFields []st
 // Run starts the HTTP server, opens the browser, and blocks forever.
 func Run(cfg Config) error {
 	if cfg.UserMux == nil {
-		log.Fatal("godom: SetMux() must be called before Start()")
+		log.Fatal("godom: SetMux() must be called before Run()")
 	}
 
 	pool := &connPool{}

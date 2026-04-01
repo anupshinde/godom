@@ -114,10 +114,8 @@ func (a *Engine) SetFS(fsys fs.FS) {
 	a.uiFS = fsys
 }
 
-// SetMux sets a custom HTTP mux. godom registers its handlers (/ws, /godom.js)
-// on it. When SetMux is called, Start() does not bind a port or open a browser —
-// the user owns the server and calls http.ListenAndServe themselves.
-// If not set, Start() creates its own mux and serves.
+// SetMux sets the HTTP mux. godom registers its handlers (/ws, /godom.js) on it.
+// Must be called before Run().
 func (a *Engine) SetMux(mux *http.ServeMux, opts *MuxOptions) {
 	a.userMux = mux
 	a.muxOpts = opts
@@ -218,7 +216,7 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 // succeeds — useful for CI and pre-commit checks.
 func (a *Engine) Run() error {
 	if len(a.comps) == 0 {
-		return fmt.Errorf("godom: no components registered — call Register() before Start()")
+		return fmt.Errorf("godom: no components registered — call Register() before Run()")
 	}
 
 	// Auto-wire registered components to their g-component targets.
