@@ -14,8 +14,8 @@ import (
 	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/middleware"
 	"github.com/anupshinde/godom/internal/server"
-	"github.com/anupshinde/godom/internal/startup"
 	"github.com/anupshinde/godom/internal/template"
+	"github.com/anupshinde/godom/internal/utils"
 	"github.com/anupshinde/godom/internal/vdom"
 )
 
@@ -31,16 +31,21 @@ var protocolJS string
 // Engine is the godom runtime. It registers components and plugins,
 // mounts the root component, and starts the server.
 type Engine struct {
-	Startup    startup.Config               // server startup settings (port, host, auth, browser)
-	comps      []*component.Info            // mounted components
-	plugins    map[string][]string          // plugin name → JS scripts
-	compIndex  map[interface{}]int          // comp pointer → index in comps slice
-	registered map[string]*registration     // instance name → registration (from Register)
-	uiFS       fs.FS                        // shared UI filesystem set via SetFS
-	userMux    *http.ServeMux               // custom mux from SetMux()
-	muxOpts    *MuxOptions                  // custom paths for /ws and /godom.js
-	authFn     middleware.AuthFunc           // auth check; nil = no auth
-	resolvedToken string                    // auth token for startup URL
+	Port           int    // 0 = random available port
+	Host           string // default "localhost"; set to "0.0.0.0" for network access
+	NoAuth         bool   // disable token auth (default false = auth enabled)
+	FixedAuthToken string // fixed auth token; empty = generate random token
+	NoBrowser      bool   // don't open browser on start
+	Quiet          bool   // suppress startup output
+
+	comps      []*component.Info        // mounted components
+	plugins    map[string][]string      // plugin name → JS scripts
+	compIndex  map[interface{}]int      // comp pointer → index in comps slice
+	registered map[string]*registration // instance name → registration (from Register)
+	uiFS       fs.FS                    // shared UI filesystem set via SetFS
+	userMux    *http.ServeMux           // custom mux from SetMux()
+	muxOpts    *MuxOptions              // custom paths for /ws and /godom.js
+	authFn     middleware.AuthFunc      // auth check; nil = no auth
 }
 
 // MuxOptions configures custom paths for godom's handlers when using SetMux.
@@ -91,9 +96,15 @@ func (c Component) Refresh() {
 // NewEngine creates a new godom Engine.
 func NewEngine() *Engine {
 	return &Engine{
-		plugins:    make(map[string][]string),
-		compIndex:  make(map[interface{}]int),
-		registered: make(map[string]*registration),
+		Port:           env.Port(),
+		Host:           env.Host(),
+		NoAuth:         env.NoAuth(),
+		FixedAuthToken: env.Token(),
+		NoBrowser:      env.NoBrowser(),
+		Quiet:          env.Quiet(),
+		plugins:        make(map[string][]string),
+		compIndex:      make(map[interface{}]int),
+		registered:     make(map[string]*registration),
 	}
 }
 
@@ -223,7 +234,7 @@ func (a *Engine) Run() error {
 	}
 
 	if env.Bool("GODOM_VALIDATE_ONLY") {
-		if !a.Startup.Quiet {
+		if !a.Quiet {
 			fmt.Println("godom: validation passed")
 		}
 		os.Exit(0)
@@ -241,18 +252,14 @@ func (a *Engine) Run() error {
 		}
 	}
 
-	a.Startup.ApplyEnv()
-	a.resolvedToken = a.Startup.ResolveToken()
-
 	// Set up auth: user-provided AuthFunc takes priority, then built-in token auth.
-	if a.authFn == nil && !a.Startup.NoAuth {
-		a.authFn = middleware.TokenAuth(a.resolvedToken)
+	if a.authFn == nil && !a.NoAuth {
+		a.FixedAuthToken, a.authFn = middleware.TokenAuth()
 	}
 
 	cfg := server.Config{
-		Comps:   a.comps,
-		Plugins: a.plugins,
-		Startup: a.Startup,
+		Comps:         a.comps,
+		Plugins:       a.plugins,
 		BridgeJS:      bridgeJS,
 		ProtobufMinJS: protobufMinJS,
 		ProtocolJS:    protocolJS,
@@ -271,12 +278,16 @@ func (a *Engine) Run() error {
 func (a *Engine) ListenAndServe() error {
 	handler := middleware.Wrap(a.userMux, a.authFn)
 
-	ln, err := startup.Apply(a.Startup, a.resolvedToken)
-	if err != nil {
-		return err
+	host := utils.GetURLHost(a.Host)
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf("%s:%d", host, a.Port),
+		Handler: handler,
 	}
 
-	return http.Serve(ln, handler)
+	utils.PrintUrlQRAndOpen(host, a.Port, a.NoAuth, a.FixedAuthToken, a.NoBrowser, a.Quiet)
+
+	return srv.ListenAndServe()
 }
 
 // AuthMiddleware wraps an http.Handler with the configured auth function.
@@ -291,7 +302,6 @@ func (a *Engine) AuthMiddleware(next http.Handler) http.Handler {
 func (a *Engine) Cleanup() {
 	server.Cleanup(a.comps)
 }
-
 
 // autoWireComponents sets SlotName on each registered component's Info.
 // The bridge uses it to find target elements with matching g-component attributes.

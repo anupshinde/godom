@@ -14,7 +14,6 @@ import (
 	"github.com/anupshinde/godom/internal/middleware"
 	gproto "github.com/anupshinde/godom/internal/proto"
 	"github.com/anupshinde/godom/internal/render"
-	"github.com/anupshinde/godom/internal/startup"
 	"github.com/anupshinde/godom/internal/vdom"
 	"github.com/gorilla/websocket"
 	"google.golang.org/protobuf/proto"
@@ -24,14 +23,13 @@ import (
 type Config struct {
 	Comps   []*component.Info
 	Plugins map[string][]string
-	Startup startup.Config
 
 	// Embedded JS scripts (passed from root via //go:embed)
 	BridgeJS      string
 	ProtobufMinJS string
 	ProtocolJS    string
 
-	UserMux    *http.ServeMux       // custom mux from eng.SetMux(); nil = godom creates one
+	UserMux    *http.ServeMux      // custom mux from eng.SetMux(); nil = godom creates one
 	WSPath     string              // WebSocket endpoint path (default "/ws")
 	ScriptPath string              // godom.js script path (default "/godom.js")
 	AuthFn     middleware.AuthFunc // auth check for /ws; nil = no auth
@@ -157,10 +155,10 @@ func Run(cfg Config) error {
 	sm.pool = pool
 
 	ctx := &serverCtx{
-		pool:  pool,
-		sm:    sm,
+		pool:   pool,
+		sm:     sm,
 		lookup: newNodeLookup(),
-		comps: cfg.Comps,
+		comps:  cfg.Comps,
 	}
 
 	// Start event queue processor for each component.
@@ -352,8 +350,6 @@ func (s *serverCtx) processEvents(ci *component.Info, compIdx int) {
 		}
 	}
 }
-
-
 
 // --- VDOM orchestration ---
 
@@ -838,5 +834,3 @@ func (s *serverCtx) handleMethodCall(ci *component.Info, compIdx int, call *gpro
 }
 
 // --- Helpers ---
-
-

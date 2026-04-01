@@ -22,3 +22,41 @@ func Bool(key string) bool {
 	}
 	return b
 }
+
+// Port returns the GODOM_PORT value, or 0 if unset/invalid.
+func Port() int {
+	v, err := strconv.Atoi(os.Getenv("GODOM_PORT"))
+	if err != nil || v == 0 {
+		return 0
+	}
+	return v
+}
+
+// Host returns the GODOM_HOST value, or empty if unset.
+func Host() string {
+	host := os.Getenv("GODOM_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+	return host
+}
+
+// NoAuth returns the GODOM_NO_AUTH value.
+func NoAuth() bool {
+	return Bool("GODOM_NO_AUTH")
+}
+
+// Token returns the GODOM_TOKEN value, or empty if unset.
+func Token() string {
+	return os.Getenv("GODOM_TOKEN")
+}
+
+// NoBrowser returns the GODOM_NO_BROWSER value.
+func NoBrowser() bool {
+	return Bool("GODOM_NO_BROWSER")
+}
+
+// Quiet returns the GODOM_QUIET value.
+func Quiet() bool {
+	return Bool("GODOM_QUIET")
+}
