@@ -10,6 +10,7 @@
         nav { background: #fff; border-bottom: 1px solid #e0e0e0; padding: 12px 24px; display: flex; gap: 24px; align-items: center; }
         nav a { text-decoration: none; color: #666; font-size: 14px; }
         nav a:hover { color: #333; }
+        nav a.active { color: #333; text-decoration: underline; text-underline-offset: 4px; }
         nav .brand { font-weight: 600; font-size: 16px; color: #333; margin-right: 16px; }
         .content { max-width: 800px; margin: 24px auto; padding: 0 24px; }
         .card { background: #fff; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
@@ -19,9 +20,10 @@
 <body>
     <nav>
         <span class="brand">godom</span>
-        <a href="/">Dashboard</a>
-        <a href="/settings">Settings</a>
+        <a href="/"{{if eq .Page "dashboard"}} class="active"{{end}}>Dashboard</a>
+        <a href="/settings"{{if eq .Page "settings"}} class="active"{{end}}>Settings</a>
     </nav>
     {{block "content" .}}{{end}}
+    <script src="/godom/godom.js"></script>
 </body>
 </html>

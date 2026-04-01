@@ -15,8 +15,11 @@ var pages embed.FS
 //go:embed components
 var components embed.FS
 
-// Page templates — parsed once at startup.
-var templates = template.Must(template.ParseFS(pages, "pages/dashboard/page.html", "pages/settings/page.html"))
+// Page templates — each page parsed with layout, once at startup.
+var (
+	dashboardTmpl = template.Must(template.ParseFS(pages, "pages/layout/base.html", "pages/dashboard/page.html"))
+	settingsTmpl  = template.Must(template.ParseFS(pages, "pages/layout/base.html", "pages/settings/page.html"))
+)
 
 func main() {
 	eng := godom.NewEngine()
@@ -36,12 +39,12 @@ func main() {
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		templates.ExecuteTemplate(w, "dashboard", &PageData{Title: "Dashboard"})
+		dashboardTmpl.Execute(w, &PageData{Title: "Dashboard", Page: "dashboard"})
 	})
 
 	mux.HandleFunc("/settings", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		templates.ExecuteTemplate(w, "settings", &PageData{Title: "Settings"})
+		settingsTmpl.Execute(w, &PageData{Title: "Settings", Page: "settings"})
 	})
 
 	// godom registers handlers on the user's mux and starts component lifecycle.
