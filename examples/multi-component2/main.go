@@ -49,8 +49,9 @@ func main() {
 		WSPath:     "/godom/ws",
 		ScriptPath: "/godom/godom.js",
 	})
-	eng.Run()
+	if err := eng.Run(); err != nil {
+		log.Fatal(err)
+	}
 
-	defer eng.Cleanup()
 	log.Fatal(eng.ListenAndServe())
 }
