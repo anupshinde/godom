@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"os"
 	"path"
 	"reflect"
@@ -181,7 +182,7 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	if name == "" {
 		log.Fatal("godom: Register requires a non-empty name")
 	}
-	if !vdom.IsValidIdentifier(name) {
+	if name != "document.body" && !vdom.IsValidIdentifier(name) {
 		log.Fatalf("godom: Register name %q must be a valid identifier (letters, digits, underscores; cannot start with a digit)", name)
 	}
 
@@ -300,12 +301,36 @@ func (a *Engine) ListenAndServe() error {
 //	eng.SetFS(ui)
 //	log.Fatal(eng.QuickServe(&App{Step: 1}, "ui/index.html"))
 func (a *Engine) QuickServe(comp interface{}, templateFile string) error {
-	a.Register("_root", comp, templateFile)
+	// Register as "document.body" — a special name that tells the bridge to render
+	// directly into document.body instead of a g-component element.
+	a.Register("document.body", comp, templateFile)
+
+	// Use the component's HTML as the full page, inject godom.js before </body>.
+	idx := a.compIndex[comp]
+	pageHTML := strings.Replace(a.comps[idx].HTMLBody, "</body>", "<script src=\"/godom.js\"></script>\n</body>", 1)
+
+	// Serve static files from the template's directory.
+	dir := path.Dir(templateFile)
+	var staticFS fs.FS
+	if dir == "." {
+		staticFS = a.uiFS
+	} else {
+		var err error
+		staticFS, err = fs.Sub(a.uiFS, dir)
+		if err != nil {
+			return fmt.Errorf("godom: invalid template path %q: %w", templateFile, err)
+		}
+	}
+	staticHandler := http.FileServer(http.FS(staticFS))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			staticHandler.ServeHTTP(w, r)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(`<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body g-component="_root"><script src="/godom.js"></script></body></html>`))
+		w.Write([]byte(pageHTML))
 	})
 
 	a.SetMux(mux, nil)
