@@ -2,7 +2,6 @@ package main
 
 import (
 	"embed"
-	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -21,7 +20,6 @@ var templates = template.Must(template.ParseFS(pages, "pages/dashboard/page.html
 
 func main() {
 	eng := godom.NewEngine()
-	eng.NoAuth = true // user owns auth when using SetMux
 	eng.SetFS(components)
 
 	// Live components — godom templates live in components/
@@ -53,8 +51,6 @@ func main() {
 	})
 	eng.Run()
 
-	// User owns the server.
-	fmt.Println("http://localhost:8080")
 	defer eng.Cleanup()
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	log.Fatal(eng.ListenAndServe())
 }

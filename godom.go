@@ -9,11 +9,12 @@ import (
 	"os"
 	"path"
 	"reflect"
-	"strconv"
 
 	"github.com/anupshinde/godom/internal/component"
 	"github.com/anupshinde/godom/internal/env"
+	"github.com/anupshinde/godom/internal/middleware"
 	"github.com/anupshinde/godom/internal/server"
+	"github.com/anupshinde/godom/internal/startup"
 	"github.com/anupshinde/godom/internal/template"
 	"github.com/anupshinde/godom/internal/vdom"
 )
@@ -30,20 +31,16 @@ var protocolJS string
 // Engine is the godom runtime. It registers components and plugins,
 // mounts the root component, and starts the server.
 type Engine struct {
-	Port       int    // 0 = random available port
-	Host       string // default "localhost"; set to "0.0.0.0" for network access
-	NoAuth     bool   // disable token auth (default false = auth enabled)
-	Token      string // fixed auth token; empty = generate random token
-	NoBrowser  bool   // don't open browser on start
-	Quiet      bool   // suppress startup output
-	NoGodomEnv bool   // skip reading GODOM_* environment variables for configuration
-	comps      []*component.Info          // mounted components
-	plugins    map[string][]string        // plugin name → JS scripts
-	compIndex  map[interface{}]int        // comp pointer → index in comps slice
-	registered map[string]*registration   // instance name → registration (from Register)
-	uiFS       fs.FS                      // shared UI filesystem set via SetFS
-	userMux    *http.ServeMux              // custom mux from SetMux()
-	muxOpts    *MuxOptions                 // custom paths for /ws and /godom.js
+	Startup    startup.Config               // server startup settings (port, host, auth, browser)
+	comps      []*component.Info            // mounted components
+	plugins    map[string][]string          // plugin name → JS scripts
+	compIndex  map[interface{}]int          // comp pointer → index in comps slice
+	registered map[string]*registration     // instance name → registration (from Register)
+	uiFS       fs.FS                        // shared UI filesystem set via SetFS
+	userMux    *http.ServeMux               // custom mux from SetMux()
+	muxOpts    *MuxOptions                  // custom paths for /ws and /godom.js
+	authFn     middleware.AuthFunc           // auth check; nil = no auth
+	resolvedToken string                    // auth token for startup URL
 }
 
 // MuxOptions configures custom paths for godom's handlers when using SetMux.
@@ -113,6 +110,13 @@ func (a *Engine) SetFS(fsys fs.FS) {
 func (a *Engine) SetMux(mux *http.ServeMux, opts *MuxOptions) {
 	a.userMux = mux
 	a.muxOpts = opts
+}
+
+// SetAuth sets a custom auth function. When set, godom uses it to protect
+// /ws and (via AuthMiddleware/ListenAndServe) all routes. If not set and
+// NoAuth is false, godom uses built-in token auth.
+func (a *Engine) SetAuth(fn middleware.AuthFunc) {
+	a.authFn = fn
 }
 
 // RegisterPlugin registers a named plugin with one or more JS scripts.
@@ -219,13 +223,11 @@ func (a *Engine) Run() error {
 	}
 
 	if env.Bool("GODOM_VALIDATE_ONLY") {
-		if !a.Quiet {
+		if !a.Startup.Quiet {
 			fmt.Println("godom: validation passed")
 		}
 		os.Exit(0)
 	}
-
-	a.applyEnv()
 
 	// Resolve MuxOptions paths.
 	wsPath := "/ws"
@@ -239,26 +241,49 @@ func (a *Engine) Run() error {
 		}
 	}
 
+	a.Startup.ApplyEnv()
+	a.resolvedToken = a.Startup.ResolveToken()
+
+	// Set up auth: user-provided AuthFunc takes priority, then built-in token auth.
+	if a.authFn == nil && !a.Startup.NoAuth {
+		a.authFn = middleware.TokenAuth(a.resolvedToken)
+	}
+
 	cfg := server.Config{
 		Comps:   a.comps,
 		Plugins: a.plugins,
-		Startup: server.StartupConfig{
-			Port:      a.Port,
-			Host:      a.Host,
-			NoAuth:    a.NoAuth,
-			Token:     a.Token,
-			NoBrowser: a.NoBrowser,
-			Quiet:     a.Quiet,
-		},
+		Startup: a.Startup,
 		BridgeJS:      bridgeJS,
 		ProtobufMinJS: protobufMinJS,
 		ProtocolJS:    protocolJS,
 		UserMux:       a.userMux,
 		WSPath:        wsPath,
 		ScriptPath:    scriptPath,
+		AuthFn:        a.authFn,
 	}
 
 	return server.Run(cfg)
+}
+
+// ListenAndServe binds a port using the startup config (Port, Host), wraps
+// the mux with auth middleware if enabled, prints the URL, opens the browser,
+// and serves. Must be called after Run().
+func (a *Engine) ListenAndServe() error {
+	handler := middleware.Wrap(a.userMux, a.authFn)
+
+	ln, err := startup.Apply(a.Startup, a.resolvedToken)
+	if err != nil {
+		return err
+	}
+
+	return http.Serve(ln, handler)
+}
+
+// AuthMiddleware wraps an http.Handler with the configured auth function.
+// If no auth is configured, returns the handler unwrapped.
+// Must be called after Run().
+func (a *Engine) AuthMiddleware(next http.Handler) http.Handler {
+	return middleware.Wrap(next, a.authFn)
 }
 
 // Cleanup closes event channels so component goroutines exit.
@@ -267,37 +292,6 @@ func (a *Engine) Cleanup() {
 	server.Cleanup(a.comps)
 }
 
-// applyEnv reads GODOM_* environment variables for fields not set in code.
-// Skipped entirely when NoGodomEnv is true.
-func (a *Engine) applyEnv() {
-	if a.NoGodomEnv {
-		return
-	}
-	if a.Port == 0 {
-		if v, err := strconv.Atoi(os.Getenv("GODOM_PORT")); err == nil && v != 0 {
-			a.Port = v
-		}
-	}
-	if a.Host == "" {
-		if v := os.Getenv("GODOM_HOST"); v != "" {
-			a.Host = v
-		}
-	}
-	if !a.NoAuth {
-		a.NoAuth = env.Bool("GODOM_NO_AUTH")
-	}
-	if a.Token == "" {
-		if v := os.Getenv("GODOM_TOKEN"); v != "" {
-			a.Token = v
-		}
-	}
-	if !a.NoBrowser {
-		a.NoBrowser = env.Bool("GODOM_NO_BROWSER")
-	}
-	if !a.Quiet {
-		a.Quiet = env.Bool("GODOM_QUIET")
-	}
-}
 
 // autoWireComponents sets SlotName on each registered component's Info.
 // The bridge uses it to find target elements with matching g-component attributes.

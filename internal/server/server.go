@@ -4,21 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"reflect"
-	"runtime"
 	"strings"
 
 	"github.com/anupshinde/godom/internal/component"
 	"github.com/anupshinde/godom/internal/env"
+	"github.com/anupshinde/godom/internal/middleware"
 	gproto "github.com/anupshinde/godom/internal/proto"
 	"github.com/anupshinde/godom/internal/render"
+	"github.com/anupshinde/godom/internal/startup"
 	"github.com/anupshinde/godom/internal/vdom"
 	"github.com/gorilla/websocket"
-	qrcode "github.com/skip2/go-qrcode"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -26,16 +24,17 @@ import (
 type Config struct {
 	Comps   []*component.Info
 	Plugins map[string][]string
-	Startup StartupConfig
+	Startup startup.Config
 
 	// Embedded JS scripts (passed from root via //go:embed)
 	BridgeJS      string
 	ProtobufMinJS string
 	ProtocolJS    string
 
-	UserMux    *http.ServeMux // custom mux from eng.SetMux(); nil = godom creates one
-	WSPath     string         // WebSocket endpoint path (default "/ws")
-	ScriptPath string         // godom.js script path (default "/godom.js")
+	UserMux    *http.ServeMux       // custom mux from eng.SetMux(); nil = godom creates one
+	WSPath     string              // WebSocket endpoint path (default "/ws")
+	ScriptPath string              // godom.js script path (default "/godom.js")
+	AuthFn     middleware.AuthFunc // auth check for /ws; nil = no auth
 }
 
 // serverCtx holds shared state used by event processors and handlers.
@@ -139,7 +138,6 @@ func Run(cfg Config) error {
 	}
 
 	pool := &connPool{}
-	token := cfg.Startup.resolveToken()
 
 	// All components share a single IDCounter so node IDs are globally
 	// unique across the bridge's nodeMap.
@@ -194,7 +192,7 @@ func Run(cfg Config) error {
 	})
 
 	mux.HandleFunc(cfg.WSPath, func(w http.ResponseWriter, r *http.Request) {
-		if !cfg.Startup.NoAuth && !checkAuth(token, w, r) {
+		if cfg.AuthFn != nil && !cfg.AuthFn(w, r) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -842,76 +840,3 @@ func (s *serverCtx) handleMethodCall(ci *component.Info, compIdx int, call *gpro
 // --- Helpers ---
 
 
-func checkAuth(token string, w http.ResponseWriter, r *http.Request) bool {
-	if c, err := r.Cookie("godom_token"); err == nil && c.Value == token {
-		return true
-	}
-	if r.URL.Query().Get("token") == token {
-		http.SetCookie(w, &http.Cookie{
-			Name:     "godom_token",
-			Value:    token,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode,
-		})
-		return true
-	}
-	return false
-}
-
-func localIP() string {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return ""
-	}
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
-			return ipnet.IP.String()
-		}
-	}
-	return ""
-}
-
-func printQR(url string) {
-	qr, err := qrcode.New(url, qrcode.Medium)
-	if err != nil {
-		return
-	}
-	bitmap := qr.Bitmap()
-	n := len(bitmap)
-	for y := 0; y < n; y += 2 {
-		for x := 0; x < n; x++ {
-			top := bitmap[y][x]
-			bot := false
-			if y+1 < n {
-				bot = bitmap[y+1][x]
-			}
-			switch {
-			case top && bot:
-				fmt.Print("█")
-			case top:
-				fmt.Print("▀")
-			case bot:
-				fmt.Print("▄")
-			default:
-				fmt.Print(" ")
-			}
-		}
-		fmt.Println()
-	}
-}
-
-func openBrowser(url string) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "linux":
-		cmd = exec.Command("xdg-open", url)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	default:
-		return
-	}
-	_ = cmd.Start()
-}
