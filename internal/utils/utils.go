@@ -9,16 +9,6 @@ import (
 	"github.com/skip2/go-qrcode"
 )
 
-// // Config holds server startup settings — port, host, auth, browser.
-// type Config struct {
-// 	Port      int
-// 	Host      string
-// 	NoAuth    bool
-// 	Token     string
-// 	NoBrowser bool
-// 	Quiet     bool
-// }
-
 func GetURLHost(host string) string {
 	urlHost := host
 	if host == "0.0.0.0" {
