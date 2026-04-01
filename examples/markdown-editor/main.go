@@ -92,10 +92,9 @@ func main() {
 
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
-	eng.Mount(&App{
+	log.Fatal(eng.QuickServe(&App{
 		Markdown:    string(content),
 		EditorOpen:  true,
 		ToggleLabel: "Hide Editor",
-	}, "ui/index.html")
-	log.Fatal(eng.Start())
+	}, "ui/index.html"))
 }

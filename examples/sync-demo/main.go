@@ -97,6 +97,5 @@ func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
 	eng.Port = 61820
-	eng.Mount(app, "ui/index.html")
-	log.Fatal(eng.Start())
+	log.Fatal(eng.QuickServe(app, "ui/index.html"))
 }

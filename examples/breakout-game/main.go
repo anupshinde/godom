@@ -461,7 +461,7 @@ func main() {
 
 	go root.run()
 
+	// TODO: Convert to multi-page routing example (menu, game, high scores)
 	fmt.Println("Breakout — classic brick-breaking game in Go")
-	eng.Mount(root, "ui/index.html")
-	log.Fatal(eng.Start())
+	log.Fatal(eng.QuickServe(root, "ui/index.html"))
 }

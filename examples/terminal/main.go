@@ -42,8 +42,7 @@ func main() {
 			Token:  token,
 		},
 	}
-	eng.Mount(root, "ui/index.html")
-	log.Fatal(eng.Start())
+	log.Fatal(eng.QuickServe(root, "ui/index.html"))
 }
 
 func randomToken() string {
