@@ -22,16 +22,11 @@ type Config struct {
 	NoAuth     bool
 	Token      string
 	NoBrowser  bool
-	Quiet      bool
-	NoGodomEnv bool // skip reading GODOM_* environment variables
+	Quiet     bool
 }
 
 // ApplyEnv reads GODOM_* environment variables for fields not set in code.
-// Skipped entirely when NoGodomEnv is true.
 func (sc *Config) ApplyEnv() {
-	if sc.NoGodomEnv {
-		return
-	}
 	if sc.Port == 0 {
 		if v, err := strconv.Atoi(os.Getenv("GODOM_PORT")); err == nil && v != 0 {
 			sc.Port = v
