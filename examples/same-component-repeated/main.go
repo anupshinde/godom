@@ -33,11 +33,8 @@ func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
 
-	layout := &Layout{Title: "Same Component Test"}
-	eng.Mount(layout, "ui/layout/index.html")
-
 	counter := &Counter{Step: 1}
 	eng.Register("counter_single", counter, "ui/counter/index.html")
 
-	log.Fatal(eng.Start())
+	log.Fatal(eng.QuickServe(&Layout{Title: "Same Component Test"}, "ui/layout/index.html"))
 }
