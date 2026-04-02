@@ -48,7 +48,11 @@ func main() {
 	})
 
 	// godom registers /ws and /godom.js on the user's mux and starts component lifecycle.
-	eng.SetMux(mux, nil)
+	eng.SetMux(mux, nil) // default paths; for custom paths:
+	// eng.SetMux(mux, &godom.MuxOptions{
+	//     WSPath:     "/app/ws",
+	//     ScriptPath: "/app/godom.js",
+	// })
 	if err := eng.Run(); err != nil {
 		log.Fatal(err)
 	}
