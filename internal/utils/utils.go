@@ -9,10 +9,14 @@ import (
 	"github.com/skip2/go-qrcode"
 )
 
+// localIPFn is the function used to resolve the local IP address.
+// Overridden in tests to simulate machines with no network interface.
+var localIPFn = LocalIP
+
 func GetURLHost(host string) string {
 	urlHost := host
 	if host == "0.0.0.0" {
-		if ip := LocalIP(); ip != "" {
+		if ip := localIPFn(); ip != "" {
 			urlHost = ip
 		} else {
 			urlHost = "localhost"

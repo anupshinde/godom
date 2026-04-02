@@ -205,11 +205,17 @@ func TestPrintUrlQRAndOpen_HostPortFormatting(t *testing.T) {
 // command runner). The runtime.GOOS switch selects the command, and we
 // cannot override runtime.GOOS in tests to hit the default/early-return path.
 
-// [COVERAGE GAP] GetURLHost "0.0.0.0" + LocalIP()=="" path (line 17-18)
-// When LocalIP returns "" (no non-loopback IPv4 interface), GetURLHost
-// falls back to "localhost". This path only triggers on machines with no
-// network interfaces, which is not reliably reproducible in tests without
-// mocking net.InterfaceAddrs.
+func TestGetURLHost_ZeroFallsBackToLocalhost(t *testing.T) {
+	// Simulate no network interface: localIPFn returns "".
+	orig := localIPFn
+	localIPFn = func() string { return "" }
+	defer func() { localIPFn = orig }()
+
+	got := GetURLHost("0.0.0.0")
+	if got != "localhost" {
+		t.Errorf("GetURLHost(\"0.0.0.0\") with no local IP = %q, want \"localhost\"", got)
+	}
+}
 
 // [COVERAGE GAP] LocalIP error path (line 43-44)
 // The err != nil return from net.InterfaceAddrs() cannot be triggered
