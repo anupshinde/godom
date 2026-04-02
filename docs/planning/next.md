@@ -9,7 +9,7 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 | # | Issue | Type | Milestone |
 |---|-------|------|-----------|
 | 1 | COR-76: Pull-based component init (bridge requests inits instead of push order) | Improvement | Framework Improvements |
-| 2 | COR-73: Reduce duplication between Engine and server.Config | Improvement | Framework Improvements |
+| 2 | COR-73: Reduce internal config duplication between public and server packages | Improvement | Framework Improvements |
 | 3 | COR-77: Showcase example: multi-page dashboard demonstrating all godom capabilities | Example | — |
 
 ### Medium priority
