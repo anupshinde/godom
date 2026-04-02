@@ -8,24 +8,26 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 
 ## Architecture
 - Go package (`godom`) that developers import
-- Go HTTP server serves HTML + injected JS bridge
+- User owns the HTTP server and mux; godom registers /ws and /godom.js handlers on it
 - Virtual DOM in Go: templates parsed once, resolved per render, diffed for minimal patches
 - Binary WebSocket connection (Protocol Buffers) between browser and Go
 - Go → browser: `VDomMessage` with tree init or diff patches (`DomPatch`)
 - Browser → Go: `NodeEvent` (input sync) and `MethodCall` (event dispatch) with tagged binary format
 - State lives in the Go process, survives browser close/reopen
-- Single binary output via `go build`, opens default browser on start
+- Single binary output via `go build`; QuickServe for simple apps, SetMux+Run+ListenAndServe for full control
 
 ## Internal packages
-- `godom.go` — public API: Engine, SetFS, Mount, Register, Start, Component, Refresh, MarkRefresh
+- `godom.go` — public API: Engine, SetFS, SetMux, Register, Run, QuickServe, ListenAndServe, SetAuth, Cleanup, Component, Refresh, MarkRefresh
 - `internal/vdom/` — VDOM node types, template parsing, tree resolution, diffing, merging
 - `internal/component/` — component struct, Info, method dispatch, field access
-- `internal/server/` — HTTP server, WebSocket handling, connection pool, init/update pipeline
+- `internal/server/` — WebSocket handling, connection pool, init/update pipeline
 - `internal/render/` — encode patches to protobuf DomPatch, encode trees to JSON wire format
 - `internal/template/` — HTML parsing, component expansion, directive validation
 - `internal/bridge/` — bridge.js (DOM construction, patch execution, event handling)
 - `internal/proto/` — protocol.proto, generated Go types, protocol.js, protobuf.min.js
-- `internal/env/` — environment detection utilities
+- `internal/env/` — environment config utilities (GODOM_* env var readers)
+- `internal/middleware/` — pluggable auth (AuthFunc, TokenAuth)
+- `internal/utils/` — shared helpers (LocalIP, PrintQR, OpenBrowser)
 
 ## Critical invariants
 - **IDCounter must never reset.** Each VDOM node gets a unique integer ID from `IDCounter`. The bridge's `nodeMap[id] → DOM node` depends on IDs being globally unique. Resetting the counter (e.g. `ci.IDCounter = &vdom.IDCounter{}` in `BuildUpdate`) causes new subtrees to reuse IDs of existing nodes, silently corrupting the bridge's nodeMap and breaking all subsequent patches. See `TestIDCounter_MustOnlyIncrement` in `internal/server/server_test.go`.

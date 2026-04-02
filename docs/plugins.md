@@ -17,8 +17,7 @@ func main() {
     eng := godom.NewEngine()
     eng.SetFS(ui)
     chartjs.Register(eng)  // registers the plugin + injects Chart.js
-    eng.Mount(&App{}, "ui/index.html")
-    log.Fatal(eng.Start())
+    log.Fatal(eng.QuickServe(&App{}, "ui/index.html"))
 }
 ```
 

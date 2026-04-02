@@ -54,8 +54,7 @@ func (a *App) Decrement() { a.Count-- }
 func main() {
     eng := godom.NewEngine()
     eng.SetFS(ui)
-    eng.Mount(&App{}, "ui/index.html")
-    log.Fatal(eng.Start())
+    log.Fatal(eng.QuickServe(&App{}, "ui/index.html"))
 }
 ```
 
@@ -73,7 +72,7 @@ Your default browser opens. Click the buttons. Close the tab, reopen it — the 
 
 Your Go struct is the single source of truth. The HTML template declares how state maps to UI. godom:
 
-1. Parses HTML once at `Mount()`
+1. Parses HTML once at `Register()` time
 2. Resolves the template against your struct on every render
 3. Diffs the old and new virtual DOM trees
 4. Sends minimal patches to the browser over WebSocket
@@ -323,8 +322,7 @@ func main() {
 
     eng := godom.NewEngine()
     eng.SetFS(ui)
-    eng.Mount(root, "ui/index.html")
-    log.Fatal(eng.Start())
+    log.Fatal(eng.QuickServe(root, "ui/index.html"))
 }
 ```
 
@@ -390,9 +388,8 @@ eng.SetFS(ui)
 
 eng.Register("counter", &Counter{}, "ui/counter/index.html")
 eng.Register("clock", clock, "ui/clock/index.html")
-eng.Mount(layout, "ui/layout/index.html")
 
-log.Fatal(eng.Start())
+log.Fatal(eng.QuickServe(layout, "ui/layout/index.html"))
 ```
 
 The layout template declares where each component renders using the `g-component` attribute:
@@ -450,7 +447,7 @@ When one component modifies the shared state and calls `Refresh()`, both compone
 
 ### Without a layout (external hosting)
 
-You can skip `Mount()` entirely and use only `Register()`. This is useful when the HTML page is served by something else (your own server, a CDN, a third-party site):
+You can use only `Register()` without a root component. This is useful when the HTML page is served by something else (your own server, a CDN, a third-party site):
 
 ```go
 eng := godom.NewEngine()
@@ -459,7 +456,11 @@ eng.Port = 9091
 eng.NoBrowser = true
 
 eng.Register("stock", stock, "ui/stock/index.html")
-log.Fatal(eng.Start())
+
+mux := http.NewServeMux()
+eng.SetMux(mux, nil)
+eng.Run()
+log.Fatal(eng.ListenAndServe())
 ```
 
 The external page loads godom's JS bundle and declares the target:
@@ -497,7 +498,7 @@ Validate templates without starting the server — catches unknown fields, inval
 GODOM_VALIDATE_ONLY=1 go run .
 ```
 
-Exits with code 0 if all `Mount()` validations pass. Useful in CI pipelines and pre-commit hooks.
+Exits with code 0 if all `Register()` validations pass. Useful in CI pipelines and pre-commit hooks.
 
 ### Headless mode
 
@@ -522,8 +523,7 @@ func main() {
     eng := godom.NewEngine()
     eng.SetFS(ui)
     chartjs.Register(eng)
-    eng.Mount(&App{}, "ui/index.html")
-    log.Fatal(eng.Start())
+    log.Fatal(eng.QuickServe(&App{}, "ui/index.html"))
 }
 ```
 

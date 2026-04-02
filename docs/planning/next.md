@@ -8,39 +8,45 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 
 | # | Issue | Type | Milestone |
 |---|-------|------|-----------|
-| 1 | View API: `eng.View()` for defining hash-based views | Feature | Phase 1: Navigation / Routing |
-| 2 | Hash sync between browser and Go | Feature | Phase 1: Navigation / Routing |
-| 3 | Per-connection view tracking and scoped broadcasts | Feature | Phase 1: Navigation / Routing |
-| 4 | Go-side `Navigate()` call for programmatic routing | Feature | Phase 1: Navigation / Routing |
-| 5 | Component lifecycle: unload on view switch, fix sharedPtrMaps memory leak | Feature | Phase 1: Navigation / Routing |
-| 6 | Connection-agnostic engine: transport interface + custom server integration | Feature | Framework Improvements |
+| 1 | COR-76: Pull-based component init (bridge requests inits instead of push order) | Improvement | Framework Improvements |
+| 2 | COR-73: Reduce duplication between Engine and server.Config | Improvement | Framework Improvements |
+| 3 | COR-77: Showcase example: multi-page dashboard demonstrating all godom capabilities | Example | — |
 
 ### Medium priority
 
 | # | Issue | Type | Milestone |
 |---|-------|------|-----------|
-| 7 | Enforce Mount-before-Register ordering (+ consider `MountToRoot` rename) | Improvement | Framework Improvements |
-| 8 | Inactive component pausing — skip patches when no DOM targets | Improvement | Framework Improvements |
-| 9 | Streaming / append-only updates (bypass VDOM) | Feature | Framework Improvements |
-| 10 | Developer experience: debug logging and element inspector | Feature | Framework Improvements |
-| 11 | Example: godom components embedded in a React app | Example | — |
-| 12 | Example: godom with external JS component library (e.g. Shoelace) | Example | — |
+| 4 | Inactive component pausing — skip patches when no DOM targets | Improvement | Framework Improvements |
+| 5 | Streaming / append-only updates (bypass VDOM) | Feature | Framework Improvements |
+| 6 | Developer experience: debug logging and element inspector | Feature | Framework Improvements |
+| 7 | Example: godom components embedded in a React app | Example | — |
+| 8 | Example: godom with external JS component library (e.g. Shoelace) | Example | — |
 
 ### Low priority
 
 | # | Issue | Type | Milestone |
 |---|-------|------|-----------|
-| 13 | Dynamic mount from JS: `window.godom.mount()` | Feature | Framework Improvements |
-| 14 | Shadow DOM isolation (optional per-component) | Feature | Framework Improvements |
-| 15 | Multiple filesystem support (AddFS) | Improvement | Framework Improvements |
-| 16 | Virtual scrolling for large lists | Feature | Framework Improvements |
-| 17 | Nested field binding (`Fields[Selected].Label`) | Improvement | Framework Improvements |
-| 18 | Tree version guard for stale patch detection | Improvement | Framework Improvements |
-| 19 | Alternative transport implementations (SSE+POST, REST API, WebTransport) | Feature | Framework Improvements |
+| 9 | COR-75: Allow CSS selectors as component targets (RegisterAt) | Feature | Framework Improvements |
+| 10 | COR-78: Customizable disconnect overlay and badge | Improvement | Framework Improvements |
+| 11 | Dynamic mount from JS: `window.godom.mount()` | Feature | Framework Improvements |
+| 12 | Shadow DOM isolation (optional per-component) | Feature | Framework Improvements |
+| 13 | Virtual scrolling for large lists | Feature | Framework Improvements |
+| 14 | Nested field binding (`Fields[Selected].Label`) | Improvement | Framework Improvements |
+| 15 | Tree version guard for stale patch detection | Improvement | Framework Improvements |
+| 16 | Alternative transport implementations (SSE+POST, REST API, WebTransport) | Feature | Framework Improvements |
+
+### Completed (this cycle)
+
+| Issue | Status |
+|-------|--------|
+| COR-44: Enforce Mount-before-Register ordering | Done — Mount removed, server reorders document.body first |
+| COR-49: Connection-agnostic engine: custom server integration | Done — SetMux, MuxOptions, user owns server |
+| COR-74: Simplify multi-component2 example to use default MuxOptions | Done — renamed to multi-page, uses nil opts |
+| COR-50: Multiple filesystem support (AddFS) | Cancelled — not needed, user serves own static files |
 
 ### Future phases
 
 | # | Issue | Type | Milestone |
 |---|-------|------|-----------|
-| 20 | Template compiler (compile HTML + directives to Go render functions) | Feature | Phase 2 |
-| 21 | Two-way plugin communication (JS library events back to Go) | Feature | Phase 3 |
+| 17 | Template compiler (compile HTML + directives to Go render functions) | Feature | Phase 2 |
+| 18 | Two-way plugin communication (JS library events back to Go) | Feature | Phase 3 |
