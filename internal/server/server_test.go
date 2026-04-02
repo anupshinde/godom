@@ -229,6 +229,232 @@ func TestVDOMBuildUpdate_MultipleIncrements(t *testing.T) {
 
 // localIP tests moved to internal/utils/utils_test.go
 
+// --- Cleanup tests ---
+
+type cleanupTracker struct {
+	Component struct{}
+	cleaned   bool
+}
+
+func (c *cleanupTracker) Cleanup() {
+	c.cleaned = true
+}
+
+func TestCleanup_CallsCleanupMethod(t *testing.T) {
+	app := &cleanupTracker{}
+	ci := &component.Info{
+		Value:   reflect.ValueOf(app),
+		Typ:     reflect.TypeOf(*app),
+		EventCh: make(chan component.Event, 1),
+	}
+
+	Cleanup([]*component.Info{ci})
+
+	if !app.cleaned {
+		t.Error("expected Cleanup() to be called on component")
+	}
+}
+
+func TestCleanup_ClosesEventCh(t *testing.T) {
+	ci := &component.Info{
+		Value:   reflect.ValueOf(&counterApp{}),
+		Typ:     reflect.TypeOf(counterApp{}),
+		EventCh: make(chan component.Event, 1),
+	}
+
+	Cleanup([]*component.Info{ci})
+
+	// Channel should be closed — reading should return zero value immediately.
+	select {
+	case _, ok := <-ci.EventCh:
+		if ok {
+			t.Error("expected EventCh to be closed")
+		}
+	default:
+		t.Error("expected EventCh to be closed, but it blocked")
+	}
+}
+
+func TestCleanup_NilEventCh(t *testing.T) {
+	ci := &component.Info{
+		Value: reflect.ValueOf(&counterApp{}),
+		Typ:   reflect.TypeOf(counterApp{}),
+		// EventCh is nil
+	}
+	// Should not panic.
+	Cleanup([]*component.Info{ci})
+}
+
+func TestCleanup_NoCleanupMethod(t *testing.T) {
+	app := &counterApp{}
+	ci := &component.Info{
+		Value:   reflect.ValueOf(app),
+		Typ:     reflect.TypeOf(*app),
+		EventCh: make(chan component.Event, 1),
+	}
+	// Should not panic — counterApp doesn't have Cleanup().
+	Cleanup([]*component.Info{ci})
+}
+
+func TestCleanup_EmptySlice(t *testing.T) {
+	Cleanup(nil)
+	Cleanup([]*component.Info{})
+}
+
+// --- wireRefresh tests ---
+
+func TestWireRefresh_SendsRefreshEvent(t *testing.T) {
+	ci := &component.Info{
+		EventCh: make(chan component.Event, 1),
+	}
+	wireRefresh(ci)
+
+	ci.RefreshFn()
+
+	select {
+	case evt := <-ci.EventCh:
+		if evt.Kind != component.RefreshKind {
+			t.Errorf("expected RefreshKind, got %d", evt.Kind)
+		}
+	default:
+		t.Error("expected event on EventCh")
+	}
+}
+
+func TestWireRefresh_NilEventCh(t *testing.T) {
+	ci := &component.Info{}
+	wireRefresh(ci)
+	// Should not panic when EventCh is nil.
+	ci.RefreshFn()
+}
+
+// --- shouldEnqueue / shouldProcess tests ---
+
+func TestShouldEnqueue_AlwaysTrue(t *testing.T) {
+	events := []component.Event{
+		{Kind: component.NodeEventKind},
+		{Kind: component.MethodCallKind},
+		{Kind: component.RefreshKind},
+	}
+	for _, e := range events {
+		if !shouldEnqueue(e) {
+			t.Errorf("shouldEnqueue returned false for kind %d", e.Kind)
+		}
+	}
+}
+
+func TestShouldProcess_AlwaysTrue(t *testing.T) {
+	events := []component.Event{
+		{Kind: component.NodeEventKind},
+		{Kind: component.MethodCallKind},
+		{Kind: component.RefreshKind},
+	}
+	for _, e := range events {
+		if !shouldProcess(e) {
+			t.Errorf("shouldProcess returned false for kind %d", e.Kind)
+		}
+	}
+}
+
+// --- processEvents tests ---
+
+func TestProcessEvents_DispatchesRefresh(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+	ci.HTMLBody = counterHTML
+	ci.EventCh = make(chan component.Event, 8)
+
+	// Build initial tree so executeRefresh works.
+	ci.IDCounter = &vdom.IDCounter{}
+	BuildInit(ci)
+
+	ctx := &serverCtx{
+		pool:   &connPool{},
+		sm:     &sharedPtrMaps{ptrToCompIdx: map[uintptr][]int{}, compIdxToPtr: map[int][]uintptr{}},
+		lookup: newNodeLookup(),
+		comps:  []*component.Info{ci},
+	}
+
+	// Start processor.
+	done := make(chan struct{})
+	go func() {
+		ctx.processEvents(ci, 0)
+		close(done)
+	}()
+
+	// Send refresh event.
+	ci.EventCh <- component.Event{Kind: component.RefreshKind}
+
+	// Close channel to stop processor.
+	close(ci.EventCh)
+	<-done
+}
+
+func TestProcessEvents_DispatchesNodeEvent(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+	ci.HTMLBody = counterHTML
+	ci.EventCh = make(chan component.Event, 8)
+
+	ci.IDCounter = &vdom.IDCounter{}
+	BuildInit(ci)
+
+	ctx := &serverCtx{
+		pool:   &connPool{},
+		sm:     &sharedPtrMaps{ptrToCompIdx: map[uintptr][]int{}, compIdxToPtr: map[int][]uintptr{}},
+		lookup: newNodeLookup(),
+		comps:  []*component.Info{ci},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ctx.processEvents(ci, 0)
+		close(done)
+	}()
+
+	// Send a node event (with an invalid node ID — will log but not crash).
+	ci.EventCh <- component.Event{Kind: component.NodeEventKind, NodeID: 99999, Value: "test"}
+
+	close(ci.EventCh)
+	<-done
+}
+
+func TestProcessEvents_DispatchesMethodCall(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+	ci.HTMLBody = counterHTML
+	ci.EventCh = make(chan component.Event, 8)
+
+	ci.IDCounter = &vdom.IDCounter{}
+	BuildInit(ci)
+
+	ctx := &serverCtx{
+		pool:   &connPool{},
+		sm:     &sharedPtrMaps{ptrToCompIdx: map[uintptr][]int{}, compIdxToPtr: map[int][]uintptr{}},
+		lookup: newNodeLookup(),
+		comps:  []*component.Info{ci},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ctx.processEvents(ci, 0)
+		close(done)
+	}()
+
+	// Send a method call event.
+	ci.EventCh <- component.Event{
+		Kind: component.MethodCallKind,
+		Call: &gproto.MethodCall{Method: "Increment", NodeId: 1},
+	}
+
+	close(ci.EventCh)
+	<-done
+
+	if app.Count != 1 {
+		t.Errorf("expected Count=1 after Increment, got %d", app.Count)
+	}
+}
+
 // --- connPool tests ---
 
 func newTestWSPair(t *testing.T) (*websocket.Conn, *websocket.Conn, func()) {
