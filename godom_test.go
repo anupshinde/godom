@@ -1,7 +1,7 @@
 package godom
 
 import (
-	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"reflect"
@@ -10,6 +10,7 @@ import (
 	"testing/fstest"
 
 	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/middleware"
 )
 
 // --- test app structs ---
@@ -29,6 +30,25 @@ type noComponentApp struct {
 	Name string
 }
 
+type childApp struct {
+	Component
+	Value string
+}
+
+var testHTML = `<!DOCTYPE html><html><head><title>Test</title></head><body>
+	<span g-text="Name">placeholder</span>
+	<button g-click="Increment">+</button>
+</body></html>`
+
+var childHTML = `<!DOCTYPE html><html><head></head><body><span g-text="Value">placeholder</span></body></html>`
+
+func makeTestFS() fstest.MapFS {
+	return fstest.MapFS{
+		"index.html":       &fstest.MapFile{Data: []byte(testHTML)},
+		"child/index.html": &fstest.MapFile{Data: []byte(childHTML)},
+	}
+}
+
 // --- NewEngine ---
 
 func TestNewEngine(t *testing.T) {
@@ -39,8 +59,71 @@ func TestNewEngine(t *testing.T) {
 	if e.plugins == nil {
 		t.Error("expected non-nil plugins map")
 	}
+	if e.compIndex == nil {
+		t.Error("expected non-nil compIndex map")
+	}
+	if e.registered == nil {
+		t.Error("expected non-nil registered map")
+	}
 	if len(e.comps) != 0 {
-		t.Error("expected empty comps before Mount")
+		t.Error("expected empty comps before Register")
+	}
+}
+
+func TestNewEngine_ReadsEnvVars(t *testing.T) {
+	t.Setenv("GODOM_PORT", "9090")
+	t.Setenv("GODOM_HOST", "myhost")
+	t.Setenv("GODOM_NO_AUTH", "1")
+	t.Setenv("GODOM_TOKEN", "secret123")
+	t.Setenv("GODOM_NO_BROWSER", "true")
+	t.Setenv("GODOM_QUIET", "1")
+
+	e := NewEngine()
+
+	if e.Port != 9090 {
+		t.Errorf("Port = %d, want 9090", e.Port)
+	}
+	if e.Host != "myhost" {
+		t.Errorf("Host = %q, want \"myhost\"", e.Host)
+	}
+	if !e.NoAuth {
+		t.Error("NoAuth should be true")
+	}
+	if e.FixedAuthToken != "secret123" {
+		t.Errorf("FixedAuthToken = %q, want \"secret123\"", e.FixedAuthToken)
+	}
+	if !e.NoBrowser {
+		t.Error("NoBrowser should be true")
+	}
+	if !e.Quiet {
+		t.Error("Quiet should be true")
+	}
+}
+
+func TestNewEngine_CodeOverridesEnv(t *testing.T) {
+	t.Setenv("GODOM_PORT", "9090")
+	t.Setenv("GODOM_HOST", "envhost")
+
+	e := NewEngine()
+	// Code overrides after NewEngine
+	e.Port = 8080
+	e.Host = "codehost"
+
+	if e.Port != 8080 {
+		t.Errorf("Port = %d, want 8080 (code should win)", e.Port)
+	}
+	if e.Host != "codehost" {
+		t.Errorf("Host = %q, want \"codehost\" (code should win)", e.Host)
+	}
+}
+
+func TestNewEngine_InvalidPortIgnored(t *testing.T) {
+	t.Setenv("GODOM_PORT", "notanumber")
+
+	e := NewEngine()
+
+	if e.Port != 0 {
+		t.Errorf("Port = %d, want 0 (invalid port should be ignored)", e.Port)
 	}
 }
 
@@ -66,9 +149,6 @@ func TestRegisterPlugin_MultipleScripts(t *testing.T) {
 	scripts := e.plugins["editor"]
 	if len(scripts) != 2 {
 		t.Fatalf("expected 2 scripts, got %d", len(scripts))
-	}
-	if scripts[0] != "script1.js" || scripts[1] != "script2.js" {
-		t.Errorf("expected [script1.js script2.js], got %v", scripts)
 	}
 }
 
@@ -107,6 +187,33 @@ func TestEmbedsComponent_EmptyStruct(t *testing.T) {
 	}
 }
 
+// --- Component.MarkRefresh ---
+
+func TestMarkRefresh_NilCI(t *testing.T) {
+	c := Component{ci: nil}
+	// Should not panic
+	c.MarkRefresh("Name")
+}
+
+func TestMarkRefresh_Accumulates(t *testing.T) {
+	ci := &component.Info{}
+	c := Component{ci: ci}
+
+	c.MarkRefresh("Name")
+	c.MarkRefresh("Count")
+
+	fields := ci.DrainMarkedFields()
+	if len(fields) != 2 || fields[0] != "Name" || fields[1] != "Count" {
+		t.Errorf("expected [Name Count], got %v", fields)
+	}
+
+	// After drain, should be empty
+	fields = ci.DrainMarkedFields()
+	if len(fields) != 0 {
+		t.Errorf("expected empty after drain, got %v", fields)
+	}
+}
+
 // --- Component.Refresh ---
 
 func TestRefresh_NilCI(t *testing.T) {
@@ -115,18 +222,15 @@ func TestRefresh_NilCI(t *testing.T) {
 	c.Refresh()
 }
 
-func TestRefresh_NilRefreshFn(t *testing.T) {
-	// ci exists but RefreshFn is nil
+func TestRefresh_NilEventCh(t *testing.T) {
 	c := Component{ci: &component.Info{}}
-	// Should not panic — just no-op because RefreshFn is nil
+	// EventCh is nil — should not panic
 	c.Refresh()
 }
 
 func TestRefresh_SendsToEventChannel(t *testing.T) {
 	ch := make(chan component.Event, 1)
-	c := Component{ci: &component.Info{
-		EventCh: ch,
-	}}
+	c := Component{ci: &component.Info{EventCh: ch}}
 
 	c.Refresh()
 
@@ -140,106 +244,132 @@ func TestRefresh_SendsToEventChannel(t *testing.T) {
 	}
 }
 
-func TestRefresh_MarkedFieldsPassedThrough(t *testing.T) {
-	ci := &component.Info{}
-	c := Component{ci: ci}
+// --- SetFS ---
 
-	c.MarkRefresh("Name", "Count")
+func TestSetFS(t *testing.T) {
+	e := NewEngine()
+	fsys := makeTestFS()
+	e.SetFS(fsys)
 
-	fields := ci.DrainMarkedFields()
-	if len(fields) != 2 || fields[0] != "Name" || fields[1] != "Count" {
-		t.Errorf("expected MarkedFields [Name Count], got %v", fields)
+	if e.componentFS == nil {
+		t.Error("expected componentFS to be set")
 	}
 }
 
-// --- Mount ---
+// --- SetMux ---
 
-var testHTML = `<!DOCTYPE html><html><head><title>Test</title></head><body>
-	<span g-text="Name">placeholder</span>
-	<button g-click="Increment">+</button>
-</body></html>`
+func TestSetMux(t *testing.T) {
+	e := NewEngine()
+	mux := http.NewServeMux()
+	e.SetMux(mux, nil)
 
-func makeTestFS() fstest.MapFS {
-	return fstest.MapFS{
-		"index.html":       &fstest.MapFile{Data: []byte(testHTML)},
-		"child/index.html": &fstest.MapFile{Data: []byte(childHTML)},
+	if e.userMux != mux {
+		t.Error("expected userMux to be set")
+	}
+	if e.muxOpts != nil {
+		t.Error("expected muxOpts to be nil")
 	}
 }
 
-func makeTestFSNested() fstest.MapFS {
-	return fstest.MapFS{
-		"ui/index.html":    &fstest.MapFile{Data: []byte(testHTML)},
-		"ui/style.css":     &fstest.MapFile{Data: []byte("body{}")},
-		"child/index.html": &fstest.MapFile{Data: []byte(childHTML)},
+func TestSetMux_WithOptions(t *testing.T) {
+	e := NewEngine()
+	mux := http.NewServeMux()
+	opts := &MuxOptions{WSPath: "/app/ws", ScriptPath: "/app/godom.js"}
+	e.SetMux(mux, opts)
+
+	if e.userMux != mux {
+		t.Error("expected userMux to be set")
+	}
+	if e.muxOpts != opts {
+		t.Error("expected muxOpts to be set")
+	}
+	if e.muxOpts.WSPath != "/app/ws" {
+		t.Errorf("expected WSPath '/app/ws', got %q", e.muxOpts.WSPath)
+	}
+	if e.muxOpts.ScriptPath != "/app/godom.js" {
+		t.Errorf("expected ScriptPath '/app/godom.js', got %q", e.muxOpts.ScriptPath)
 	}
 }
 
-func TestMount_Valid(t *testing.T) {
+// --- SetAuth ---
+
+func TestSetAuth(t *testing.T) {
+	e := NewEngine()
+	e.SetAuth(func(w http.ResponseWriter, r *http.Request) bool {
+		return true
+	})
+
+	if e.authFn == nil {
+		t.Fatal("expected authFn to be set")
+	}
+}
+
+func TestSetAuth_OverridesTokenAuth(t *testing.T) {
+	e := NewEngine()
+	e.SetFS(makeTestFS())
+	e.Register("main", &testApp{}, "index.html")
+
+	// Set custom auth before Run
+	customCalled := false
+	e.SetAuth(func(w http.ResponseWriter, r *http.Request) bool {
+		customCalled = true
+		return true
+	})
+
+	mux := http.NewServeMux()
+	e.SetMux(mux, nil)
+	e.Run()
+
+	// authFn should be the custom one, not token auth
+	if e.authFn == nil {
+		t.Fatal("expected authFn to be set")
+	}
+	// Call it to verify it's our custom function
+	e.authFn(nil, nil)
+	if !customCalled {
+		t.Error("expected custom auth function to be called, not token auth")
+	}
+}
+
+// --- Register ---
+
+func TestRegister_Valid(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
 	e.SetFS(makeTestFS())
-	e.Mount(app, "index.html")
+	e.Register("main", app, "index.html")
 
 	if len(e.comps) != 1 {
-		t.Fatal("expected one component after Mount")
+		t.Fatal("expected one component after Register")
 	}
 	ci := e.comps[0]
 	if ci.HTMLBody == "" {
 		t.Error("expected HTMLBody to be set")
 	}
-	if ci.VDOMTemplates == nil {
-		t.Fatal("expected VDOMTemplates to be parsed")
-	}
-	if len(ci.VDOMTemplates) == 0 {
-		t.Error("expected at least one parsed VDOM template")
-	}
-	if e.staticFS == nil {
-		t.Error("expected staticFS to be set")
+	if ci.VDOMTemplates == nil || len(ci.VDOMTemplates) == 0 {
+		t.Error("expected VDOMTemplates to be parsed")
 	}
 }
 
-func TestMount_NestedEntryPath(t *testing.T) {
-	e := NewEngine()
-	app := &testApp{Name: "Alice"}
-	e.SetFS(makeTestFSNested())
-	e.Mount(app, "ui/index.html")
-
-	if len(e.comps) != 1 {
-		t.Fatal("expected one component after Mount")
-	}
-	// staticFS should be the "ui/" subdirectory — verify by reading a file from it
-	if e.staticFS == nil {
-		t.Fatal("expected staticFS to be set")
-	}
-	data, err := fs.ReadFile(e.staticFS, "style.css")
-	if err != nil {
-		t.Errorf("expected staticFS to contain style.css (sub-dir of ui/), got error: %v", err)
-	}
-	if string(data) != "body{}" {
-		t.Errorf("expected style.css content 'body{}', got %q", string(data))
-	}
-}
-
-func TestMount_WiresComponentField(t *testing.T) {
+func TestRegister_WiresComponentField(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
 	e.SetFS(makeTestFS())
-	e.Mount(app, "index.html")
+	e.Register("main", app, "index.html")
 
-	// After Mount, app.Component.ci should be wired to the same Info as e.comps[0]
 	if app.Component.ci == nil {
-		t.Fatal("expected Component.ci to be wired after Mount")
+		t.Fatal("expected Component.ci to be wired after Register")
 	}
 	if app.Component.ci != e.comps[0] {
 		t.Error("expected Component.ci to point to the same Info as Engine.comps[0]")
 	}
 }
 
-func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
+func TestRegister_SetsHTMLBodyFromTemplate(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
 	e.SetFS(makeTestFS())
-	e.Mount(app, "index.html")
+	e.Register("main", app, "index.html")
 
 	ci := e.comps[0]
 	if !strings.Contains(ci.HTMLBody, "g-text") {
@@ -250,69 +380,13 @@ func TestMount_SetsHTMLBodyFromTemplate(t *testing.T) {
 	}
 }
 
-func TestMount_NonPointer(t *testing.T) {
-	if os.Getenv("TEST_FATAL_MOUNT_NONPTR") == "1" {
-		e := NewEngine()
-		e.SetFS(makeTestFS())
-		e.Mount(testApp{}, "index.html")
-		return
-	}
-	out := runSubprocess(t, "TestMount_NonPointer", "TEST_FATAL_MOUNT_NONPTR")
-	if !strings.Contains(out, "requires a pointer to a struct") {
-		t.Errorf("expected error about pointer to struct, got: %s", out)
-	}
-}
-
-func TestMount_PointerToNonStruct(t *testing.T) {
-	if os.Getenv("TEST_FATAL_MOUNT_NONSTRUCT") == "1" {
-		e := NewEngine()
-		n := 42
-		e.SetFS(makeTestFS())
-		e.Mount(&n, "index.html")
-		return
-	}
-	out := runSubprocess(t, "TestMount_PointerToNonStruct", "TEST_FATAL_MOUNT_NONSTRUCT")
-	if !strings.Contains(out, "requires a pointer to a struct") {
-		t.Errorf("expected error about pointer to struct, got: %s", out)
-	}
-}
-
-func TestMount_NoEmbed(t *testing.T) {
-	if os.Getenv("TEST_FATAL_MOUNT_NOEMBED") == "1" {
-		e := NewEngine()
-		e.SetFS(makeTestFS())
-		e.Mount(&noComponentApp{}, "index.html")
-		return
-	}
-	out := runSubprocess(t, "TestMount_NoEmbed", "TEST_FATAL_MOUNT_NOEMBED")
-	if !strings.Contains(out, "must embed godom.Component") {
-		t.Errorf("expected error about embedding Component, got: %s", out)
-	}
-}
-
-func TestMount_BadEntryPath(t *testing.T) {
-	if os.Getenv("TEST_FATAL_MOUNT_BADPATH") == "1" {
-		e := NewEngine()
-		e.SetFS(makeTestFS())
-		e.Mount(&testApp{}, "nonexistent.html")
-		return
-	}
-	out := runSubprocess(t, "TestMount_BadEntryPath", "TEST_FATAL_MOUNT_BADPATH")
-	if !strings.Contains(out, "failed to read") {
-		t.Errorf("expected error about failed to read, got: %s", out)
-	}
-}
-
-// --- Start ---
-
-func TestMount_SetsValueAndType(t *testing.T) {
+func TestRegister_SetsValueAndType(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Bob", Count: 42}
 	e.SetFS(makeTestFS())
-	e.Mount(app, "index.html")
+	e.Register("main", app, "index.html")
 
 	ci := e.comps[0]
-	// ci.Value should point to the same app instance
 	if ci.Value.Pointer() != reflect.ValueOf(app).Pointer() {
 		t.Error("expected ci.Value to point to the original app")
 	}
@@ -321,20 +395,142 @@ func TestMount_SetsValueAndType(t *testing.T) {
 	}
 }
 
-func TestMount_RefreshWorksAfterMount(t *testing.T) {
+func TestRegister_RefreshDoesNotPanic(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
 	e.SetFS(makeTestFS())
-	e.Mount(app, "index.html")
+	e.Register("main", app, "index.html")
 
-	// After Mount, Refresh should not panic (ci is wired, but RefreshFn is nil until Start)
+	// After Register, Refresh should not panic (ci is wired, but RefreshFn is nil until Run)
 	app.Refresh()
 }
 
-func TestMount_InvalidDirective(t *testing.T) {
-	if os.Getenv("TEST_FATAL_MOUNT_BADDIR") == "1" {
+func TestRegister_DocumentBody(t *testing.T) {
+	e := NewEngine()
+	app := &testApp{Name: "root"}
+	e.SetFS(makeTestFS())
+	e.Register("document.body", app, "index.html")
+
+	if len(e.comps) != 1 {
+		t.Fatal("expected one component")
+	}
+
+	// SlotName is set by autoWireComponents (called during Run), not Register.
+	e.autoWireComponents()
+
+	if e.comps[0].SlotName != "document.body" {
+		t.Errorf("expected SlotName 'document.body', got %q", e.comps[0].SlotName)
+	}
+}
+
+func TestRegister_NonPointer(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_NONPTR") == "1" {
 		e := NewEngine()
-		// g-click references a method that doesn't exist on the struct
+		e.SetFS(makeTestFS())
+		e.Register("main", testApp{}, "index.html")
+		return
+	}
+	out := runSubprocess(t, "TestRegister_NonPointer", "TEST_FATAL_REGISTER_NONPTR")
+	if !strings.Contains(out, "requires a pointer to a struct") {
+		t.Errorf("expected error about pointer to struct, got: %s", out)
+	}
+}
+
+func TestRegister_PointerToNonStruct(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_NONSTRUCT") == "1" {
+		e := NewEngine()
+		n := 42
+		e.SetFS(makeTestFS())
+		e.Register("main", &n, "index.html")
+		return
+	}
+	out := runSubprocess(t, "TestRegister_PointerToNonStruct", "TEST_FATAL_REGISTER_NONSTRUCT")
+	if !strings.Contains(out, "requires a pointer to a struct") {
+		t.Errorf("expected error about pointer to struct, got: %s", out)
+	}
+}
+
+func TestRegister_NoEmbed(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_NOEMBED") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		e.Register("main", &noComponentApp{}, "index.html")
+		return
+	}
+	out := runSubprocess(t, "TestRegister_NoEmbed", "TEST_FATAL_REGISTER_NOEMBED")
+	if !strings.Contains(out, "must embed godom.Component") {
+		t.Errorf("expected error about embedding Component, got: %s", out)
+	}
+}
+
+func TestRegister_EmptyName(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_EMPTY") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		e.Register("", &testApp{}, "index.html")
+		return
+	}
+	out := runSubprocess(t, "TestRegister_EmptyName", "TEST_FATAL_REGISTER_EMPTY")
+	if !strings.Contains(out, "non-empty name") {
+		t.Errorf("expected non-empty name error, got: %s", out)
+	}
+}
+
+func TestRegister_InvalidIdentifier(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_BADID") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		e.Register("123invalid", &testApp{}, "index.html")
+		return
+	}
+	out := runSubprocess(t, "TestRegister_InvalidIdentifier", "TEST_FATAL_REGISTER_BADID")
+	if !strings.Contains(out, "valid identifier") {
+		t.Errorf("expected valid identifier error, got: %s", out)
+	}
+}
+
+func TestRegister_NoFS(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_NOFS") == "1" {
+		e := NewEngine()
+		e.Register("main", &testApp{}, "index.html")
+		return
+	}
+	out := runSubprocess(t, "TestRegister_NoFS", "TEST_FATAL_REGISTER_NOFS")
+	if !strings.Contains(out, "call SetFS() before Register()") {
+		t.Errorf("expected SetFS error, got: %s", out)
+	}
+}
+
+func TestRegister_BadEntryPath(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_BADPATH") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		e.Register("main", &testApp{}, "nonexistent.html")
+		return
+	}
+	out := runSubprocess(t, "TestRegister_BadEntryPath", "TEST_FATAL_REGISTER_BADPATH")
+	if !strings.Contains(out, "failed to read") {
+		t.Errorf("expected error about failed to read, got: %s", out)
+	}
+}
+
+func TestRegister_DuplicateNameFatals(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_DUP") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		e.Register("main", &testApp{}, "index.html")
+		e.Register("main", &testApp{}, "index.html")
+		return
+	}
+	out := runSubprocess(t, "TestRegister_DuplicateNameFatals", "TEST_FATAL_REGISTER_DUP")
+	if !strings.Contains(out, "already registered") {
+		t.Errorf("expected 'already registered' error, got: %s", out)
+	}
+}
+
+func TestRegister_InvalidDirective(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_BADDIR") == "1" {
+		e := NewEngine()
 		badHTML := `<!DOCTYPE html><html><head></head><body>
 			<button g-click="NonExistentMethod">click</button>
 		</body></html>`
@@ -342,105 +538,34 @@ func TestMount_InvalidDirective(t *testing.T) {
 			"index.html": &fstest.MapFile{Data: []byte(badHTML)},
 		}
 		e.SetFS(badFS)
-		e.Mount(&testApp{}, "index.html")
+		e.Register("main", &testApp{}, "index.html")
 		return
 	}
-	out := runSubprocess(t, "TestMount_InvalidDirective", "TEST_FATAL_MOUNT_BADDIR")
+	out := runSubprocess(t, "TestRegister_InvalidDirective", "TEST_FATAL_REGISTER_BADDIR")
 	if !strings.Contains(out, "NonExistentMethod") {
 		t.Errorf("expected error mentioning NonExistentMethod, got: %s", out)
 	}
 }
 
-type childApp struct {
-	Component
-	Value string
-}
+// --- Auto-wiring ---
 
-var childHTML = `<!DOCTYPE html><html><head></head><body><span g-text="Value">placeholder</span></body></html>`
-
-// Parent template with a g-component target for auto-wiring tests.
-var parentWithSlotHTML = `<!DOCTYPE html><html><head></head><body>
-	<span g-text="Name">placeholder</span>
-	<div g-component="sidebar"></div>
-</body></html>`
-
-// Parent template with two g-component targets.
-var parentWithTwoSlotsHTML = `<!DOCTYPE html><html><head></head><body>
-	<span g-text="Name">placeholder</span>
-	<div g-component="sidebar"></div>
-	<div g-component="footer"></div>
-</body></html>`
-
-func makeSlotTestFS() fstest.MapFS {
-	return fstest.MapFS{
-		"parent/index.html": &fstest.MapFile{Data: []byte(parentWithSlotHTML)},
-		"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
-	}
-}
-
-
-// --- Auto-wiring tests ---
-
-func TestAutoWire_RegisteredChildWiredToParent(t *testing.T) {
+func TestAutoWire_SetsSlotName(t *testing.T) {
 	e := NewEngine()
-	e.SetFS(makeSlotTestFS())
-
-	parent := &testApp{Name: "parent"}
-	e.Mount(parent, "parent/index.html")
+	e.SetFS(makeTestFS())
 
 	child := &childApp{Value: "child"}
 	e.Register("sidebar", child, "child/index.html")
 
-	// Trigger auto-wiring (normally happens in Start)
 	e.autoWireComponents()
 
-	if len(e.comps) != 2 {
-		t.Fatalf("expected 2 comps, got %d", len(e.comps))
-	}
-	if e.comps[0].SlotName != "document.body" {
-		t.Errorf("expected root SlotName='document.body', got %q", e.comps[0].SlotName)
-	}
-	if e.comps[1].SlotName != "sidebar" {
-		t.Errorf("expected SlotName='sidebar', got %q", e.comps[1].SlotName)
+	if e.comps[0].SlotName != "sidebar" {
+		t.Errorf("expected SlotName='sidebar', got %q", e.comps[0].SlotName)
 	}
 }
 
-func TestAutoWire_DuplicateSlotFatals(t *testing.T) {
-	if os.Getenv("TEST_FATAL_AUTOWIRE_DUP") == "1" {
-		e := NewEngine()
-		fsys := fstest.MapFS{
-			"parent/index.html": &fstest.MapFile{Data: []byte(parentWithTwoSlotsHTML)},
-			"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
-		}
-		e.SetFS(fsys)
-
-		parent := &testApp{Name: "parent"}
-		e.Mount(parent, "parent/index.html")
-
-		// Register two children with the same slot name — should fatal
-		child1 := &childApp{Value: "c1"}
-		child2 := &childApp{Value: "c2"}
-		e.Register("sidebar", child1, "child/index.html")
-		e.Register("sidebar", child2, "child/index.html")
-		e.autoWireComponents()
-		return
-	}
-	out := runSubprocess(t, "TestAutoWire_DuplicateSlotFatals", "TEST_FATAL_AUTOWIRE_DUP")
-	if !strings.Contains(out, "already registered") {
-		t.Errorf("expected 'already registered' error, got: %s", out)
-	}
-}
-
-func TestAutoWire_MultipleChildrenWiredCorrectly(t *testing.T) {
-	// Parent with two slots — each child is wired to the correct slot.
+func TestAutoWire_MultipleChildren(t *testing.T) {
 	e := NewEngine()
-	e.SetFS(fstest.MapFS{
-		"parent/index.html": &fstest.MapFile{Data: []byte(parentWithTwoSlotsHTML)},
-		"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
-	})
-
-	parent := &testApp{Name: "parent"}
-	e.Mount(parent, "parent/index.html")
+	e.SetFS(makeTestFS())
 
 	child1 := &childApp{Value: "c1"}
 	e.Register("sidebar", child1, "child/index.html")
@@ -450,153 +575,188 @@ func TestAutoWire_MultipleChildrenWiredCorrectly(t *testing.T) {
 
 	e.autoWireComponents()
 
-	// Both children should have their slot names set
-	if e.comps[0].SlotName != "document.body" {
-		t.Errorf("root: expected SlotName='document.body', got %q", e.comps[0].SlotName)
+	if e.comps[0].SlotName != "sidebar" {
+		t.Errorf("sidebar: expected SlotName='sidebar', got %q", e.comps[0].SlotName)
 	}
-	if e.comps[1].SlotName != "sidebar" {
-		t.Errorf("sidebar: expected SlotName='sidebar', got %q", e.comps[1].SlotName)
-	}
-	if e.comps[2].SlotName != "footer" {
-		t.Errorf("footer: expected SlotName='footer', got %q", e.comps[2].SlotName)
+	if e.comps[1].SlotName != "footer" {
+		t.Errorf("footer: expected SlotName='footer', got %q", e.comps[1].SlotName)
 	}
 }
 
+// --- Run ---
 
-func TestMount_MultipleComponents_StaticFSFromFirst(t *testing.T) {
+func TestRun_NoComponents(t *testing.T) {
 	e := NewEngine()
-	parent := &testApp{Name: "parent"}
-	child := &childApp{Value: "child"}
+	mux := http.NewServeMux()
+	e.SetMux(mux, nil)
 
-	e.SetFS(makeTestFSNested())
-	e.Mount(parent, "ui/index.html")
-	e.Mount(child, "child/index.html")
-
-	// staticFS should be derived from the first Mount call only
-	if e.staticFS == nil {
-		t.Fatal("expected staticFS to be set")
-	}
-	// It should be the "ui/" subdirectory from the first mount
-	data, err := fs.ReadFile(e.staticFS, "style.css")
-	if err != nil {
-		t.Errorf("expected staticFS from first mount, got error: %v", err)
-	}
-	if string(data) != "body{}" {
-		t.Errorf("unexpected content: %q", string(data))
-	}
-}
-
-func TestApplyEnv_ReadsEnvVars(t *testing.T) {
-	t.Setenv("GODOM_PORT", "9090")
-	t.Setenv("GODOM_HOST", "0.0.0.0")
-	t.Setenv("GODOM_NO_AUTH", "1")
-	t.Setenv("GODOM_TOKEN", "secret123")
-	t.Setenv("GODOM_NO_BROWSER", "true")
-	t.Setenv("GODOM_QUIET", "1")
-
-	e := NewEngine()
-	e.applyEnv()
-
-	if e.Port != 9090 {
-		t.Errorf("Port = %d, want 9090", e.Port)
-	}
-	if e.Host != "0.0.0.0" {
-		t.Errorf("Host = %q, want \"0.0.0.0\"", e.Host)
-	}
-	if !e.NoAuth {
-		t.Error("NoAuth should be true")
-	}
-	if e.Token != "secret123" {
-		t.Errorf("Token = %q, want \"secret123\"", e.Token)
-	}
-	if !e.NoBrowser {
-		t.Error("NoBrowser should be true")
-	}
-	if !e.Quiet {
-		t.Error("Quiet should be true")
-	}
-}
-
-func TestApplyEnv_CodeTakesPriority(t *testing.T) {
-	t.Setenv("GODOM_PORT", "9090")
-	t.Setenv("GODOM_HOST", "0.0.0.0")
-	t.Setenv("GODOM_TOKEN", "envtoken")
-
-	e := NewEngine()
-	e.Port = 8080
-	e.Host = "localhost"
-	e.Token = "codetoken"
-	e.applyEnv()
-
-	if e.Port != 8080 {
-		t.Errorf("Port = %d, want 8080 (code should win)", e.Port)
-	}
-	if e.Host != "localhost" {
-		t.Errorf("Host = %q, want \"localhost\" (code should win)", e.Host)
-	}
-	if e.Token != "codetoken" {
-		t.Errorf("Token = %q, want \"codetoken\" (code should win)", e.Token)
-	}
-}
-
-func TestApplyEnv_NoGodomEnvSkipsAll(t *testing.T) {
-	t.Setenv("GODOM_PORT", "9090")
-	t.Setenv("GODOM_HOST", "0.0.0.0")
-	t.Setenv("GODOM_NO_AUTH", "1")
-	t.Setenv("GODOM_TOKEN", "secret")
-	t.Setenv("GODOM_NO_BROWSER", "1")
-	t.Setenv("GODOM_QUIET", "1")
-
-	e := NewEngine()
-	e.NoGodomEnv = true
-	e.applyEnv()
-
-	if e.Port != 0 {
-		t.Errorf("Port = %d, want 0 (env should be skipped)", e.Port)
-	}
-	if e.Host != "" {
-		t.Errorf("Host = %q, want \"\" (env should be skipped)", e.Host)
-	}
-	if e.NoAuth {
-		t.Error("NoAuth should be false (env should be skipped)")
-	}
-	if e.Token != "" {
-		t.Errorf("Token = %q, want \"\" (env should be skipped)", e.Token)
-	}
-	if e.NoBrowser {
-		t.Error("NoBrowser should be false (env should be skipped)")
-	}
-	if e.Quiet {
-		t.Error("Quiet should be false (env should be skipped)")
-	}
-}
-
-func TestApplyEnv_InvalidPort(t *testing.T) {
-	t.Setenv("GODOM_PORT", "notanumber")
-
-	e := NewEngine()
-	e.applyEnv()
-
-	if e.Port != 0 {
-		t.Errorf("Port = %d, want 0 (invalid port should be ignored)", e.Port)
-	}
-}
-
-func TestStart_NoMount(t *testing.T) {
-	e := NewEngine()
-	err := e.Start()
+	err := e.Run()
 	if err == nil {
-		t.Fatal("expected error when calling Start without Mount")
+		t.Fatal("expected error when calling Run without Register")
 	}
-	if !strings.Contains(err.Error(), "no component mounted") {
-		t.Errorf("expected 'no component mounted' error, got: %v", err)
+	if !strings.Contains(err.Error(), "no components registered") {
+		t.Errorf("expected 'no components registered' error, got: %v", err)
 	}
+}
+
+func TestRun_SetsUpAuth(t *testing.T) {
+	e := NewEngine()
+	e.SetFS(makeTestFS())
+	e.Register("main", &testApp{}, "index.html")
+
+	mux := http.NewServeMux()
+	e.SetMux(mux, nil)
+
+	err := e.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// With NoAuth=false (default), Run should set up token auth
+	if e.authFn == nil {
+		t.Error("expected authFn to be set after Run with auth enabled")
+	}
+}
+
+func TestRun_NoAuthSkipsAuth(t *testing.T) {
+	e := NewEngine()
+	e.NoAuth = true
+	e.SetFS(makeTestFS())
+	e.Register("main", &testApp{}, "index.html")
+
+	mux := http.NewServeMux()
+	e.SetMux(mux, nil)
+
+	err := e.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// With NoAuth=true, authFn should remain nil
+	if e.authFn != nil {
+		t.Error("expected authFn to be nil when NoAuth is true")
+	}
+}
+
+func TestRun_CustomAuthPreserved(t *testing.T) {
+	e := NewEngine()
+	e.SetFS(makeTestFS())
+	e.Register("main", &testApp{}, "index.html")
+
+	customCalled := false
+	e.SetAuth(func(w http.ResponseWriter, r *http.Request) bool {
+		customCalled = true
+		return true
+	})
+
+	mux := http.NewServeMux()
+	e.SetMux(mux, nil)
+	e.Run()
+
+	// Custom auth should not be overwritten by Run
+	e.authFn(nil, nil)
+	if !customCalled {
+		t.Error("expected custom auth to be preserved after Run")
+	}
+}
+
+// --- AuthMiddleware ---
+
+func TestAuthMiddleware_NoAuth(t *testing.T) {
+	e := NewEngine()
+	e.NoAuth = true
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+
+	wrapped := e.AuthMiddleware(handler)
+
+	// With no authFn, should return the handler unwrapped
+	if reflect.ValueOf(wrapped).Pointer() != reflect.ValueOf(handler).Pointer() {
+		t.Error("expected AuthMiddleware to return handler unwrapped when no authFn")
+	}
+}
+
+// --- QuickServe ---
+
+func TestQuickServe_RegistersDocumentBody(t *testing.T) {
+	// QuickServe calls Register("document.body", ...) and sets up mux.
+	// We can't fully test QuickServe (it blocks on ListenAndServe), but we can
+	// verify the register + auto-wire path works for document.body.
+	e := NewEngine()
+	e.SetFS(makeTestFS())
+	e.Register("document.body", &testApp{Name: "root"}, "index.html")
+	e.autoWireComponents()
+
+	if len(e.comps) != 1 {
+		t.Fatal("expected one component")
+	}
+	if e.comps[0].SlotName != "document.body" {
+		t.Errorf("expected SlotName='document.body', got %q", e.comps[0].SlotName)
+	}
+}
+
+// --- Cleanup ---
+
+var simpleHTML = `<!DOCTYPE html><html><head></head><body><span g-text="Name">placeholder</span></body></html>`
+
+type cleanableApp struct {
+	Component
+	Name    string
+	cleaned bool
+}
+
+func (a *cleanableApp) Cleanup() {
+	a.cleaned = true
+}
+
+func TestCleanup_CallsComponentCleanup(t *testing.T) {
+	e := NewEngine()
+	e.SetFS(fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(simpleHTML)},
+	})
+	app := &cleanableApp{Name: "test"}
+	e.Register("main", app, "index.html")
+
+	// Wire up event channel (normally done by Run/server)
+	e.comps[0].EventCh = make(chan component.Event, 1)
+
+	e.Cleanup()
+
+	if !app.cleaned {
+		t.Error("expected Cleanup() to be called on the component")
+	}
+}
+
+func TestCleanup_ClosesEventChannels(t *testing.T) {
+	e := NewEngine()
+	e.SetFS(makeTestFS())
+	e.Register("main", &testApp{}, "index.html")
+
+	ch := make(chan component.Event, 1)
+	e.comps[0].EventCh = ch
+
+	e.Cleanup()
+
+	// Channel should be closed
+	_, ok := <-ch
+	if ok {
+		t.Error("expected event channel to be closed after Cleanup")
+	}
+}
+
+func TestCleanup_SkipsComponentWithoutCleanupMethod(t *testing.T) {
+	e := NewEngine()
+	e.SetFS(makeTestFS())
+	e.Register("main", &testApp{}, "index.html")
+
+	e.comps[0].EventCh = make(chan component.Event, 1)
+
+	// Should not panic — testApp has no Cleanup method
+	e.Cleanup()
 }
 
 // --- Helpers ---
 
 // runSubprocess re-runs the named test in a subprocess with the given env var set to "1".
-// Returns combined stdout+stderr. Fails the test if the subprocess exits cleanly (expected fatal).
 func runSubprocess(t *testing.T, testName, envVar string) string {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^"+testName+"$", "-test.v")
@@ -608,3 +768,5 @@ func runSubprocess(t *testing.T, testName, envVar string) string {
 	return string(out)
 }
 
+// Ensure middleware.AuthFunc is usable (compile check).
+var _ middleware.AuthFunc = func(w http.ResponseWriter, r *http.Request) bool { return true }

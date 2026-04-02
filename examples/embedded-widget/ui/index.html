@@ -69,32 +69,32 @@
 
     <div class="main">
         <div class="content">
-            <h1 class="headline">Fed Signals Patience on Rate Cuts as Inflation Holds Steady</h1>
-            <p class="lead">Federal Reserve officials indicated they are in no rush to lower interest rates, citing persistent inflationary pressures in housing and services sectors despite cooling in goods prices.</p>
-            <div class="byline">By J. Whitfield &bull; 3 hours ago</div>
+            <h1 class="headline">Embedded Widget Demo</h1>
+            <p class="lead">This page demonstrates godom components embedded in an external website. The page is served by a plain Go static file server on port 9090. The godom components (stock ticker and marquee) run on a separate godom server on port 9091.</p>
+            <div class="byline">godom embedded widget example</div>
 
             <hr class="story-divider"/>
 
             <div class="story-grid">
                 <div class="story-card">
-                    <h3>NVIDIA Surpasses $3T Valuation on AI Chip Demand</h3>
-                    <p>The chipmaker's stock rallied after reporting record data center revenue, fueled by enterprise adoption of generative AI infrastructure.</p>
-                    <div class="meta">Markets &bull; 5 hours ago</div>
+                    <h3>How It Works</h3>
+                    <p>The host page includes two script tags: one sets <code>GODOM_WS_URL</code> pointing to the godom server, the other loads <code>godom.js</code> from it. godom finds <code>g-component</code> elements and wires them up over WebSocket.</p>
+                    <div class="meta">Architecture</div>
                 </div>
                 <div class="story-card">
-                    <h3>Oil Drops Below $70 on Demand Concerns</h3>
-                    <p>Crude futures fell sharply as China's manufacturing data disappointed and OPEC+ members signaled willingness to increase output.</p>
-                    <div class="meta">Commodities &bull; 6 hours ago</div>
+                    <h3>Two Servers, One Page</h3>
+                    <p>Port 9090 serves this static HTML page. Port 9091 runs the godom engine with live components. The browser connects to both &mdash; static content from one, live updates from the other.</p>
+                    <div class="meta">Setup</div>
                 </div>
                 <div class="story-card">
-                    <h3>Apple Plans Major Push Into Home Robotics</h3>
-                    <p>The tech giant is developing a personal robot assistant, part of a broader strategy to diversify beyond the iPhone.</p>
-                    <div class="meta">Tech &bull; 8 hours ago</div>
+                    <h3>No Mount Needed</h3>
+                    <p>The godom engine uses <code>Register()</code> only &mdash; no root component. Components attach to <code>g-component</code> elements wherever they appear on the host page.</p>
+                    <div class="meta">API</div>
                 </div>
                 <div class="story-card">
-                    <h3>Treasury Yields Climb Ahead of Jobs Report</h3>
-                    <p>The 10-year yield rose to 4.35% as traders positioned for a stronger-than-expected employment number on Friday.</p>
-                    <div class="meta">Economy &bull; 10 hours ago</div>
+                    <h3>Live Data Over WebSocket</h3>
+                    <p>Stock prices update every 500ms via the godom WebSocket connection. The host page doesn't need any JavaScript &mdash; godom handles the DOM updates automatically.</p>
+                    <div class="meta">Real-time</div>
                 </div>
             </div>
         </div>

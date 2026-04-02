@@ -1,46 +1,37 @@
 package server
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"log"
-	"net"
 	"net/http"
 	"os"
-	"os/exec"
-	"reflect"
-	"runtime"
 	"strings"
 
 	"github.com/anupshinde/godom/internal/component"
 	"github.com/anupshinde/godom/internal/env"
+	"github.com/anupshinde/godom/internal/middleware"
 	gproto "github.com/anupshinde/godom/internal/proto"
 	"github.com/anupshinde/godom/internal/render"
 	"github.com/anupshinde/godom/internal/vdom"
 	"github.com/gorilla/websocket"
-	qrcode "github.com/skip2/go-qrcode"
 	"google.golang.org/protobuf/proto"
 )
 
 // Config holds everything the server needs to run.
 type Config struct {
-	Comps     []*component.Info
-	Plugins   map[string][]string
-	StaticFS  fs.FS
-	Port      int
-	Host      string
-	NoAuth    bool
-	Token     string
-	NoBrowser bool
-	Quiet     bool
+	Comps   []*component.Info
+	Plugins map[string][]string
 
 	// Embedded JS scripts (passed from root via //go:embed)
 	BridgeJS      string
 	ProtobufMinJS string
 	ProtocolJS    string
+
+	UserMux    *http.ServeMux      // custom mux from eng.SetMux(); nil = godom creates one
+	WSPath     string              // WebSocket endpoint path (default "/ws")
+	ScriptPath string              // godom.js script path (default "/godom.js")
+	AuthFn     middleware.AuthFunc // auth check for /ws; nil = no auth
 }
 
 // serverCtx holds shared state used by event processors and handlers.
@@ -52,100 +43,21 @@ type serverCtx struct {
 	comps  []*component.Info
 }
 
-// sharedPtrMaps holds the pointer-sharing relationships between components.
-// Built once at startup, used to propagate refreshes to sibling components
-// that share embedded pointer fields (e.g. *CounterState).
-type sharedPtrMaps struct {
-	ptrToCompIdx map[uintptr][]int // pointer address → component indices sharing it
-	compIdxToPtr map[int][]uintptr // component index → pointer addresses it holds
-	comps        []*component.Info
-	pool         *connPool
-}
-
-// buildSharedPtrMaps walks all component structs to find embedded pointer fields
-// and groups components that share the same pointer address.
-func buildSharedPtrMaps(comps []*component.Info) *sharedPtrMaps {
-	sm := &sharedPtrMaps{
-		ptrToCompIdx: make(map[uintptr][]int),
-		compIdxToPtr: make(map[int][]uintptr),
-		comps:        comps,
-	}
-	for idx, ci := range comps {
-		v := ci.Value.Elem() // the struct value
-		t := v.Type()
-		for i := 0; i < t.NumField(); i++ {
-			f := t.Field(i)
-			if !f.Anonymous || f.Type.Kind() != reflect.Ptr {
-				continue
-			}
-			fv := v.Field(i)
-			if fv.IsNil() {
-				continue
-			}
-			ptr := fv.Pointer()
-			sm.ptrToCompIdx[ptr] = append(sm.ptrToCompIdx[ptr], idx)
-			sm.compIdxToPtr[idx] = append(sm.compIdxToPtr[idx], ptr)
-		}
-	}
-	// Remove entries where only one component holds the pointer (no sharing).
-	for ptr, idxs := range sm.ptrToCompIdx {
-		if len(idxs) <= 1 {
-			delete(sm.ptrToCompIdx, ptr)
-			for _, idx := range idxs {
-				sm.compIdxToPtr[idx] = removePtr(sm.compIdxToPtr[idx], ptr)
-				if len(sm.compIdxToPtr[idx]) == 0 {
-					delete(sm.compIdxToPtr, idx)
-				}
-			}
-		}
-	}
-	return sm
-}
-
-func removePtr(ptrs []uintptr, target uintptr) []uintptr {
-	result := ptrs[:0]
-	for _, p := range ptrs {
-		if p != target {
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
-// refreshSharedComponents triggers surgical refresh on all other components
-// that share an embedded pointer with the given component, using the changed
-// field names extracted from the original component's patches.
-func (sm *sharedPtrMaps) refreshSharedComponents(compIdx int, changedFields []string) {
-	if sm == nil || len(changedFields) == 0 {
-		return
-	}
-	ptrs := sm.compIdxToPtr[compIdx]
-	if len(ptrs) == 0 {
-		return
-	}
-	seen := map[int]bool{compIdx: true} // skip self
-	for _, ptr := range ptrs {
-		for _, sibIdx := range sm.ptrToCompIdx[ptr] {
-			if seen[sibIdx] {
-				continue
-			}
-			seen[sibIdx] = true
-			sib := sm.comps[sibIdx]
-			sib.AddMarkedFields(changedFields...)
-			sib.RefreshFn()
-		}
-	}
-}
-
 // Run starts the HTTP server, opens the browser, and blocks forever.
 func Run(cfg Config) error {
+	if cfg.UserMux == nil {
+		log.Fatal("godom: SetMux() must be called before Run()")
+	}
+
 	pool := &connPool{}
-	var token string
-	if !cfg.NoAuth {
-		if cfg.Token != "" {
-			token = cfg.Token
-		} else {
-			token = generateToken()
+
+	// Ensure document.body component is first — the bridge needs the root
+	// DOM before children can find their g-component targets.
+	for i, ci := range cfg.Comps {
+		if ci.SlotName == "document.body" && i > 0 {
+			copy(cfg.Comps[1:i+1], cfg.Comps[:i])
+			cfg.Comps[0] = ci
+			break
 		}
 	}
 
@@ -167,10 +79,10 @@ func Run(cfg Config) error {
 	sm.pool = pool
 
 	ctx := &serverCtx{
-		pool:  pool,
-		sm:    sm,
+		pool:   pool,
+		sm:     sm,
 		lookup: newNodeLookup(),
-		comps: cfg.Comps,
+		comps:  cfg.Comps,
 	}
 
 	// Start event queue processor for each component.
@@ -180,7 +92,7 @@ func Run(cfg Config) error {
 		go ctx.processEvents(ci, idx)
 	}
 
-	mux := http.NewServeMux()
+	mux := cfg.UserMux
 
 	// Build the JS bundle once: protobuf, protocol, plugins, bridge.
 	var bundleJS string
@@ -193,41 +105,16 @@ func Run(cfg Config) error {
 			}
 		}
 	}
-	bundleJS += cfg.BridgeJS
+	bundleJS += strings.Replace(cfg.BridgeJS, "__GODOM_WS_PATH__", cfg.WSPath, 1)
 
-	// Serve as external script at /godom.js.
-	mux.HandleFunc("/godom.js", func(w http.ResponseWriter, r *http.Request) {
+	// Serve as external script.
+	mux.HandleFunc(cfg.ScriptPath, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript")
 		fmt.Fprint(w, bundleJS)
 	})
 
-	// The root component (first in Comps, mounted via Mount) provides the page HTML.
-	pageHTML := strings.Replace(cfg.Comps[0].HTMLBody, "</body>", "<script src=\"/godom.js\"></script>\n</body>", 1)
-
-	// Serve static assets (CSS, images, etc.) from the embedded UI filesystem.
-	staticHandler := http.FileServer(http.FS(cfg.StaticFS))
-
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			staticHandler.ServeHTTP(w, r)
-			return
-		}
-		if !cfg.NoAuth {
-			if !checkAuth(token, w, r) {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-			if r.URL.Query().Get("token") != "" {
-				http.Redirect(w, r, "/", http.StatusFound)
-				return
-			}
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, pageHTML)
-	})
-
-	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		if !cfg.NoAuth && !checkAuth(token, w, r) {
+	mux.HandleFunc(cfg.WSPath, func(w http.ResponseWriter, r *http.Request) {
+		if cfg.AuthFn != nil && !cfg.AuthFn(w, r) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -306,48 +193,20 @@ func Run(cfg Config) error {
 		}
 	})
 
-	host := cfg.Host
-	if host == "" {
-		host = "localhost"
-	}
+	return nil
+}
 
-	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, cfg.Port))
-	if err != nil {
-		return fmt.Errorf("godom: failed to listen: %w", err)
-	}
-
-	port := ln.Addr().(*net.TCPAddr).Port
-	urlHost := host
-	if host == "0.0.0.0" {
-		if ip := localIP(); ip != "" {
-			urlHost = ip
-		} else {
-			urlHost = "localhost"
+// Cleanup calls Cleanup() on any component that implements it,
+// then closes event channels so processor goroutines exit cleanly.
+func Cleanup(comps []*component.Info) {
+	for _, ci := range comps {
+		if c, ok := ci.Value.Interface().(interface{ Cleanup() }); ok {
+			c.Cleanup()
 		}
-	}
-	url := fmt.Sprintf("http://%s:%d", urlHost, port)
-	if !cfg.NoAuth {
-		url += "?token=" + token
-	}
-	if !cfg.Quiet {
-		fmt.Printf("godom running at\n%s\n", url)
-		printQR(url)
-	}
-
-	if !cfg.NoBrowser {
-		openBrowser(url)
-	}
-
-	err = http.Serve(ln, mux)
-
-	// Clean shutdown: close event channels so processor goroutines exit.
-	for _, ci := range cfg.Comps {
 		if ci.EventCh != nil {
 			close(ci.EventCh)
 		}
 	}
-
-	return err
 }
 
 // wireRefresh sets up the RefreshFn for a mounted component.
@@ -418,8 +277,6 @@ func (s *serverCtx) processEvents(ci *component.Info, compIdx int) {
 		}
 	}
 }
-
-
 
 // --- VDOM orchestration ---
 
@@ -904,85 +761,3 @@ func (s *serverCtx) handleMethodCall(ci *component.Info, compIdx int, call *gpro
 }
 
 // --- Helpers ---
-
-func generateToken() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		log.Fatalf("godom: failed to generate auth token: %v", err)
-	}
-	return hex.EncodeToString(b)
-}
-
-func checkAuth(token string, w http.ResponseWriter, r *http.Request) bool {
-	if c, err := r.Cookie("godom_token"); err == nil && c.Value == token {
-		return true
-	}
-	if r.URL.Query().Get("token") == token {
-		http.SetCookie(w, &http.Cookie{
-			Name:     "godom_token",
-			Value:    token,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode,
-		})
-		return true
-	}
-	return false
-}
-
-func localIP() string {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return ""
-	}
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
-			return ipnet.IP.String()
-		}
-	}
-	return ""
-}
-
-func printQR(url string) {
-	qr, err := qrcode.New(url, qrcode.Medium)
-	if err != nil {
-		return
-	}
-	bitmap := qr.Bitmap()
-	n := len(bitmap)
-	for y := 0; y < n; y += 2 {
-		for x := 0; x < n; x++ {
-			top := bitmap[y][x]
-			bot := false
-			if y+1 < n {
-				bot = bitmap[y+1][x]
-			}
-			switch {
-			case top && bot:
-				fmt.Print("█")
-			case top:
-				fmt.Print("▀")
-			case bot:
-				fmt.Print("▄")
-			default:
-				fmt.Print(" ")
-			}
-		}
-		fmt.Println()
-	}
-}
-
-func openBrowser(url string) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "linux":
-		cmd = exec.Command("xdg-open", url)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	default:
-		return
-	}
-	_ = cmd.Start()
-}

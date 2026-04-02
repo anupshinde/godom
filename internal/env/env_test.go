@@ -124,6 +124,166 @@ func TestBool_Invalid(t *testing.T) {
 	}
 }
 
+// --- Port() ---
+
+func TestPort_ValidValue(t *testing.T) {
+	t.Setenv("GODOM_PORT", "8080")
+	if got := Port(); got != 8080 {
+		t.Errorf("Port() = %d, want 8080", got)
+	}
+}
+
+func TestPort_Unset(t *testing.T) {
+	os.Unsetenv("GODOM_PORT")
+	if got := Port(); got != 0 {
+		t.Errorf("Port() = %d, want 0 when unset", got)
+	}
+}
+
+func TestPort_Empty(t *testing.T) {
+	t.Setenv("GODOM_PORT", "")
+	if got := Port(); got != 0 {
+		t.Errorf("Port() = %d, want 0 for empty string", got)
+	}
+}
+
+func TestPort_Invalid(t *testing.T) {
+	t.Setenv("GODOM_PORT", "abc")
+	if got := Port(); got != 0 {
+		t.Errorf("Port() = %d, want 0 for non-numeric value", got)
+	}
+}
+
+func TestPort_Zero(t *testing.T) {
+	t.Setenv("GODOM_PORT", "0")
+	if got := Port(); got != 0 {
+		t.Errorf("Port() = %d, want 0 for explicit zero", got)
+	}
+}
+
+func TestPort_Negative(t *testing.T) {
+	t.Setenv("GODOM_PORT", "-1")
+	// Port returns the value as-is if Atoi succeeds and value != 0
+	if got := Port(); got != -1 {
+		t.Errorf("Port() = %d, want -1 for negative value", got)
+	}
+}
+
+// --- Host() ---
+
+func TestHost_CustomValue(t *testing.T) {
+	t.Setenv("GODOM_HOST", "0.0.0.0")
+	if got := Host(); got != "0.0.0.0" {
+		t.Errorf("Host() = %q, want \"0.0.0.0\"", got)
+	}
+}
+
+func TestHost_Unset(t *testing.T) {
+	os.Unsetenv("GODOM_HOST")
+	if got := Host(); got != "localhost" {
+		t.Errorf("Host() = %q, want \"localhost\" when unset", got)
+	}
+}
+
+func TestHost_Empty(t *testing.T) {
+	t.Setenv("GODOM_HOST", "")
+	if got := Host(); got != "localhost" {
+		t.Errorf("Host() = %q, want \"localhost\" for empty string", got)
+	}
+}
+
+// --- NoAuth() ---
+
+func TestNoAuth_True(t *testing.T) {
+	t.Setenv("GODOM_NO_AUTH", "true")
+	if !NoAuth() {
+		t.Error("NoAuth() should return true when GODOM_NO_AUTH=true")
+	}
+}
+
+func TestNoAuth_False(t *testing.T) {
+	t.Setenv("GODOM_NO_AUTH", "false")
+	if NoAuth() {
+		t.Error("NoAuth() should return false when GODOM_NO_AUTH=false")
+	}
+}
+
+func TestNoAuth_Unset(t *testing.T) {
+	os.Unsetenv("GODOM_NO_AUTH")
+	if NoAuth() {
+		t.Error("NoAuth() should return false when unset")
+	}
+}
+
+// --- Token() ---
+
+func TestToken_Set(t *testing.T) {
+	t.Setenv("GODOM_TOKEN", "my-secret-token")
+	if got := Token(); got != "my-secret-token" {
+		t.Errorf("Token() = %q, want \"my-secret-token\"", got)
+	}
+}
+
+func TestToken_Unset(t *testing.T) {
+	os.Unsetenv("GODOM_TOKEN")
+	if got := Token(); got != "" {
+		t.Errorf("Token() = %q, want empty string when unset", got)
+	}
+}
+
+func TestToken_Empty(t *testing.T) {
+	t.Setenv("GODOM_TOKEN", "")
+	if got := Token(); got != "" {
+		t.Errorf("Token() = %q, want empty string for empty env", got)
+	}
+}
+
+// --- NoBrowser() ---
+
+func TestNoBrowser_True(t *testing.T) {
+	t.Setenv("GODOM_NO_BROWSER", "1")
+	if !NoBrowser() {
+		t.Error("NoBrowser() should return true when GODOM_NO_BROWSER=1")
+	}
+}
+
+func TestNoBrowser_False(t *testing.T) {
+	t.Setenv("GODOM_NO_BROWSER", "0")
+	if NoBrowser() {
+		t.Error("NoBrowser() should return false when GODOM_NO_BROWSER=0")
+	}
+}
+
+func TestNoBrowser_Unset(t *testing.T) {
+	os.Unsetenv("GODOM_NO_BROWSER")
+	if NoBrowser() {
+		t.Error("NoBrowser() should return false when unset")
+	}
+}
+
+// --- Quiet() ---
+
+func TestQuiet_True(t *testing.T) {
+	t.Setenv("GODOM_QUIET", "true")
+	if !Quiet() {
+		t.Error("Quiet() should return true when GODOM_QUIET=true")
+	}
+}
+
+func TestQuiet_False(t *testing.T) {
+	t.Setenv("GODOM_QUIET", "false")
+	if Quiet() {
+		t.Error("Quiet() should return false when GODOM_QUIET=false")
+	}
+}
+
+func TestQuiet_Unset(t *testing.T) {
+	os.Unsetenv("GODOM_QUIET")
+	if Quiet() {
+		t.Error("Quiet() should return false when unset")
+	}
+}
+
 func filterEnv(environ []string, key string) []string {
 	prefix := key + "="
 	var filtered []string

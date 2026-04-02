@@ -68,7 +68,7 @@ type Info struct {
 	EventCh chan Event
 
 	// VDOM fields
-	VDOMTemplates []*vdom.TemplateNode      // parsed once at Mount()
+	VDOMTemplates []*vdom.TemplateNode      // parsed once at Register()
 	Tree          vdom.Node                 // last rendered tree (for diffing)
 	IDCounter     *vdom.IDCounter           // monotonic node ID allocator (persists across renders)
 	Bindings      map[string][]vdom.Binding // field name → node bindings (built during first resolve)

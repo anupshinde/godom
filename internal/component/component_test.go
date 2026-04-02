@@ -684,3 +684,59 @@ func TestSetField_DottedPath_NotAStruct(t *testing.T) {
 		t.Error("expected error for dotted path on non-struct field")
 	}
 }
+
+// --- AddMarkedFields / DrainMarkedFields tests ---
+
+func TestAddMarkedFields_Single(t *testing.T) {
+	ci := &Info{}
+	ci.AddMarkedFields("Name")
+	fields := ci.DrainMarkedFields()
+	if len(fields) != 1 || fields[0] != "Name" {
+		t.Errorf("DrainMarkedFields() = %v, want [Name]", fields)
+	}
+}
+
+func TestAddMarkedFields_Multiple(t *testing.T) {
+	ci := &Info{}
+	ci.AddMarkedFields("Name", "Count")
+	ci.AddMarkedFields("Items")
+	fields := ci.DrainMarkedFields()
+	if len(fields) != 3 || fields[0] != "Name" || fields[1] != "Count" || fields[2] != "Items" {
+		t.Errorf("DrainMarkedFields() = %v, want [Name Count Items]", fields)
+	}
+}
+
+func TestDrainMarkedFields_Empty(t *testing.T) {
+	ci := &Info{}
+	fields := ci.DrainMarkedFields()
+	if fields != nil {
+		t.Errorf("DrainMarkedFields() = %v, want nil", fields)
+	}
+}
+
+func TestDrainMarkedFields_ClearsAfterDrain(t *testing.T) {
+	ci := &Info{}
+	ci.AddMarkedFields("Name")
+	ci.DrainMarkedFields()
+	fields := ci.DrainMarkedFields()
+	if fields != nil {
+		t.Errorf("second DrainMarkedFields() = %v, want nil", fields)
+	}
+}
+
+// --- Map bracket access: bad JSON unmarshal for map value ---
+
+func TestSetField_MapBracket_BadJSON(t *testing.T) {
+	comp := &testMapComp{Counts: map[string]int{}}
+	ci := newTestCI(comp)
+
+	// "not-a-number" is a string, but Counts values are int — unmarshal should fail
+	err := ci.SetField("Counts[key]", json.RawMessage(`"not-a-number"`))
+	if err == nil {
+		t.Error("expected error for bad JSON value in map bracket access")
+	}
+	// Verify map was not mutated
+	if _, ok := comp.Counts["key"]; ok {
+		t.Error("map should not have key after failed SetField")
+	}
+}

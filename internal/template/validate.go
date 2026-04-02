@@ -22,7 +22,7 @@ type loopVarInfo struct {
 }
 
 // ValidateDirectives parses HTML for g-* directives and validates them
-// against the component's struct fields and methods. Called at Mount() time.
+// against the component's struct fields and methods. Called at Register() time.
 func ValidateDirectives(htmlStr string, ci *component.Info) error {
 	loopVars := collectLoopVars(htmlStr, ci)
 

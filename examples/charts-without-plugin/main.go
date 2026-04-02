@@ -121,6 +121,5 @@ func main() {
 	go root.startUpdates()
 
 	fmt.Println("ApexCharts demo — no plugin package, just inline bridge")
-	eng.Mount(root, "ui/index.html")
-	log.Fatal(eng.Start())
+	log.Fatal(eng.QuickServe(root, "ui/index.html"))
 }

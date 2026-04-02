@@ -20,16 +20,6 @@ func main() {
 	eng.SetFS(ui)
 	chartjs.Register(eng)
 
-	// Layout — root component, must be mounted first
-	layout := &Layout{
-		Slots: []SlotInfo{
-			{RegisteredName: "counter", Title: "Counter"},
-			{RegisteredName: "clock", Title: "Clock"},
-			{RegisteredName: "monitor", Title: "System Monitor"},
-		},
-	}
-	eng.Mount(layout, "ui/layout/index.html")
-
 	// Child components — registered by name, auto-wired via g-component attributes
 	navbar := &Navbar{ComponentCount: 6, Status: "Connected"}
 	eng.Register("navbar", navbar, "ui/navbar/index.html")
@@ -65,5 +55,13 @@ func main() {
 	go ticker.startTicker()
 	go tips.startTips()
 
-	log.Fatal(eng.Start())
+	// Layout — root component, rendered into document.body via QuickServe
+	layout := &Layout{
+		Slots: []SlotInfo{
+			{RegisteredName: "counter", Title: "Counter"},
+			{RegisteredName: "clock", Title: "Clock"},
+			{RegisteredName: "monitor", Title: "System Monitor"},
+		},
+	}
+	log.Fatal(eng.QuickServe(layout, "ui/layout/index.html"))
 }

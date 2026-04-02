@@ -1,6 +1,6 @@
 # Nested Component Composition
 
-godom supports nested component trees where a registered component's template contains `g-component` targets for other registered components. This works in both the standard Mount+Register pattern and the Register-only (external hosting / embedded) pattern.
+godom supports nested component trees where a registered component's template contains `g-component` targets for other registered components. This works in both the QuickServe pattern (single root) and the Register-only (external hosting / embedded) pattern.
 
 ## How it works
 
@@ -8,20 +8,25 @@ A layout component's template declares `g-component` targets. When the bridge re
 
 ### Example: embedded mode with nested layout
 
-**Go side** — no `Mount()`, all components registered:
+**Go side** — all components registered, no root:
 
 ```go
 eng := godom.NewEngine()
 eng.SetFS(ui)
 
-// Layout is registered, not mounted — it renders into the external page
+// Layout is registered, not a root — it renders into the external page
 eng.Register("layout", layout, "ui/layout/index.html")
 eng.Register("counter", counter, "ui/counter/index.html")
 eng.Register("clock", clock, "ui/clock/index.html")
 eng.Register("sidebar", sidebar, "ui/sidebar/index.html")
 
+mux := http.NewServeMux()
+eng.SetMux(mux, nil)
 eng.NoBrowser = true
-log.Fatal(eng.Start())
+if err := eng.Run(); err != nil {
+    log.Fatal(err)
+}
+log.Fatal(eng.ListenAndServe())
 ```
 
 **Layout template** (`ui/layout/index.html`) — contains child targets:
@@ -49,32 +54,22 @@ The external page declares a single `g-component` target. godom renders the full
 
 ### Interactive features work fully
 
-This pattern supports the same interactive complexity as the standard Mount-based mode. Drag-and-drop reordering of child components within the layout, shared state between siblings, and all other godom features work correctly through the nested chain.
+This pattern supports the same interactive complexity as the QuickServe-based mode. Drag-and-drop reordering of child components within the layout, shared state between siblings, and all other godom features work correctly through the nested chain.
 
-The VDOM pipeline (tree build → diff → patches) operates the same way regardless of whether the outer shell is served by godom or by an external page. The `nodeMap` and `IDCounter` stay consistent through the full hierarchy.
+The VDOM pipeline (tree build, diff, patches) operates the same way regardless of whether the outer shell is served by godom or by an external page. The `nodeMap` and `IDCounter` stay consistent through the full hierarchy.
 
 ## Gotchas
 
-### Registration order matters
+### Registration order
 
-Components must be registered in parent-before-child order. The layout component must init before its children so that the `g-component` targets exist in the DOM when the children try to render. If a child component inits before its parent, the bridge won't find the target element.
+When a child component's init arrives before the parent has rendered, the bridge queues it and retries after the next successful init. This means registration order is flexible — the bridge handles out-of-order inits automatically.
 
-```go
-// Correct — layout first, then its children
-eng.Register("layout", layout, "ui/layout/index.html")
-eng.Register("counter", counter, "ui/counter/index.html")
+For `document.body` components (via `QuickServe`), the server ensures the root is sent first.
 
-// Wrong — counter inits before layout, target doesn't exist yet
-eng.Register("counter", counter, "ui/counter/index.html")
-eng.Register("layout", layout, "ui/layout/index.html")
-```
+### Examples
 
-There is currently no validation for this ordering. Getting it wrong results in child components silently not rendering (no error, no crash — the bridge just doesn't find a matching target element). See the roadmap for planned ordering validation.
-
-### No dedicated example yet
-
-This pattern has been tested (using the multi-component layout with the embedded-widget setup) but there is no dedicated example in the repo. The `examples/multi-component/` example demonstrates the layout with drag-drop reordering using the Mount pattern. The `examples/embedded-widget/` example demonstrates external hosting with flat components. The nested composition pattern combines both approaches.
+The `examples/multi-component/` example demonstrates nested composition: a layout component whose template contains `g-component` targets for child components (counter, clock, sidebar, etc.) using QuickServe. The `examples/embedded-widget/` example demonstrates external hosting with flat components.
 
 ### Future changes may affect this
 
-This works because the bridge's target discovery (`querySelectorAll('[g-component="name"]')`) runs after each component init, finding targets regardless of whether they were in the original HTML or injected by another component. This behavior is not explicitly guaranteed by the framework — it's a natural consequence of how init ordering and DOM queries interact. We don't plan to break it, but changes to component init sequencing or target discovery could affect it.
+This works because the bridge queues pending inits and retries them after each successful init render. Changes to the init queueing mechanism or target discovery could affect nested composition. See COR-76 for the planned pull-based init model.

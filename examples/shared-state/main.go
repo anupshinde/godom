@@ -14,9 +14,6 @@ func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
 
-	layout := &Layout{}
-	eng.Mount(layout, "ui/layout/index.html")
-
 	// One shared state, four components.
 	shared := &CounterState{Step: 1}
 
@@ -34,5 +31,5 @@ func main() {
 	display := &CounterDisplay{CounterState: shared}
 	eng.Register("counter_display", display, "ui/counter-display/index.html")
 
-	log.Fatal(eng.Start())
+	log.Fatal(eng.QuickServe(&Layout{}, "ui/layout/index.html"))
 }

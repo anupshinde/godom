@@ -250,8 +250,7 @@ func main() {
 	go root.run()
 
 	fmt.Printf("Video Player — %s\n", videoPath)
-	eng.Mount(root, "ui/index.html")
-	log.Fatal(eng.Start())
+	log.Fatal(eng.QuickServe(root, "ui/index.html"))
 }
 
 func probeSeconds(path string) float64 {

@@ -4368,3 +4368,244 @@ func TestResolve_GScroll(t *testing.T) {
 		t.Errorf("expected handler 'Handle', got %q", ev.Handler)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Coverage gap tests
+// ---------------------------------------------------------------------------
+
+// buildBaseEnv: pointer field that is non-nil gets dereferenced (line 1000).
+type testStateWithPtrField struct {
+	Name  string
+	Score *int
+}
+
+func (s *testStateWithPtrField) ComputedName() string { return "computed_" + s.Name }
+
+func TestBuildBaseEnv_PointerFieldDeref(t *testing.T) {
+	score := 42
+	state := &testStateWithPtrField{Name: "Alice", Score: &score}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+	env := BuildExprEnv(ctx)
+
+	// Score pointer should be dereferenced to its int value.
+	if env["Score"] != 42 {
+		t.Errorf("expected Score=42, got %v", env["Score"])
+	}
+	if env["Name"] != "Alice" {
+		t.Errorf("expected Name='Alice', got %v", env["Name"])
+	}
+	// Method should be present.
+	if _, ok := env["ComputedName"]; !ok {
+		t.Error("expected ComputedName method in env")
+	}
+}
+
+// buildBaseEnv: nil pointer field (stays nil, doesn't deref).
+func TestBuildBaseEnv_NilPointerField(t *testing.T) {
+	state := &testStateWithPtrField{Name: "Bob", Score: nil}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+	env := BuildExprEnv(ctx)
+
+	// Nil pointer field: fv.IsNil() is true, loop breaks, fv is still valid (a nil ptr).
+	// The env should still contain the key since fv.IsValid() is true.
+	if _, ok := env["Score"]; !ok {
+		t.Error("expected Score key in env even when nil pointer")
+	}
+}
+
+// resolveSimpleExpr: negated simple expression with loop variable.
+func TestResolveSimpleExpr_NegatedLoopVar(t *testing.T) {
+	state := &testDirectiveState{Visible: true}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  map[string]any{"active": true},
+	}
+
+	// "!active" should resolve to false via the Vars fast path.
+	val := ResolveExpr("!active", ctx)
+	if val != false {
+		t.Errorf("expected !active=false, got %v", val)
+	}
+}
+
+// resolveSimpleExpr: dotted path through loop variable (e.g. "item.Name").
+type testItem struct {
+	Name string
+}
+
+func TestResolveSimpleExpr_LoopVarDottedPath(t *testing.T) {
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  map[string]any{"item": testItem{Name: "hello"}},
+	}
+
+	val := ResolveExpr("item.Name", ctx)
+	if val != "hello" {
+		t.Errorf("expected 'hello', got %v", val)
+	}
+}
+
+// resolveSimpleExpr: simple loop variable (no dot).
+func TestResolveSimpleExpr_LoopVarSimple(t *testing.T) {
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  map[string]any{"idx": 7},
+	}
+
+	val := ResolveExpr("idx", ctx)
+	if val != 7 {
+		t.Errorf("expected 7, got %v", val)
+	}
+}
+
+// ResolveExpr: empty expression returns nil.
+func TestResolveExpr_EmptyString(t *testing.T) {
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+
+	val := ResolveExpr("", ctx)
+	if val != nil {
+		t.Errorf("expected nil for empty expr, got %v", val)
+	}
+
+	// Whitespace-only also returns nil.
+	val = ResolveExpr("   ", ctx)
+	if val != nil {
+		t.Errorf("expected nil for whitespace expr, got %v", val)
+	}
+}
+
+// ResolveExpr: negated zero-arg method call "!ComputedName()" or "!Visible()".
+type testNegatedMethodState struct {
+	Flag bool
+}
+
+func (s *testNegatedMethodState) IsActive() bool { return s.Flag }
+
+func TestResolveExpr_NegatedMethodCall(t *testing.T) {
+	state := &testNegatedMethodState{Flag: true}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+
+	// "!IsActive()" should return false (negation of true).
+	val := ResolveExpr("!IsActive()", ctx)
+	if val != false {
+		t.Errorf("expected !IsActive()=false when Flag=true, got %v", val)
+	}
+
+	// Positive case: Flag=false → !IsActive() = true.
+	state.Flag = false
+	ctx.baseEnv = nil // clear cached env
+	val = ResolveExpr("!IsActive()", ctx)
+	if val != true {
+		t.Errorf("expected !IsActive()=true when Flag=false, got %v", val)
+	}
+}
+
+// ResolveExpr: bracket map access from Vars (lines 1160-1174).
+func TestResolveExpr_MapAccessFromVars(t *testing.T) {
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  map[string]any{"myMap": map[string]int{"x": 10, "y": 20}},
+	}
+
+	val := ResolveExpr("myMap[x]", ctx)
+	if val != 10 {
+		t.Errorf("expected myMap[x]=10, got %v", val)
+	}
+
+	val = ResolveExpr("myMap[y]", ctx)
+	if val != 20 {
+		t.Errorf("expected myMap[y]=20, got %v", val)
+	}
+}
+
+// ResolveExpr: bracket map access from Vars, missing key returns empty string.
+func TestResolveExpr_MapAccessFromVarsMissingKey(t *testing.T) {
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  map[string]any{"myMap": map[string]int{"x": 10}},
+	}
+
+	val := ResolveExpr("myMap[z]", ctx)
+	if val != "" {
+		t.Errorf("expected empty string for missing key, got %v", val)
+	}
+}
+
+// ResolveExpr: bracket map access from Vars with nil Vars falls through.
+func TestResolveExpr_MapAccessNilVars(t *testing.T) {
+	state := &testDirectiveState{ChartData: map[string]int{"a": 5}}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  nil,
+	}
+
+	// Should resolve from struct field, not vars.
+	val := ResolveExpr("ChartData[a]", ctx)
+	if val != 5 {
+		t.Errorf("expected ChartData[a]=5, got %v", val)
+	}
+}
+
+// ResolveExpr: bracket map access from Vars where field exists but is not a map.
+func TestResolveExpr_MapAccessVarsNonMap(t *testing.T) {
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  map[string]any{"notAMap": "hello"},
+	}
+
+	val := ResolveExpr("notAMap[x]", ctx)
+	if val != "" {
+		t.Errorf("expected empty string for non-map var, got %v", val)
+	}
+}
+
+// ResolveExpr: bracket map access from Vars with pointer value.
+func TestResolveExpr_MapAccessVarsPointerToMap(t *testing.T) {
+	m := map[string]int{"key": 99}
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{
+		State: reflect.ValueOf(state),
+		Vars:  map[string]any{"ptrMap": &m},
+	}
+
+	val := ResolveExpr("ptrMap[key]", ctx)
+	if val != 99 {
+		t.Errorf("expected ptrMap[key]=99, got %v", val)
+	}
+}
+
+// resolveSimpleExpr: bare "!" (negation with nothing after) returns nil.
+func TestResolveExpr_BareNegation(t *testing.T) {
+	state := &testDirectiveState{}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+
+	// "!" is isSimpleExpr=true but after stripping "!" we get "", which falls through.
+	val := ResolveExpr("!", ctx)
+	if val != nil {
+		t.Errorf("expected nil for bare '!', got %v", val)
+	}
+}
+
+// [COVERAGE GAP] tree.go:83 (ParseTemplate error return)
+// html.ParseFragment never returns an error — it handles any byte sequence and
+// always produces a valid tree. The error-return branch is dead code.
+
+// [COVERAGE GAP] tree.go:111 (htmlToTemplate default branch)
+// Go's html.Parse only produces TextNode, ElementNode, and CommentNode inside
+// <body>. The default case can never be reached through ParseTemplate.
+
+// [COVERAGE GAP] tree.go:1430 (DeepCopyJSON unmarshal error)
+// json.Marshal succeeding guarantees the output is valid JSON, so
+// json.Unmarshal into any will never fail on those same bytes.
+
+// [COVERAGE GAP] tree.go:1436-1446 (findBody)
+// findBody is only called from ParseTemplate via html.ParseFragment which
+// always synthesizes <html><head><body>, so findBody never returns nil.
+// The function itself is unreachable except through ParseTemplate which
+// always provides a body.

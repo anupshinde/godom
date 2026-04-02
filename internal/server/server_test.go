@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	"github.com/anupshinde/godom/internal/component"
@@ -226,143 +225,233 @@ func TestVDOMBuildUpdate_MultipleIncrements(t *testing.T) {
 	}
 }
 
-// --- generateToken tests ---
+// generateToken and checkAuth tests moved to internal/middleware/token_auth_test.go
 
-func TestGenerateToken_Length(t *testing.T) {
-	tok := generateToken()
-	// 16 bytes → 32 hex characters
-	if len(tok) != 32 {
-		t.Errorf("expected 32-char hex token, got %d chars: %q", len(tok), tok)
+// localIP tests moved to internal/utils/utils_test.go
+
+// --- Cleanup tests ---
+
+type cleanupTracker struct {
+	Component struct{}
+	cleaned   bool
+}
+
+func (c *cleanupTracker) Cleanup() {
+	c.cleaned = true
+}
+
+func TestCleanup_CallsCleanupMethod(t *testing.T) {
+	app := &cleanupTracker{}
+	ci := &component.Info{
+		Value:   reflect.ValueOf(app),
+		Typ:     reflect.TypeOf(*app),
+		EventCh: make(chan component.Event, 1),
+	}
+
+	Cleanup([]*component.Info{ci})
+
+	if !app.cleaned {
+		t.Error("expected Cleanup() to be called on component")
 	}
 }
 
-func TestGenerateToken_Unique(t *testing.T) {
-	a := generateToken()
-	b := generateToken()
-	if a == b {
-		t.Errorf("expected different tokens, both are %q", a)
+func TestCleanup_ClosesEventCh(t *testing.T) {
+	ci := &component.Info{
+		Value:   reflect.ValueOf(&counterApp{}),
+		Typ:     reflect.TypeOf(counterApp{}),
+		EventCh: make(chan component.Event, 1),
+	}
+
+	Cleanup([]*component.Info{ci})
+
+	// Channel should be closed — reading should return zero value immediately.
+	select {
+	case _, ok := <-ci.EventCh:
+		if ok {
+			t.Error("expected EventCh to be closed")
+		}
+	default:
+		t.Error("expected EventCh to be closed, but it blocked")
 	}
 }
 
-func TestGenerateToken_ValidHex(t *testing.T) {
-	tok := generateToken()
-	for _, c := range tok {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
-			t.Errorf("token %q contains non-hex char %c", tok, c)
-			break
+func TestCleanup_NilEventCh(t *testing.T) {
+	ci := &component.Info{
+		Value: reflect.ValueOf(&counterApp{}),
+		Typ:   reflect.TypeOf(counterApp{}),
+		// EventCh is nil
+	}
+	// Should not panic.
+	Cleanup([]*component.Info{ci})
+}
+
+func TestCleanup_NoCleanupMethod(t *testing.T) {
+	app := &counterApp{}
+	ci := &component.Info{
+		Value:   reflect.ValueOf(app),
+		Typ:     reflect.TypeOf(*app),
+		EventCh: make(chan component.Event, 1),
+	}
+	// Should not panic — counterApp doesn't have Cleanup().
+	Cleanup([]*component.Info{ci})
+}
+
+func TestCleanup_EmptySlice(t *testing.T) {
+	Cleanup(nil)
+	Cleanup([]*component.Info{})
+}
+
+// --- wireRefresh tests ---
+
+func TestWireRefresh_SendsRefreshEvent(t *testing.T) {
+	ci := &component.Info{
+		EventCh: make(chan component.Event, 1),
+	}
+	wireRefresh(ci)
+
+	ci.RefreshFn()
+
+	select {
+	case evt := <-ci.EventCh:
+		if evt.Kind != component.RefreshKind {
+			t.Errorf("expected RefreshKind, got %d", evt.Kind)
+		}
+	default:
+		t.Error("expected event on EventCh")
+	}
+}
+
+func TestWireRefresh_NilEventCh(t *testing.T) {
+	ci := &component.Info{}
+	wireRefresh(ci)
+	// Should not panic when EventCh is nil.
+	ci.RefreshFn()
+}
+
+// --- shouldEnqueue / shouldProcess tests ---
+
+func TestShouldEnqueue_AlwaysTrue(t *testing.T) {
+	events := []component.Event{
+		{Kind: component.NodeEventKind},
+		{Kind: component.MethodCallKind},
+		{Kind: component.RefreshKind},
+	}
+	for _, e := range events {
+		if !shouldEnqueue(e) {
+			t.Errorf("shouldEnqueue returned false for kind %d", e.Kind)
 		}
 	}
 }
 
-// --- checkAuth tests ---
-
-func TestCheckAuth_ValidQueryParam(t *testing.T) {
-	token := "abc123"
-	r := httptest.NewRequest("GET", "/?token=abc123", nil)
-	w := httptest.NewRecorder()
-
-	ok := checkAuth(token, w, r)
-	if !ok {
-		t.Error("expected auth to succeed with valid query param")
+func TestShouldProcess_AlwaysTrue(t *testing.T) {
+	events := []component.Event{
+		{Kind: component.NodeEventKind},
+		{Kind: component.MethodCallKind},
+		{Kind: component.RefreshKind},
 	}
-
-	// Should set cookie
-	resp := w.Result()
-	cookies := resp.Cookies()
-	var found bool
-	for _, c := range cookies {
-		if c.Name == "godom_token" && c.Value == token {
-			found = true
-			if !c.HttpOnly {
-				t.Error("expected HttpOnly cookie")
-			}
-			if c.SameSite != http.SameSiteStrictMode {
-				t.Error("expected SameSite=Strict cookie")
-			}
+	for _, e := range events {
+		if !shouldProcess(e) {
+			t.Errorf("shouldProcess returned false for kind %d", e.Kind)
 		}
 	}
-	if !found {
-		t.Error("expected godom_token cookie to be set")
-	}
 }
 
-func TestCheckAuth_ValidCookie(t *testing.T) {
-	token := "secret42"
-	r := httptest.NewRequest("GET", "/", nil)
-	r.AddCookie(&http.Cookie{Name: "godom_token", Value: token})
-	w := httptest.NewRecorder()
+// --- processEvents tests ---
 
-	ok := checkAuth(token, w, r)
-	if !ok {
-		t.Error("expected auth to succeed with valid cookie")
+func TestProcessEvents_DispatchesRefresh(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+	ci.HTMLBody = counterHTML
+	ci.EventCh = make(chan component.Event, 8)
+
+	// Build initial tree so executeRefresh works.
+	ci.IDCounter = &vdom.IDCounter{}
+	BuildInit(ci)
+
+	ctx := &serverCtx{
+		pool:   &connPool{},
+		sm:     &sharedPtrMaps{ptrToCompIdx: map[uintptr][]int{}, compIdxToPtr: map[int][]uintptr{}},
+		lookup: newNodeLookup(),
+		comps:  []*component.Info{ci},
 	}
+
+	// Start processor.
+	done := make(chan struct{})
+	go func() {
+		ctx.processEvents(ci, 0)
+		close(done)
+	}()
+
+	// Send refresh event.
+	ci.EventCh <- component.Event{Kind: component.RefreshKind}
+
+	// Close channel to stop processor.
+	close(ci.EventCh)
+	<-done
 }
 
-func TestCheckAuth_WrongToken(t *testing.T) {
-	r := httptest.NewRequest("GET", "/?token=wrong", nil)
-	w := httptest.NewRecorder()
+func TestProcessEvents_DispatchesNodeEvent(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+	ci.HTMLBody = counterHTML
+	ci.EventCh = make(chan component.Event, 8)
 
-	ok := checkAuth("correct", w, r)
-	if ok {
-		t.Error("expected auth to fail with wrong token")
+	ci.IDCounter = &vdom.IDCounter{}
+	BuildInit(ci)
+
+	ctx := &serverCtx{
+		pool:   &connPool{},
+		sm:     &sharedPtrMaps{ptrToCompIdx: map[uintptr][]int{}, compIdxToPtr: map[int][]uintptr{}},
+		lookup: newNodeLookup(),
+		comps:  []*component.Info{ci},
 	}
+
+	done := make(chan struct{})
+	go func() {
+		ctx.processEvents(ci, 0)
+		close(done)
+	}()
+
+	// Send a node event (with an invalid node ID — will log but not crash).
+	ci.EventCh <- component.Event{Kind: component.NodeEventKind, NodeID: 99999, Value: "test"}
+
+	close(ci.EventCh)
+	<-done
 }
 
-func TestCheckAuth_NoToken(t *testing.T) {
-	r := httptest.NewRequest("GET", "/", nil)
-	w := httptest.NewRecorder()
+func TestProcessEvents_DispatchesMethodCall(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+	ci.HTMLBody = counterHTML
+	ci.EventCh = make(chan component.Event, 8)
 
-	ok := checkAuth("secret", w, r)
-	if ok {
-		t.Error("expected auth to fail with no token")
-	}
-}
+	ci.IDCounter = &vdom.IDCounter{}
+	BuildInit(ci)
 
-func TestCheckAuth_WrongCookie(t *testing.T) {
-	r := httptest.NewRequest("GET", "/", nil)
-	r.AddCookie(&http.Cookie{Name: "godom_token", Value: "wrong"})
-	w := httptest.NewRecorder()
-
-	ok := checkAuth("correct", w, r)
-	if ok {
-		t.Error("expected auth to fail with wrong cookie")
-	}
-}
-
-func TestCheckAuth_CookieTakesPrecedence(t *testing.T) {
-	// Valid cookie but no query param — should still pass
-	token := "mytoken"
-	r := httptest.NewRequest("GET", "/", nil)
-	r.AddCookie(&http.Cookie{Name: "godom_token", Value: token})
-	w := httptest.NewRecorder()
-
-	ok := checkAuth(token, w, r)
-	if !ok {
-		t.Error("expected auth to succeed with valid cookie even without query param")
+	ctx := &serverCtx{
+		pool:   &connPool{},
+		sm:     &sharedPtrMaps{ptrToCompIdx: map[uintptr][]int{}, compIdxToPtr: map[int][]uintptr{}},
+		lookup: newNodeLookup(),
+		comps:  []*component.Info{ci},
 	}
 
-	// No new cookie should be set (already authed via cookie)
-	resp := w.Result()
-	if len(resp.Cookies()) != 0 {
-		t.Error("expected no new cookies when authed via existing cookie")
+	done := make(chan struct{})
+	go func() {
+		ctx.processEvents(ci, 0)
+		close(done)
+	}()
+
+	// Send a method call event.
+	ci.EventCh <- component.Event{
+		Kind: component.MethodCallKind,
+		Call: &gproto.MethodCall{Method: "Increment", NodeId: 1},
 	}
-}
 
-// --- localIP tests ---
+	close(ci.EventCh)
+	<-done
 
-func TestLocalIP_ReturnsString(t *testing.T) {
-	// localIP returns a non-loopback IPv4 or empty string
-	ip := localIP()
-	// On CI or machines without network, empty is acceptable
-	if ip != "" {
-		if strings.HasPrefix(ip, "127.") {
-			t.Errorf("expected non-loopback IP, got %q", ip)
-		}
-		// Basic IPv4 format check
-		parts := strings.Split(ip, ".")
-		if len(parts) != 4 {
-			t.Errorf("expected IPv4 format, got %q", ip)
-		}
+	if app.Count != 1 {
+		t.Errorf("expected Count=1 after Increment, got %d", app.Count)
 	}
 }
 
@@ -1909,6 +1998,27 @@ func TestBuildSurgicalPatches_ClassBindingWithExistingClass(t *testing.T) {
 	}
 }
 
+// fixedTokenAuthFn returns an AuthFunc that validates a fixed token via query param or cookie.
+// Mirrors what middleware.TokenAuth does but with a predetermined token for testing.
+func fixedTokenAuthFn(token string) func(http.ResponseWriter, *http.Request) bool {
+	return func(w http.ResponseWriter, r *http.Request) bool {
+		if c, err := r.Cookie("godom_token"); err == nil && c.Value == token {
+			return true
+		}
+		if r.URL.Query().Get("token") == token {
+			http.SetCookie(w, &http.Cookie{
+				Name:     "godom_token",
+				Value:    token,
+				Path:     "/",
+				HttpOnly: true,
+				SameSite: http.SameSiteStrictMode,
+			})
+			return true
+		}
+		return false
+	}
+}
+
 // --- Run integration tests ---
 
 func TestRun_ServesHTML(t *testing.T) {
@@ -1917,12 +2027,8 @@ func TestRun_ServesHTML(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*component.Info{ci},
-		NoAuth:    true,
-		NoBrowser: true,
-		Quiet:     true,
-		StaticFS:  fstest.MapFS{},
-		BridgeJS:  "// bridge",
+		Comps:    []*component.Info{ci},
+		BridgeJS: "// bridge",
 	}
 
 	// Start server in background
@@ -1957,12 +2063,8 @@ func TestRun_AuthRejectsWithoutToken(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*component.Info{ci},
-		NoAuth:    false,
-		Token:     "testsecret",
-		NoBrowser: true,
-		Quiet:     true,
-		StaticFS:  fstest.MapFS{},
+		Comps:  []*component.Info{ci},
+		AuthFn: fixedTokenAuthFn("testsecret"),
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -1987,12 +2089,8 @@ func TestRun_AuthAcceptsWithToken(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*component.Info{ci},
-		NoAuth:    false,
-		Token:     "testsecret",
-		NoBrowser: true,
-		Quiet:     true,
-		StaticFS:  fstest.MapFS{},
+		Comps:  []*component.Info{ci},
+		AuthFn: fixedTokenAuthFn("testsecret"),
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2047,10 +2145,6 @@ func TestRun_WebSocketUpgrade(t *testing.T) {
 
 	cfg := Config{
 		Comps: []*component.Info{ci},
-		NoAuth:    true,
-		NoBrowser: true,
-		Quiet:     true,
-		StaticFS:  fstest.MapFS{},
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2090,10 +2184,6 @@ func TestRun_WebSocketMethodCall(t *testing.T) {
 
 	cfg := Config{
 		Comps: []*component.Info{ci},
-		NoAuth:    true,
-		NoBrowser: true,
-		Quiet:     true,
-		StaticFS:  fstest.MapFS{},
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2157,10 +2247,6 @@ func TestRun_WebSocketNodeEvent(t *testing.T) {
 
 	cfg := Config{
 		Comps: []*component.Info{ci},
-		NoAuth:    true,
-		NoBrowser: true,
-		Quiet:     true,
-		StaticFS:  fstest.MapFS{},
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2229,12 +2315,8 @@ func TestRun_WebSocketAuthReject(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*component.Info{ci},
-		NoAuth:    false,
-		Token:     "secret",
-		NoBrowser: true,
-		Quiet:     true,
-		StaticFS:  fstest.MapFS{},
+		Comps:  []*component.Info{ci},
+		AuthFn: fixedTokenAuthFn("secret"),
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2259,13 +2341,9 @@ func TestRun_PluginScripts(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := Config{
-		Comps: []*component.Info{ci},
-		NoAuth:    true,
-		NoBrowser: true,
-		Quiet:     true,
-		StaticFS:  fstest.MapFS{},
-		Plugins:   map[string][]string{"chart": {"console.log('chart')"}},
-		BridgeJS:  "// bridge",
+		Comps:    []*component.Info{ci},
+		Plugins:  map[string][]string{"chart": {"console.log('chart')"}},
+		BridgeJS: "// bridge",
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2305,37 +2383,7 @@ func TestRun_PluginScripts(t *testing.T) {
 	}
 }
 
-func TestRun_StaticFiles(t *testing.T) {
-	app := &counterApp{Step: 1, Count: 0}
-	ci := makeCounterCI(app)
-	ci.HTMLBody = counterHTML
-
-	cfg := Config{
-		Comps: []*component.Info{ci},
-		NoAuth:    true,
-		NoBrowser: true,
-		Quiet:     true,
-		StaticFS: fstest.MapFS{
-			"style.css": &fstest.MapFile{Data: []byte("body{margin:0}")},
-		},
-	}
-
-	ln, err := startTestServer(t, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	resp, err := http.Get(fmt.Sprintf("http://%s/style.css", ln))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if string(body) != "body{margin:0}" {
-		t.Errorf("expected static CSS content, got %q", string(body))
-	}
-}
+// TestRun_StaticFiles removed: static file serving moved to user mux (SetMux)
 
 // --- broadcastClose test ---
 
@@ -2673,10 +2721,6 @@ func TestRun_WebSocketIgnoresNonBinary(t *testing.T) {
 
 	cfg := Config{
 		Comps: []*component.Info{ci},
-		NoAuth:    true,
-		NoBrowser: true,
-		Quiet:     true,
-		StaticFS:  fstest.MapFS{},
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2728,10 +2772,6 @@ func TestRun_WebSocketBadProtobuf(t *testing.T) {
 
 	cfg := Config{
 		Comps: []*component.Info{ci},
-		NoAuth:    true,
-		NoBrowser: true,
-		Quiet:     true,
-		StaticFS:  fstest.MapFS{},
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2835,17 +2875,7 @@ func TestBuildInit_Idempotent(t *testing.T) {
 	}
 }
 
-// --- printQR test ---
-
-func TestPrintQR_NoPanic(t *testing.T) {
-	// Just verify it doesn't panic
-	printQR("http://localhost:8080")
-}
-
-func TestPrintQR_EmptyURL(t *testing.T) {
-	// Should not panic with empty URL
-	printQR("")
-}
+// printQR tests moved to internal/utils/utils_test.go
 
 // --- g-if transition ID collision test ---
 
@@ -3052,15 +3082,6 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 	ci := cfg.Comps[0]
 	pool := &connPool{}
 
-	var token string
-	if !cfg.NoAuth {
-		if cfg.Token != "" {
-			token = cfg.Token
-		} else {
-			token = generateToken()
-		}
-	}
-
 	// Wire up RefreshFn (mirrors Run)
 	ci.RefreshFn = func() {
 		fields := ci.DrainMarkedFields()
@@ -3098,22 +3119,30 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 	}
 	bundleJS += cfg.BridgeJS
 
-	mux.HandleFunc("/godom.js", func(w http.ResponseWriter, r *http.Request) {
+	scriptPath := cfg.ScriptPath
+	if scriptPath == "" {
+		scriptPath = "/godom.js"
+	}
+	wsPath := cfg.WSPath
+	if wsPath == "" {
+		wsPath = "/ws"
+	}
+
+	mux.HandleFunc(scriptPath, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript")
 		fmt.Fprint(w, bundleJS)
 	})
 
-	pageHTML := strings.Replace(ci.HTMLBody, "</body>", "<script src=\"/godom.js\"></script>\n</body>", 1)
+	pageHTML := strings.Replace(ci.HTMLBody, "</body>", "<script src=\""+scriptPath+"\"></script>\n</body>", 1)
 
-	staticHandler := http.FileServer(http.FS(cfg.StaticFS))
-
+	// Wrap root handler with auth if AuthFn is set (mirrors middleware.Wrap)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
-			staticHandler.ServeHTTP(w, r)
+			http.NotFound(w, r)
 			return
 		}
-		if !cfg.NoAuth {
-			if !checkAuth(token, w, r) {
+		if cfg.AuthFn != nil {
+			if !cfg.AuthFn(w, r) {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -3126,8 +3155,8 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 		fmt.Fprint(w, pageHTML)
 	})
 
-	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		if !cfg.NoAuth && !checkAuth(token, w, r) {
+	mux.HandleFunc(wsPath, func(w http.ResponseWriter, r *http.Request) {
+		if cfg.AuthFn != nil && !cfg.AuthFn(w, r) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}

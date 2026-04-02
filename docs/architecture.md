@@ -26,46 +26,66 @@ The bridge never evaluates expressions, resolves data, or makes decisions. It re
 
 ## Startup sequence
 
+**Simple app (QuickServe):**
+
 ```go
 eng := godom.NewEngine()
-eng.SetFS(ui)                                          // set shared UI filesystem
-eng.Mount(&TodoApp{}, "ui/index.html")                 // parse, validate, prepare
-log.Fatal(eng.Start())                                 // serve, open browser, block
+eng.SetFS(ui)                                              // set component filesystem
+log.Fatal(eng.QuickServe(&TodoApp{}, "ui/index.html"))     // register, serve, block
 ```
 
-`Mount()` does the heavy lifting before any HTTP traffic:
+**Multi-page app (user owns the server):**
+
+```go
+eng := godom.NewEngine()
+eng.SetFS(components)
+eng.Register("counter", counter, "components/counter/index.html")
+
+mux := http.NewServeMux()
+mux.HandleFunc("/", serveDashboard)
+eng.SetMux(mux, nil)                                       // godom registers /ws + /godom.js
+if err := eng.Run(); err != nil { log.Fatal(err) }         // lifecycle + handler setup
+log.Fatal(eng.ListenAndServe())                             // bind port, open browser, block
+```
+
+`Register()` does the heavy lifting before any HTTP traffic:
 
 1. **Read the entry HTML** from the embedded filesystem at the given path (e.g., `"ui/index.html"`)
 2. **Expand components** — custom element tags like `<todo-item>` are replaced with the contents of `todo-item.html`. `g-*` attributes from the custom tag are transferred to the component's root element
 3. **Validate directives** — every `g-*` attribute is checked against the component struct via reflection. Unknown fields or methods cause `log.Fatal`. This happens at startup, not at runtime
 4. **Parse templates** — the expanded HTML is parsed into a reusable `[]*vdom.TemplateNode` tree. Directives, text interpolations (`{{expr}}`), `g-for` loops, and plugin bindings are all extracted into structured template nodes. This tree is parsed once and reused on every render
 
-`Mount()` also wires up the embedded `Component` struct's internal pointer (`ci`) so that `Refresh()` and `MarkRefresh()` work even if a goroutine starts before `Start()` is called.
+`Register()` also wires up the embedded `Component` struct's internal pointer (`ci`) so that `Refresh()` and `MarkRefresh()` work even if a goroutine starts before `Run()` is called.
 
-`Start()` then:
+`Run()` then:
 
-1. Reads `GODOM_*` environment variables for any settings not already set in code (see [configuration.md](configuration.md))
-2. Generates a random auth token (unless `NoAuth` is set or a fixed `Token` is provided)
-3. Wires the `Refresh()` callback (needs the connection pool, which only exists at start time)
+1. Auto-wires registered components to their slot names
+2. Sets up pluggable auth (token auth by default, or custom via `SetAuth()`)
+3. Wires the `Refresh()` callback (needs the connection pool, which only exists at run time)
 4. Builds a JS bundle (protobuf + protocol + plugin bootstrap + plugin scripts + bridge), served at `/godom.js`
-5. Injects `<script src="/godom.js"></script>` before `</body>` in the root HTML page
-6. Starts an HTTP server on the configured host and port, with token auth middleware on `/` and `/ws`. Serves `/godom.js` for both the root page and external pages. Non-root paths are served as static files from the embedded UI filesystem (CSS, images, fonts, etc.)
-7. Opens the default browser with the token URL
-8. Blocks forever, handling WebSocket connections
+5. Registers `/ws` and `/godom.js` handlers on the user's mux
+6. Starts event processor goroutines for each component
+
+`ListenAndServe()` then:
+
+1. Wraps the mux with auth middleware (if auth is enabled)
+2. Binds to the configured host and port
+3. Opens the default browser with the token URL
+4. Blocks forever, serving HTTP and handling WebSocket connections
 
 ## Internal packages
 
 | Package | Responsibility |
 |---------|----------------|
-| `godom.go` | Engine, Mount, Start — the public API surface |
+| `godom.go` | Engine, SetFS, SetMux, Register, Run, QuickServe, ListenAndServe — the public API |
 | `internal/vdom/` | Virtual DOM: node types, template parsing, tree resolution, diffing, merging, patch types |
 | `internal/component/` | Component struct, Info, method dispatch, field access |
-| `internal/server/` | HTTP server, WebSocket handling, connection pool, init/update pipeline, surgical refresh |
+| `internal/server/` | WebSocket handling, connection pool, init/update pipeline, surgical refresh |
 | `internal/render/` | Encode patches to protobuf `DomPatch`, encode VDOM trees to JSON wire format |
 | `internal/template/` | HTML parsing, component expansion, directive validation |
 | `internal/bridge/` | `bridge.js` — browser-side DOM construction, patch execution, event handling |
 | `internal/proto/` | `protocol.proto`, generated Go types, `protocol.js`, `protobuf.min.js` |
-| `internal/env/` | Environment detection utilities |
+| `internal/env/` | Environment config utilities (`GODOM_*` env var readers) |
 | `plugins/chartjs/` | Chart.js plugin — embeds library + thin bridge adapter |
 
 ## Data flow
@@ -223,7 +243,7 @@ After diffing, `MergeTree(oldTree, newTree)` updates the old tree in place: stru
 
 The template system is a two-phase pipeline:
 
-1. **Parse once** (`ParseTemplate`) — HTML with `g-*` directives is parsed into `[]*TemplateNode`. This happens at `Mount()` time and the result is reused
+1. **Parse once** (`ParseTemplate`) — HTML with `g-*` directives is parsed into `[]*TemplateNode`. This happens at `Register()` time and the result is reused
 2. **Resolve per render** (`ResolveTree`) — the template tree is evaluated against the current component state, producing concrete `[]Node` with resolved values, unrolled loops, evaluated conditionals, and assigned IDs
 
 Expression resolution uses a fast path for simple expressions (field access, dotted paths, loop variables, negation, zero-arg methods) via direct reflection. Complex expressions with comparisons (`==`, `!=`, `<`, `>`, `<=`, `>=`) and logical operators (`and`, `or`, `not`) are evaluated by [expr-lang/expr](https://github.com/expr-lang/expr) with compiled program caching.
@@ -246,10 +266,10 @@ Each component is a self-contained unit: own Go struct, own HTML template, own V
 ```
 eng.SetFS(ui)
 eng.Register("counter", counter, "ui/counter/index.html")  // child component
-eng.Mount(layout, "ui/layout/index.html")                  // root component
+// Then serve via QuickServe (root) or SetMux (multi-page)
 ```
 
-Components compose via `g-component` — the parent declares named insertion points using the `g-component` attribute, children render into them. The root component provides the full HTML page (with `<body>`). Child components provide HTML fragments. On init, each component is sent to the browser with an instance name. The bridge finds target elements via `querySelectorAll('[g-component="name"]')`.
+Components compose via `g-component` — the parent declares named insertion points using the `g-component` attribute, children render into them. With `QuickServe`, the root component provides the full HTML page (rendered into `document.body`). Child components provide HTML fragments. On init, each component is sent to the browser with an instance name. The bridge finds target elements via `querySelectorAll('[g-component="name"]')`.
 
 ```
 ┌─────────────────── Go process ───────────────────┐
@@ -299,14 +319,17 @@ Components don't know about each other's types — they communicate through func
 
 ### External hosting (Register-only pattern)
 
-Components can render into pages **not served by godom**. The host page includes godom's JS bundle via a script tag and declares `g-component` targets. No `Mount()` or layout component is needed — only `Register()` + `Start()`.
+Components can render into pages **not served by godom**. The host page includes godom's JS bundle via a script tag and declares `g-component` targets. Only `Register()` is needed — no root component.
 
 ```go
-// No Mount() — the external page provides the HTML shell
 eng.Register("stock", stock, "ui/stock/index.html")
 eng.Register("marquee", marquee, "ui/stock/marquee.html")
+
+mux := http.NewServeMux()
+eng.SetMux(mux, nil)
 eng.NoBrowser = true
-log.Fatal(eng.Start())
+eng.Run()
+log.Fatal(eng.ListenAndServe())
 ```
 
 The external page loads `/godom.js` from the godom server and sets `GODOM_WS_URL` to connect cross-origin:
@@ -397,7 +420,7 @@ See [drag-drop.md](drag-drop.md) for the full design rationale and alternatives 
 
 ## Validation
 
-At `Mount()` time, before the server starts, godom validates every directive in the HTML:
+At `Register()` time, before the server starts, godom validates every directive in the HTML:
 
 - `g-text="Name"` — checks that `Name` is an exported field (or a known loop variable with a valid path)
 - `g-click="Save"` — checks that `Save` is an exported method

@@ -53,6 +53,12 @@ func main() {
 	go stock.startTicker()
 	go marquee.startTicker()
 
+	mux := http.NewServeMux()
+	eng.SetMux(mux, nil)
+	if err := eng.Run(); err != nil {
+		log.Fatal(err)
+	}
+
 	fmt.Println("godom at http://localhost:9091")
-	log.Fatal(eng.Start())
+	log.Fatal(eng.ListenAndServe())
 }

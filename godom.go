@@ -5,14 +5,19 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
+	"net/http"
+	"strings"
 	"os"
 	"path"
 	"reflect"
-	"strconv"
+
 	"github.com/anupshinde/godom/internal/component"
 	"github.com/anupshinde/godom/internal/env"
+	"github.com/anupshinde/godom/internal/middleware"
 	"github.com/anupshinde/godom/internal/server"
 	"github.com/anupshinde/godom/internal/template"
+	"github.com/anupshinde/godom/internal/utils"
 	"github.com/anupshinde/godom/internal/vdom"
 )
 
@@ -28,19 +33,27 @@ var protocolJS string
 // Engine is the godom runtime. It registers components and plugins,
 // mounts the root component, and starts the server.
 type Engine struct {
-	Port       int    // 0 = random available port
-	Host       string // default "localhost"; set to "0.0.0.0" for network access
-	NoAuth     bool   // disable token auth (default false = auth enabled)
-	Token      string // fixed auth token; empty = generate random token
-	NoBrowser  bool   // don't open browser on start
-	Quiet      bool   // suppress startup output
-	NoGodomEnv bool   // skip reading GODOM_* environment variables for configuration
-	comps      []*component.Info          // mounted components
-	plugins    map[string][]string        // plugin name → JS scripts
-	staticFS   fs.FS                      // embedded UI filesystem for static assets
-	compIndex  map[interface{}]int        // comp pointer → index in comps slice
-	registered map[string]*registration   // instance name → registration (from Register)
-	uiFS       fs.FS                      // shared UI filesystem set via SetFS
+	Port           int    // 0 = random available port
+	Host           string // default "localhost"; set to "0.0.0.0" for network access
+	NoAuth         bool   // disable token auth (default false = auth enabled)
+	FixedAuthToken string // fixed auth token; empty = generate random token
+	NoBrowser      bool   // don't open browser on start
+	Quiet          bool   // suppress startup output
+
+	comps      []*component.Info        // mounted components
+	plugins    map[string][]string      // plugin name → JS scripts
+	compIndex  map[interface{}]int      // comp pointer → index in comps slice
+	registered map[string]*registration // instance name → registration (from Register)
+	componentFS fs.FS                   // filesystem for component templates, set via SetFS
+	userMux    *http.ServeMux           // custom mux from SetMux()
+	muxOpts    *MuxOptions              // custom paths for /ws and /godom.js
+	authFn     middleware.AuthFunc      // auth check; nil = no auth
+}
+
+// MuxOptions configures custom paths for godom's handlers when using SetMux.
+type MuxOptions struct {
+	WSPath     string // WebSocket endpoint path (default "/ws")
+	ScriptPath string // godom.js script path (default "/godom.js")
 }
 
 // registration holds metadata for a component registered via Register().
@@ -85,16 +98,36 @@ func (c Component) Refresh() {
 // NewEngine creates a new godom Engine.
 func NewEngine() *Engine {
 	return &Engine{
-		plugins:    make(map[string][]string),
-		compIndex:  make(map[interface{}]int),
-		registered: make(map[string]*registration),
+		Port:           env.Port(),
+		Host:           env.Host(),
+		NoAuth:         env.NoAuth(),
+		FixedAuthToken: env.Token(),
+		NoBrowser:      env.NoBrowser(),
+		Quiet:          env.Quiet(),
+		plugins:        make(map[string][]string),
+		compIndex:      make(map[interface{}]int),
+		registered:     make(map[string]*registration),
 	}
 }
 
 // SetFS sets the shared UI filesystem for templates. When set, Register()
 // uses this filesystem instead of requiring one per call.
 func (a *Engine) SetFS(fsys fs.FS) {
-	a.uiFS = fsys
+	a.componentFS = fsys
+}
+
+// SetMux sets the HTTP mux. godom registers its handlers (/ws, /godom.js) on it.
+// Must be called before Run().
+func (a *Engine) SetMux(mux *http.ServeMux, opts *MuxOptions) {
+	a.userMux = mux
+	a.muxOpts = opts
+}
+
+// SetAuth sets a custom auth function. When set, godom uses it to protect
+// /ws and (via AuthMiddleware/ListenAndServe) all routes. If not set and
+// NoAuth is false, godom uses built-in token auth.
+func (a *Engine) SetAuth(fn middleware.AuthFunc) {
+	a.authFn = fn
 }
 
 // RegisterPlugin registers a named plugin with one or more JS scripts.
@@ -102,47 +135,10 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts
 }
 
-// Mount registers the root component with an embedded filesystem and HTML template.
-// The entryPath is the path to the index.html file within fsys (e.g. "ui/index.html").
-//
-// For single-component apps, call Mount once. For multi-component apps, Mount the
-// root component and use Register() for child components — they are auto-wired to
-// parent templates via g-component attributes.
-func (a *Engine) Mount(comp interface{}, entryPath string) {
-	if a.uiFS == nil {
-		log.Fatal("godom: call SetFS() before Mount()")
-	}
-	v := reflect.ValueOf(comp)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		log.Fatal("godom: Mount requires a pointer to a struct")
-	}
-	if !embedsComponent(v.Elem().Type()) {
-		log.Fatal("godom: mounted struct must embed godom.Component")
-	}
-
-	a.mountInternal(comp, a.uiFS, entryPath)
-	// Root component renders into document.body.
-	a.comps[len(a.comps)-1].SlotName = "document.body"
-}
-
-// mountInternal is the shared mount logic used by both Mount and Register.
+// mountInternal is the shared mount logic used by Register.
 func (a *Engine) mountInternal(comp interface{}, fsys fs.FS, entryPath string) {
 	v := reflect.ValueOf(comp)
 	t := v.Elem().Type()
-
-	// Derive static FS from the first mounted component's entry path.
-	if a.staticFS == nil {
-		dir := path.Dir(entryPath)
-		if dir == "." {
-			a.staticFS = fsys
-		} else {
-			sub, err := fs.Sub(fsys, dir)
-			if err != nil {
-				log.Fatalf("godom: invalid entry path %q: %v", entryPath, err)
-			}
-			a.staticFS = sub
-		}
-	}
 
 	indexHTML, err := fs.ReadFile(fsys, entryPath)
 	if err != nil {
@@ -180,13 +176,13 @@ func (a *Engine) mountInternal(comp interface{}, fsys fs.FS, entryPath string) {
 // Register registers a named component with a template. The name is used in
 // g-component="name" attributes on elements in parent templates.
 //
-// Register uses the filesystem set via SetFS() or the one from the first Mount() call.
+// Register uses the filesystem set via SetFS().
 // The entryPath is relative to that filesystem (e.g. "ui/counter/index.html").
 func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	if name == "" {
 		log.Fatal("godom: Register requires a non-empty name")
 	}
-	if !vdom.IsValidIdentifier(name) {
+	if name != "document.body" && !vdom.IsValidIdentifier(name) {
 		log.Fatalf("godom: Register name %q must be a valid identifier (letters, digits, underscores; cannot start with a digit)", name)
 	}
 
@@ -202,8 +198,8 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 		log.Fatal("godom: registered struct must embed godom.Component")
 	}
 
-	if a.uiFS == nil {
-		log.Fatal("godom: call SetFS() or Mount() before Register()")
+	if a.componentFS == nil {
+		log.Fatal("godom: call SetFS() before Register()")
 	}
 
 	a.registered[name] = &registration{
@@ -212,16 +208,17 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 		entryPath: entryPath,
 	}
 
-	// Mount the component internally
-	a.mountInternal(comp, a.uiFS, entryPath)
+	// Register the component internally
+	a.mountInternal(comp, a.componentFS, entryPath)
 }
 
-// Start starts the HTTP server, opens the default browser, and blocks forever.
-// If GODOM_VALIDATE_ONLY=1 is set, Start() returns immediately after Mount() validation
+// Run initializes the component lifecycle, registers /ws and /godom.js handlers
+// on the mux set via SetMux, and starts event processors.
+// If GODOM_VALIDATE_ONLY=1 is set, Run() returns immediately after validation
 // succeeds — useful for CI and pre-commit checks.
-func (a *Engine) Start() error {
+func (a *Engine) Run() error {
 	if len(a.comps) == 0 {
-		return fmt.Errorf("godom: no component mounted, call Mount() before Start()")
+		return fmt.Errorf("godom: no components registered — call Register() before Run()")
 	}
 
 	// Auto-wire registered components to their g-component targets.
@@ -232,7 +229,7 @@ func (a *Engine) Start() error {
 	// Validate: every component must have a SlotName.
 	for _, ci := range a.comps {
 		if ci.SlotName == "" {
-			log.Fatal("godom: every component must have a SlotName — use Mount() for the root and Register() for children")
+			log.Fatal("godom: every component must have a SlotName — use Register() to name components")
 		}
 	}
 
@@ -243,56 +240,118 @@ func (a *Engine) Start() error {
 		os.Exit(0)
 	}
 
-	a.applyEnv()
+	// Resolve MuxOptions paths.
+	wsPath := "/ws"
+	scriptPath := "/godom.js"
+	if a.muxOpts != nil {
+		if a.muxOpts.WSPath != "" {
+			wsPath = a.muxOpts.WSPath
+		}
+		if a.muxOpts.ScriptPath != "" {
+			scriptPath = a.muxOpts.ScriptPath
+		}
+	}
+
+	// Set up auth: user-provided AuthFunc takes priority, then built-in token auth.
+	if a.authFn == nil && !a.NoAuth {
+		a.FixedAuthToken, a.authFn = middleware.TokenAuth()
+	}
 
 	cfg := server.Config{
 		Comps:         a.comps,
 		Plugins:       a.plugins,
-		StaticFS:      a.staticFS,
-		Port:          a.Port,
-		Host:          a.Host,
-		NoAuth:        a.NoAuth,
-		Token:         a.Token,
-		NoBrowser:     a.NoBrowser,
-		Quiet:         a.Quiet,
 		BridgeJS:      bridgeJS,
 		ProtobufMinJS: protobufMinJS,
 		ProtocolJS:    protocolJS,
+		UserMux:       a.userMux,
+		WSPath:        wsPath,
+		ScriptPath:    scriptPath,
+		AuthFn:        a.authFn,
 	}
 
 	return server.Run(cfg)
 }
 
-// applyEnv reads GODOM_* environment variables for fields not set in code.
-// Skipped entirely when NoGodomEnv is true.
-func (a *Engine) applyEnv() {
-	if a.NoGodomEnv {
-		return
+// ListenAndServe binds a port using the startup config (Port, Host), wraps
+// the mux with auth middleware if enabled, prints the URL, opens the browser,
+// and serves. Must be called after Run().
+func (a *Engine) ListenAndServe() error {
+	handler := middleware.Wrap(a.userMux, a.authFn)
+
+	host := utils.GetURLHost(a.Host)
+
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, a.Port))
+	if err != nil {
+		return fmt.Errorf("godom: failed to listen: %w", err)
 	}
-	if a.Port == 0 {
-		if v, err := strconv.Atoi(os.Getenv("GODOM_PORT")); err == nil && v != 0 {
-			a.Port = v
+
+	port := ln.Addr().(*net.TCPAddr).Port
+	utils.PrintUrlQRAndOpen(host, port, a.NoAuth, a.FixedAuthToken, a.NoBrowser, a.Quiet)
+
+	srv := &http.Server{Handler: handler}
+	return srv.Serve(ln)
+}
+
+// QuickServe is the convenience path for single-component apps. It registers
+// the component, creates a minimal page, sets up the mux, and serves.
+//
+// Example:
+//
+//	eng := godom.NewEngine()
+//	eng.SetFS(ui)
+//	log.Fatal(eng.QuickServe(&App{Step: 1}, "ui/index.html"))
+func (a *Engine) QuickServe(comp interface{}, templateFile string) error {
+	// Register as "document.body" — a special name that tells the bridge to render
+	// directly into document.body instead of a g-component element.
+	a.Register("document.body", comp, templateFile)
+
+	// Use the component's HTML as the full page, inject godom.js before </body>.
+	idx := a.compIndex[comp]
+	pageHTML := strings.Replace(a.comps[idx].HTMLBody, "</body>", "<script src=\"/godom.js\"></script>\n</body>", 1)
+
+	// Serve static files from the template's directory.
+	dir := path.Dir(templateFile)
+	var staticFS fs.FS
+	if dir == "." {
+		staticFS = a.componentFS
+	} else {
+		var err error
+		staticFS, err = fs.Sub(a.componentFS, dir)
+		if err != nil {
+			return fmt.Errorf("godom: invalid template path %q: %w", templateFile, err)
 		}
 	}
-	if a.Host == "" {
-		if v := os.Getenv("GODOM_HOST"); v != "" {
-			a.Host = v
+	staticHandler := http.FileServer(http.FS(staticFS))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			staticHandler.ServeHTTP(w, r)
+			return
 		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(pageHTML))
+	})
+
+	a.SetMux(mux, nil)
+	if err := a.Run(); err != nil {
+		return err
 	}
-	if !a.NoAuth {
-		a.NoAuth = env.Bool("GODOM_NO_AUTH")
-	}
-	if a.Token == "" {
-		if v := os.Getenv("GODOM_TOKEN"); v != "" {
-			a.Token = v
-		}
-	}
-	if !a.NoBrowser {
-		a.NoBrowser = env.Bool("GODOM_NO_BROWSER")
-	}
-	if !a.Quiet {
-		a.Quiet = env.Bool("GODOM_QUIET")
-	}
+
+	return a.ListenAndServe()
+}
+
+// AuthMiddleware wraps an http.Handler with the configured auth function.
+// If no auth is configured, returns the handler unwrapped.
+// Must be called after Run().
+func (a *Engine) AuthMiddleware(next http.Handler) http.Handler {
+	return middleware.Wrap(next, a.authFn)
+}
+
+// Cleanup closes event channels so component goroutines exit.
+// Call this when your server is shutting down.
+func (a *Engine) Cleanup() {
+	server.Cleanup(a.comps)
 }
 
 // autoWireComponents sets SlotName on each registered component's Info.
