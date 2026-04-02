@@ -66,9 +66,9 @@ When a child component's init arrives before the parent has rendered, the bridge
 
 For `document.body` components (via `QuickServe`), the server ensures the root is sent first.
 
-### No dedicated example yet
+### Examples
 
-This pattern has been tested (using the multi-component layout with the embedded-widget setup) but there is no dedicated example in the repo. The `examples/multi-component/` example demonstrates the layout with drag-drop reordering using QuickServe. The `examples/embedded-widget/` example demonstrates external hosting with flat components. The nested composition pattern combines both approaches.
+The `examples/multi-component/` example demonstrates nested composition: a layout component whose template contains `g-component` targets for child components (counter, clock, sidebar, etc.) using QuickServe. The `examples/embedded-widget/` example demonstrates external hosting with flat components.
 
 ### Future changes may affect this
 

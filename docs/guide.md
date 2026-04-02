@@ -483,7 +483,7 @@ eng := godom.NewEngine()
 eng.Port = 8081          // default: random available port
 eng.Host = "0.0.0.0"     // default: "localhost"
 eng.NoAuth = true         // default: false (token auth enabled)
-eng.Token = "my-secret"   // default: random 32-char hex
+eng.FixedAuthToken = "my-secret"  // default: random 32-char hex
 eng.NoBrowser = true      // default: false
 eng.Quiet = true          // default: false
 ```
@@ -574,17 +574,26 @@ Then run `air` instead of `go run .`. When you save a `.go` or `.html` file, Air
 | `counter` | Minimal app, click events, two-way binding |
 | `todolist` | Lists, loops, custom elements, keyboard events |
 | `clock` | Background goroutine, SVG, `Refresh()` |
+| `progress-bar` | Animated progress bar with `Refresh()` and `g-style:width` |
 | `stock-ticker` | Fast updates, conditional classes |
 | `drag-demo` | Drag and drop with groups |
+| `drag-tiles` | Drag-to-reorder colored tiles with animations |
 | `sync-demo` | Mouse tracking, `MarkRefresh`, surgical updates |
 | `basic-form-builder` | Complex state, conditionals, JSON export |
 | `solar-system` | SVG animation, parameterless methods |
-| `system-monitor` | System stats, charts plugin |
+| `breakout-game` | Canvas game, keyboard input |
+| `system-monitor` | System stats, presentational components |
+| `system-monitor-chartjs` | System monitor with Chart.js plugin |
+| `charts-without-plugin` | ApexCharts with inline bridge adapter (no plugin package) |
 | `video-player` | Canvas rendering, ffmpeg integration |
+| `markdown-editor` | Two-pane editor, plain JS for scroll sync |
 | `terminal` | Terminal emulation in the browser |
 | `multi-component` | Stateful components, `g-component`, cross-component callbacks |
+| `multi-page` | Multi-page app with user-owned mux and routing |
 | `embedded-widget` | External hosting, `/godom.js`, `GODOM_WS_URL` |
 | `same-component-repeated` | Same component in multiple DOM targets |
+| `shared-state` | Shared state between components via embedded struct |
+| `select-test` | Select/dropdown binding |
 
 Run any example:
 

@@ -85,7 +85,7 @@ log.Fatal(eng.ListenAndServe())                             // bind port, open b
 | `internal/template/` | HTML parsing, component expansion, directive validation |
 | `internal/bridge/` | `bridge.js` — browser-side DOM construction, patch execution, event handling |
 | `internal/proto/` | `protocol.proto`, generated Go types, `protocol.js`, `protobuf.min.js` |
-| `internal/env/` | Environment detection utilities |
+| `internal/env/` | Environment config utilities (`GODOM_*` env var readers) |
 | `plugins/chartjs/` | Chart.js plugin — embeds library + thin bridge adapter |
 
 ## Data flow

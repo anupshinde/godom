@@ -53,8 +53,7 @@ func (a *App) Decrement() {
 func main() {
     eng := godom.NewEngine()
     eng.SetFS(ui)
-    eng.Mount(&App{Step: 1}, "ui/index.html")
-    log.Fatal(eng.Start())
+    log.Fatal(eng.QuickServe(&App{Step: 1}, "ui/index.html"))
 }
 ```
 
@@ -238,7 +237,7 @@ eng.Register("counter", counter, "ui/counter/index.html")
 
 // Root component owns the page layout
 layout := &Layout{}
-eng.Mount(layout, "ui/layout/index.html")
+log.Fatal(eng.QuickServe(layout, "ui/layout/index.html"))
 ```
 
 The parent template declares targets with the `g-component` attribute:
@@ -279,15 +278,13 @@ eng := godom.NewEngine()                 // Create a new Engine
 eng.Port = 8081                          // Set port (0 = random)
 eng.Host = "0.0.0.0"                    // Bind to all interfaces (default "localhost")
 eng.NoAuth = true                       // Disable token auth (default false = auth enabled)
-eng.Token = "my-secret"                 // Fixed token (default: random per startup)
-eng.NoBrowser = true                    // Don't auto-open browser
-eng.Quiet = true                        // Suppress startup output
-eng.NoGodomEnv = true                   // Skip reading GODOM_* env vars
-eng.RegisterPlugin("chartjs", libJS, bridgeJS)   // Register a plugin with one or more JS scripts
-eng.SetFS(fsys)                                // Set the shared UI filesystem for templates
-eng.Register("name", child, "ui/child.html")   // Register a named child component with a template
-eng.Mount(&MyApp{}, "ui/index.html")            // Mount root component with entry path
-eng.Start()                                 // Start server, open browser, block forever
+eng.FixedAuthToken = "my-secret"                // Fixed token (default: random per startup)
+eng.NoBrowser = true                            // Don't auto-open browser
+eng.Quiet = true                                // Suppress startup output
+eng.RegisterPlugin("chartjs", libJS, bridgeJS)  // Register a plugin with one or more JS scripts
+eng.SetFS(fsys)                                 // Set the shared UI filesystem for templates
+eng.Register("name", child, "ui/child.html")    // Register a named child component with a template
+log.Fatal(eng.QuickServe(&MyApp{}, "ui/index.html"))  // Register, serve, block
 ```
 
 Settings can also be overridden at runtime via environment variables:
