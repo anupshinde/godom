@@ -1,0 +1,50 @@
+<style>
+    .scores-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .scores-table th {
+        text-align: left;
+        color: #555;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .scores-table td {
+        padding: 0.6rem 1rem;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        color: #aaa;
+    }
+    .scores-table .rank { color: #5dade2; font-weight: 600; }
+    .scores-table .score-val { color: #fff; font-weight: 600; font-size: 1.1rem; }
+    .scores-empty {
+        color: #444;
+        font-size: 0.95rem;
+        padding: 2rem;
+        text-align: center;
+    }
+</style>
+
+<div g-show="Entries">
+    <table class="scores-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Score</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr g-for="entry in Entries">
+                <td class="rank">{{entry.Rank}}</td>
+                <td class="score-val">{{entry.Score}}</td>
+                <td>{{entry.Date}}</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+<div class="scores-empty" g-hide="Entries">
+    No scores yet. Play a game first!
+</div>
