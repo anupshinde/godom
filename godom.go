@@ -44,7 +44,7 @@ type Engine struct {
 	plugins    map[string][]string      // plugin name → JS scripts
 	compIndex  map[interface{}]int      // comp pointer → index in comps slice
 	registered map[string]*registration // instance name → registration (from Register)
-	uiFS       fs.FS                    // shared UI filesystem set via SetFS
+	componentFS fs.FS                   // filesystem for component templates, set via SetFS
 	userMux    *http.ServeMux           // custom mux from SetMux()
 	muxOpts    *MuxOptions              // custom paths for /ws and /godom.js
 	authFn     middleware.AuthFunc      // auth check; nil = no auth
@@ -113,7 +113,7 @@ func NewEngine() *Engine {
 // SetFS sets the shared UI filesystem for templates. When set, Register()
 // uses this filesystem instead of requiring one per call.
 func (a *Engine) SetFS(fsys fs.FS) {
-	a.uiFS = fsys
+	a.componentFS = fsys
 }
 
 // SetMux sets the HTTP mux. godom registers its handlers (/ws, /godom.js) on it.
@@ -198,7 +198,7 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 		log.Fatal("godom: registered struct must embed godom.Component")
 	}
 
-	if a.uiFS == nil {
+	if a.componentFS == nil {
 		log.Fatal("godom: call SetFS() before Register()")
 	}
 
@@ -209,7 +209,7 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	}
 
 	// Register the component internally
-	a.mountInternal(comp, a.uiFS, entryPath)
+	a.mountInternal(comp, a.componentFS, entryPath)
 }
 
 // Run initializes the component lifecycle, registers /ws and /godom.js handlers
@@ -313,10 +313,10 @@ func (a *Engine) QuickServe(comp interface{}, templateFile string) error {
 	dir := path.Dir(templateFile)
 	var staticFS fs.FS
 	if dir == "." {
-		staticFS = a.uiFS
+		staticFS = a.componentFS
 	} else {
 		var err error
-		staticFS, err = fs.Sub(a.uiFS, dir)
+		staticFS, err = fs.Sub(a.componentFS, dir)
 		if err != nil {
 			return fmt.Errorf("godom: invalid template path %q: %w", templateFile, err)
 		}
