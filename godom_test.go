@@ -251,8 +251,8 @@ func TestSetFS(t *testing.T) {
 	fsys := makeTestFS()
 	e.SetFS(fsys)
 
-	if e.uiFS == nil {
-		t.Error("expected uiFS to be set")
+	if e.componentFS == nil {
+		t.Error("expected componentFS to be set")
 	}
 }
 

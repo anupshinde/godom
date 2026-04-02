@@ -1,10 +1,8 @@
 package render
 
-// [COVERAGE GAP] 98.6% — two unreachable lines:
-//   - tree_encode.go:110  "return nil" at end of EncodeTree type switch — defensive
-//     fallthrough for unknown vdom.Node implementations; all concrete types are covered.
-//   - tree_encode.go:169-171  error return in EncodeInitTreeMessage — json.Marshal on
-//     a WireNode struct cannot fail because all fields are JSON-serializable primitives.
+// [COVERAGE GAP] json.Marshal error in EncodeInitTreeMessage (tree_encode.go) — json.Marshal
+// on a WireNode struct cannot fail because all fields are JSON-serializable primitives.
+// This error branch is unreachable in practice.
 
 import (
 	"encoding/json"
@@ -1912,5 +1910,47 @@ func TestEncodePatchMessage_Lazy_Nested(t *testing.T) {
 	}
 	if inner.SubPatches[0].Text != "deep" {
 		t.Errorf("expected text 'deep', got %q", inner.SubPatches[0].Text)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// EncodeTree — unknown Node type falls through to final return nil
+// ---------------------------------------------------------------------------
+
+// fakeNode is a custom vdom.Node that none of the type-switch cases match.
+type fakeNode struct{}
+
+func (fakeNode) NodeType() int        { return 9999 }
+func (fakeNode) NodeID() int          { return 42 }
+func (fakeNode) DescendantsCount() int { return 0 }
+func (fakeNode) IsRemoved() bool      { return false }
+
+func TestEncodeTree_UnknownNodeType_ReturnsNil(t *testing.T) {
+	wn := EncodeTree(fakeNode{})
+	if wn != nil {
+		t.Errorf("expected nil for unknown node type, got %+v", wn)
+	}
+}
+
+func TestEncodeTreeJSON_UnknownNodeType_ReturnsNull(t *testing.T) {
+	b, err := EncodeTreeJSON(fakeNode{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(b) != "null" {
+		t.Errorf("expected 'null' JSON, got %q", string(b))
+	}
+}
+
+func TestEncodeInitTreeMessage_UnknownNodeType(t *testing.T) {
+	msg, err := EncodeInitTreeMessage(fakeNode{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if msg.Type != "init" {
+		t.Errorf("expected type 'init', got %q", msg.Type)
+	}
+	if string(msg.Tree) != "null" {
+		t.Errorf("expected tree 'null', got %q", string(msg.Tree))
 	}
 }

@@ -923,3 +923,86 @@ func TestValidateDirectives_DropzoneUnknown(t *testing.T) {
 		t.Error("expected error for unknown field in g-dropzone")
 	}
 }
+
+// --- containsOperator: comparison operators ---
+
+func TestValidateDirectives_ExprWithComparisonOperators(t *testing.T) {
+	ci := newValTestCI()
+	// Each comparison operator should cause containsOperator to return true,
+	// which means validateFieldExpr skips validation (defers to expr-lang).
+	tests := []struct {
+		name string
+		expr string
+	}{
+		{"==", `Count == 0`},
+		{"!=", `Count != 0`},
+		{">=", `Count >= 0`},
+		{"<=", `Count <= 0`},
+		{">", `Count > 0`},
+		{"<", `Count < 0`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			html := `<div g-show="` + tt.expr + `"></div>`
+			if err := ValidateDirectives(html, ci); err != nil {
+				t.Errorf("unexpected error for operator %s: %v", tt.name, err)
+			}
+		})
+	}
+}
+
+// --- containsOperator: logical keyword operators ---
+
+func TestValidateDirectives_ExprWithLogicalOperators(t *testing.T) {
+	ci := newValTestCI()
+	tests := []struct {
+		name string
+		expr string
+	}{
+		{"and", `Visible and Count`},
+		{"or", `Visible or Count`},
+		{"not_middle", `Visible not Count`},
+		{"not_start", `not Visible`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			html := `<div g-show="` + tt.expr + `"></div>`
+			if err := ValidateDirectives(html, ci); err != nil {
+				t.Errorf("unexpected error for logical operator %s: %v", tt.name, err)
+			}
+		})
+	}
+}
+
+// --- validateFieldExpr: method call with parentheses ---
+
+func TestValidateDirectives_FieldExprMethodCallWithParens(t *testing.T) {
+	ci := newValTestCI()
+	// Known method with parens: "Computed()" should pass
+	html := `<span g-text="Computed()"></span>`
+	if err := ValidateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error for method call with parens: %v", err)
+	}
+}
+
+func TestValidateDirectives_FieldExprUnknownMethodCallWithParens(t *testing.T) {
+	ci := newValTestCI()
+	// Unknown method with parens: "Unknown()" should fail
+	html := `<span g-text="Unknown()"></span>`
+	err := ValidateDirectives(html, ci)
+	if err == nil {
+		t.Error("expected error for unknown method call with parens")
+	}
+	if err != nil && !strings.Contains(err.Error(), "unknown method") {
+		t.Errorf("expected error mentioning 'unknown method', got: %v", err)
+	}
+}
+
+func TestValidateDirectives_FieldExprMethodCallWithArgs(t *testing.T) {
+	ci := newValTestCI()
+	// Known method with args in a field expression context: "Add('red')"
+	html := `<span g-text="Add('red')"></span>`
+	if err := ValidateDirectives(html, ci); err != nil {
+		t.Errorf("unexpected error for method call with args in field expr: %v", err)
+	}
+}

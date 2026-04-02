@@ -952,3 +952,11 @@ func TestMergeTree_CanMerge_KeyedElementChild(t *testing.T) {
 	}
 }
 
+// [COVERAGE GAP] merge.go lines 42-43, 50-51, 58-59
+// The inner tag/namespace checks inside mergeTree's switch cases for
+// ElementNode, KeyedElementNode, and PluginNode are unreachable.
+// canMerge (called at line 24) already verifies the exact same conditions
+// (tag, namespace, name) before the switch is entered. If canMerge returns
+// false, mergeTree returns early at line 25, so the inner guards can never
+// trigger. These are defensive redundant checks.
+
