@@ -47,11 +47,8 @@ func main() {
 		settingsTmpl.Execute(w, &PageData{Title: "Settings", Page: "settings"})
 	})
 
-	// godom registers handlers on the user's mux and starts component lifecycle.
-	eng.SetMux(mux, &godom.MuxOptions{
-		WSPath:     "/godom/ws",
-		ScriptPath: "/godom/godom.js",
-	})
+	// godom registers /ws and /godom.js on the user's mux and starts component lifecycle.
+	eng.SetMux(mux, nil)
 	if err := eng.Run(); err != nil {
 		log.Fatal(err)
 	}
