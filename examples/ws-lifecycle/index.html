@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WebSocket Lifecycle Hooks</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            padding: 2rem;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        h1 { font-size: 1.4rem; color: #f0f0f0; margin-bottom: 0.3rem; }
+        .subtitle { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; }
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 1rem;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+        }
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #666;
+        }
+        .dot.connected { background: #2ecc71; box-shadow: 0 0 6px rgba(46, 204, 113, 0.5); }
+        .dot.disconnected { background: #e74c3c; box-shadow: 0 0 6px rgba(231, 76, 60, 0.5); }
+        .dot.error { background: #f1c40f; box-shadow: 0 0 6px rgba(241, 196, 15, 0.5); }
+        .status-text { font-size: 0.95rem; }
+        .log {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            padding: 1rem;
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+        .log-entry { padding: 0.15rem 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+        .log-entry .time { color: #555; }
+        .log-entry .event { font-weight: 600; }
+        .log-entry .event.connect { color: #2ecc71; }
+        .log-entry .event.disconnect { color: #e74c3c; }
+        .log-entry .event.error { color: #f1c40f; }
+        .log-entry .detail { color: #888; }
+        .info {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            font-size: 0.8rem;
+            color: #666;
+            line-height: 1.6;
+        }
+        .info code { color: #5dade2; }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Lifecycle Hooks</h1>
+    <p class="subtitle">godom.onconnect / ondisconnect / onerror — no components rendered on this page</p>
+
+    <div class="status">
+        <div class="dot" id="dot"></div>
+        <div class="status-text" id="status-text">Connecting...</div>
+    </div>
+
+    <div class="log" id="log"></div>
+
+    <div class="info">
+        <p>This page loads <code>godom.js</code> but has no <code>g-component</code> elements.
+        A background stock ticker component runs in Go, updating every second (see server console).
+        The page only monitors the WebSocket connection lifecycle.</p>
+        <p style="margin-top: 0.5rem;">Try: stop the server, wait, restart it — watch reconnect.</p>
+    </div>
+
+    <script src="/godom.js"></script>
+    <script>
+        (function() {
+            var ns = window[window.GODOM_NS || "godom"];
+            var dot = document.getElementById("dot");
+            var statusText = document.getElementById("status-text");
+            var log = document.getElementById("log");
+            var connectCount = 0;
+
+            function logEvent(type, detail) {
+                var time = new Date().toLocaleTimeString();
+                var entry = document.createElement("div");
+                entry.className = "log-entry";
+                entry.innerHTML = '<span class="time">' + time + '</span> '
+                    + '<span class="event ' + type + '">' + type + '</span> '
+                    + (detail ? '<span class="detail">— ' + detail + '</span>' : '');
+                log.insertBefore(entry, log.firstChild);
+            }
+
+            ns.onconnect = function() {
+                connectCount++;
+                dot.className = "dot connected";
+                var label = connectCount === 1 ? "Connected" : "Reconnected (#" + connectCount + ")";
+                statusText.textContent = label;
+                logEvent("connect", label);
+            };
+
+            ns.ondisconnect = function(errorMsg) {
+                dot.className = "dot disconnected";
+                statusText.textContent = "Disconnected";
+                logEvent("disconnect", errorMsg || "clean close, will reconnect");
+            };
+
+            ns.onerror = function() {
+                dot.className = "dot error";
+                statusText.textContent = "Error";
+                logEvent("error", "WebSocket error");
+            };
+
+            logEvent("connect", "page loaded, waiting for WebSocket...");
+        })();
+    </script>
+</body>
+</html>

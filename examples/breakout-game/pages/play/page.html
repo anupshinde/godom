@@ -1,0 +1,13 @@
+{{define "content"}}
+<div class="page" style="padding: 0.5rem;">
+    <div g-component="game"></div>
+</div>
+<script>
+    // Heartbeat — periodically announce play view presence
+    function ping() {
+        var ns = window[window.GODOM_NS || "godom"];
+        if (ns && ns.call) ns.call("PlayPing");
+    }
+    setInterval(ping, 2000);
+</script>
+{{end}}

@@ -1,0 +1,34 @@
+<style>
+    .status-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        font-size: 0.75rem;
+    }
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+    .badge-controller {
+        background: rgba(46, 204, 113, 0.15);
+        color: #2ecc71;
+    }
+    .badge-playing {
+        background: rgba(93, 173, 226, 0.15);
+        color: #5dade2;
+    }
+    .badge-paused {
+        background: rgba(241, 196, 15, 0.15);
+        color: #f1c40f;
+    }
+</style>
+
+<div class="status-bar">
+    <span class="status-badge badge-controller" g-show="ControllerConnected">&#x1F3AE; Controller</span>
+    <span class="status-badge badge-playing" g-show="Playing" g-hide="Paused">&#x25B6; Playing</span>
+    <span class="status-badge badge-paused" g-show="Paused">&#x23F8; Paused</span>
+</div>

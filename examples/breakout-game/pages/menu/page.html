@@ -1,0 +1,111 @@
+{{define "content"}}
+<style>
+    .menu-page {
+        justify-content: center;
+        min-height: calc(100vh - 50px);
+        text-align: center;
+    }
+    .menu-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #f0f0f0;
+        letter-spacing: 0.15em;
+        margin-bottom: 0.5rem;
+    }
+    .menu-subtitle {
+        color: #666;
+        font-size: 0.95rem;
+        margin-bottom: 2rem;
+    }
+    .play-btn {
+        display: inline-block;
+        background: linear-gradient(to bottom, #5dade2, #2e86c1);
+        color: #fff;
+        font-size: 1.2rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        padding: 0.8rem 2.5rem;
+        border-radius: 8px;
+        text-decoration: none;
+        box-shadow: 0 0 20px rgba(93,173,226,0.3);
+        margin-bottom: 2rem;
+    }
+    .info-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+    .info-box {
+        text-align: center;
+    }
+    .info-label {
+        font-size: 0.7rem;
+        color: #555;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 0.3rem;
+    }
+    .info-text {
+        color: #888;
+        font-size: 0.8rem;
+        line-height: 1.6;
+    }
+    .controller-btn {
+        display: none;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        color: #aaa;
+        font-size: 0.9rem;
+        padding: 0.6rem 1.5rem;
+        border-radius: 6px;
+        text-decoration: none;
+        margin-bottom: 1rem;
+    }
+    @media (max-width: 700px) {
+        .controller-btn { display: inline-block; }
+    }
+    .scores-link {
+        color: #555;
+        font-size: 0.8rem;
+        text-decoration: none;
+        margin-top: 2rem;
+    }
+    @media (min-width: 500px) {
+        .menu-title { font-size: 4rem; }
+        .menu-subtitle { font-size: 1.1rem; margin-bottom: 3rem; }
+        .play-btn { font-size: 1.4rem; padding: 1rem 3rem; }
+        .info-grid { flex-direction: row; gap: 3rem; justify-content: center; margin-top: 2rem; }
+    }
+</style>
+<div class="page menu-page">
+    <h1 class="menu-title">BREAKOUT</h1>
+    <p class="menu-subtitle">Classic brick-breaking game in Go</p>
+
+    <a href="/play" class="play-btn">PLAY</a>
+    <a href="/controller" class="controller-btn">CONTROLLER MODE</a>
+
+    <div class="info-grid">
+        <div class="info-box">
+            <div class="info-label">Controls</div>
+            <div class="info-text">
+                Mouse to move paddle<br>
+                Arrow keys also work<br>
+                Space / P to pause<br>
+                Gyroscope on mobile
+            </div>
+        </div>
+        <div class="info-box">
+            <div class="info-label">Scoring</div>
+            <div class="info-text">
+                <span style="color: #9b59b6;">Top row: 6 pts</span><br>
+                <span style="color: #3498db;">Middle: 3-4 pts</span><br>
+                <span style="color: #e74c3c;">Bottom: 1-2 pts</span><br>
+                Clear all to win!
+            </div>
+        </div>
+    </div>
+
+    <a href="/scores" class="scores-link">View Scores &rarr;</a>
+</div>
+{{end}}

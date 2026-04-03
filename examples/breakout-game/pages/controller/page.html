@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Controller — Breakout</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+        }
+        .home-link {
+            position: fixed;
+            top: 0.5rem;
+            right: 0.5rem;
+            color: #444;
+            text-decoration: none;
+            font-size: 0.75rem;
+            z-index: 100;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.05);
+        }
+        .home-link:active { color: #888; }
+    </style>
+</head>
+<body>
+    <a href="/" class="home-link">Home</a>
+    <div g-component="controller"></div>
+    <script src="/godom.js"></script>
+    <script>
+        // Heartbeat — periodically announce controller presence
+        function ping() {
+            var ns = window[window.GODOM_NS || "godom"];
+            if (ns && ns.call) ns.call("ControllerPing");
+        }
+        setInterval(ping, 2000);
+    </script>
+</body>
+</html>
