@@ -6,8 +6,6 @@ import (
 	"math/rand"
 	"strconv"
 	"time"
-
-	"github.com/anupshinde/godom"
 )
 
 const (
@@ -42,88 +40,90 @@ type Brick struct {
 	Color   string
 	Visible bool
 	Points  int
-	// internal coords for collision
-	x, y float64
+	x, y    float64
 }
 
-type Game struct {
-	godom.Component
-
-	// Ball (CSS strings for rendering)
-	BallLeft   string
-	BallTop    string
-	BallHidden bool // true during death freeze
-	BallReady  bool // sitting on paddle, dimmed, not yet launched
-
-	// Paddle
-	PaddleLeft string
-
-	// Impact flash at death line
-	ImpactShow bool
-	ImpactLeft string
-
-	// Game state
-	Bricks   []Brick
+// GameState holds all shared game state. Both PlayView and ControllerView
+// embed a pointer to the same GameState instance, so changes are visible
+// to both and godom's shared pointer refresh keeps them in sync.
+type GameState struct {
+	// Rendered by both views
 	Score    int
 	Lives    int
 	Message  string
 	Playing  bool
 	Paused   bool
-	StartBtn string // "START" or "RESTART"
+	StartBtn string
+	PauseBtn string
 
-	// internal state (unexported = not sent to browser)
-	ballX, ballY float64
-	ballDX       float64
-	ballDY       float64
-	paddleX      float64
-	speed        float64
-	bricksLeft   int
-	calibrated   bool
-	areaLeftOffset float64
+	// Ball (rendered by play view, but state is shared for physics)
+	BallLeft   string
+	BallTop    string
+	BallHidden bool
+	BallReady  bool
 
-	// Controller steering
-	steerDir   int
-	steerStart time.Time
-	steerLast  time.Time
+	// Paddle
+	PaddleLeft string
 
-	// Gyroscope
+	// Impact flash
+	ImpactShow bool
+	ImpactLeft string
+
+	// Bricks
+	Bricks []Brick
+
+	// Gyroscope (rendered by controller, but state is shared)
 	Tilt      string
 	TiltPct   string
 	GyroMode  string
 	GyroBtn   string
 	Landscape bool
 
-	// Controller presence
-	ControllerActive string
-
-	// Sound/vibration events
+	// Sound/vibration
 	SoundEvent string
 
-	// Life-lost sequence timing
-	freezeUntil  time.Time
-	respawnAt    time.Time
-	impactAt     time.Time
-	waitingSpawn bool
+	// Internal physics state (unexported — not sent to browser)
+	ballX, ballY       float64
+	ballDX, ballDY     float64
+	paddleX            float64
+	speed              float64
+	bricksLeft         int
+	calibrated         bool
+	areaLeftOffset     float64
+	steerDir           int
+	steerStart         time.Time
+	steerLast          time.Time
+	freezeUntil        time.Time
+	respawnAt          time.Time
+	impactAt           time.Time
+	waitingSpawn       bool
 
-	// Score tracking callback — called when game ends
-	onGameOver func(score int)
+	// Page coordination
+	ControllerConnected bool // true when controller heartbeat is recent
+	lastControllerPing  time.Time
+	PlayViewConnected   bool // true when play view heartbeat is recent
+	lastPlayPing        time.Time
+	onGameOver          func(score int)
+	playViewCount       int
+	pendingAutoStart    bool // set by controller when redirecting to /play
 }
 
-func NewGame() *Game {
-	g := &Game{
+func NewGameState() *GameState {
+	gs := &GameState{
 		Lives:      3,
 		Message:    "Click START to play",
 		BallHidden: true,
 		StartBtn:   "START",
+		PauseBtn:   "PAUSE",
 		GyroMode:   "off",
 		GyroBtn:    "GYRO: OFF",
 	}
-	g.paddleX = (areaW - paddleW) / 2
-	g.syncCSS()
-	return g
+	gs.paddleX = (areaW - paddleW) / 2
+	gs.syncCSS()
+	return gs
 }
 
-func (a *Game) resetBall() {
+func (a *GameState) resetBall() {
 	a.ballX = a.paddleX + paddleW/2
 	a.ballY = paddleY - ballSize/2 - 1
 	a.ballDX = 2 + (rand.Float64()-0.5)*3
@@ -133,102 +133,24 @@ func (a *Game) resetBall() {
 	a.BallHidden = false
 }
 
-func (a *Game) initBricks() {
+func (a *GameState) initBricks() {
 	a.Bricks = make([]Brick, 0, brickRows*brickCols)
 	offsetX := (areaW - float64(brickCols)*(brickW+brickGapX) + brickGapX) / 2
-
 	for row := range brickRows {
 		for col := range brickCols {
 			x := offsetX + float64(col)*(brickW+brickGapX)
 			y := brickTop + float64(row)*(brickH+brickGapY)
 			a.Bricks = append(a.Bricks, Brick{
-				Left:    px(x),
-				Top:     px(y),
-				Width:   px(brickW),
-				Height:  px(brickH),
-				Color:   rowColors[row],
-				Visible: true,
-				Points:  rowPoints[row],
-				x:       x,
-				y:       y,
+				Left: px(x), Top: px(y), Width: px(brickW), Height: px(brickH),
+				Color: rowColors[row], Visible: true, Points: rowPoints[row],
+				x: x, y: y,
 			})
 		}
 	}
 	a.bricksLeft = brickRows * brickCols
 }
 
-func (a *Game) StartGame() {
-	a.Score = 0
-	a.Lives = 3
-	a.Playing = true
-	a.Paused = false
-	a.Message = ""
-	a.StartBtn = "RESTART"
-	a.ImpactShow = false
-	a.initBricks()
-	a.paddleX = (areaW - paddleW) / 2
-	a.calibrated = false
-	a.resetBall()
-	a.syncCSS()
-}
-
-func (a *Game) PauseToggle() {
-	if a.Playing {
-		a.Paused = !a.Paused
-		if a.Paused {
-			a.Message = "PAUSED"
-		} else {
-			a.Message = ""
-		}
-	}
-}
-
-func (a *Game) MoveLeft() {
-	a.steer(-1)
-}
-
-func (a *Game) MoveRight() {
-	a.steer(1)
-}
-
-func (a *Game) steer(dir int) {
-	now := time.Now()
-	if a.steerDir != dir {
-		a.steerDir = dir
-		a.steerStart = now
-	}
-	a.steerLast = now
-}
-
-func (a *Game) GyroToggle() {
-	switch a.GyroMode {
-	case "off":
-		a.GyroMode = "portrait"
-		a.GyroBtn = "GYRO: PORTRAIT"
-		a.Landscape = false
-	case "portrait":
-		a.GyroMode = "landscape"
-		a.GyroBtn = "GYRO: LANDSCAPE"
-		a.Landscape = true
-	default:
-		a.GyroMode = "off"
-		a.GyroBtn = "GYRO: OFF"
-		a.Landscape = false
-		a.Tilt = ""
-	}
-}
-
-func (a *Game) MouseMove(clientX, clientY float64) {
-	if !a.calibrated {
-		a.areaLeftOffset = clientX - (a.paddleX + paddleW/2)
-		a.calibrated = true
-	}
-	relX := clientX - a.areaLeftOffset
-	a.paddleX = clamp(relX-paddleW/2, 0, areaW-paddleW)
-	a.syncCSS()
-}
-
-func (a *Game) syncCSS() {
+func (a *GameState) syncCSS() {
 	if a.BallReady {
 		a.ballX = a.paddleX + paddleW/2
 		a.ballY = paddleY - ballSize/2 - 1
@@ -238,10 +160,33 @@ func (a *Game) syncCSS() {
 	a.PaddleLeft = px(a.paddleX)
 }
 
-const steerTimeout = 250 * time.Millisecond
+func (a *GameState) steer(dir int) {
+	now := time.Now()
+	if a.steerDir != dir {
+		a.steerDir = dir
+		a.steerStart = now
+	}
+	a.steerLast = now
+}
 
-func (a *Game) tick() {
-	// Process controller steering
+const steerTimeout = 250 * time.Millisecond
+const heartbeatTimeout = 5 * time.Second
+
+func (a *GameState) tick() {
+	// Check heartbeat timeouts
+	if a.ControllerConnected && time.Since(a.lastControllerPing) > heartbeatTimeout {
+		a.ControllerConnected = false
+	}
+	if a.PlayViewConnected && time.Since(a.lastPlayPing) > heartbeatTimeout {
+		a.PlayViewConnected = false
+		a.playViewCount = 0
+		if a.Playing && !a.Paused {
+			a.Paused = true
+			a.Message = "PAUSED — play view disconnected"
+			a.PauseBtn = "CONTINUE"
+		}
+	}
+
 	if a.steerDir != 0 {
 		if time.Since(a.steerLast) > steerTimeout {
 			a.steerDir = 0
@@ -253,7 +198,6 @@ func (a *Game) tick() {
 		}
 	}
 
-	// Gyroscope
 	if a.GyroMode != "off" && a.Tilt != "" {
 		if tilt, err := strconv.ParseFloat(a.Tilt, 64); err == nil {
 			maxTilt := 45.0
@@ -276,7 +220,6 @@ func (a *Game) tick() {
 
 	now := time.Now()
 
-	// Life-lost sequence
 	if a.waitingSpawn {
 		if a.ImpactShow && now.After(a.impactAt.Add(400*time.Millisecond)) {
 			a.ImpactShow = false
@@ -301,7 +244,6 @@ func (a *Game) tick() {
 		a.Message = ""
 	}
 
-	// Normalize direction and apply speed
 	mag := math.Sqrt(a.ballDX*a.ballDX + a.ballDY*a.ballDY)
 	if mag == 0 {
 		return
@@ -312,7 +254,6 @@ func (a *Game) tick() {
 	a.ballX += dx
 	a.ballY += dy
 
-	// Wall collisions
 	if a.ballX-ballSize/2 <= 0 {
 		a.ballX = ballSize / 2
 		a.ballDX = math.Abs(a.ballDX)
@@ -329,7 +270,6 @@ func (a *Game) tick() {
 		a.SoundEvent = "wall"
 	}
 
-	// Paddle collision
 	if a.ballDY > 0 && a.ballY+ballSize/2 >= paddleY && a.ballY+ballSize/2 <= paddleY+paddleH {
 		if a.ballX >= a.paddleX && a.ballX <= a.paddleX+paddleW {
 			a.ballY = paddleY - ballSize/2
@@ -341,12 +281,10 @@ func (a *Game) tick() {
 		}
 	}
 
-	// Ball fell below death line
 	if a.ballY > areaH {
 		a.ImpactLeft = px(a.ballX - 30)
 		a.ImpactShow = true
 		a.impactAt = time.Now()
-
 		a.Lives--
 		if a.Lives <= 0 {
 			a.Playing = false
@@ -368,7 +306,6 @@ func (a *Game) tick() {
 		return
 	}
 
-	// Brick collisions
 	for i := range a.Bricks {
 		b := &a.Bricks[i]
 		if !b.Visible {
@@ -376,27 +313,21 @@ func (a *Game) tick() {
 		}
 		if a.ballX+ballSize/2 >= b.x && a.ballX-ballSize/2 <= b.x+brickW &&
 			a.ballY+ballSize/2 >= b.y && a.ballY-ballSize/2 <= b.y+brickH {
-
 			b.Visible = false
 			a.Score += b.Points
 			a.bricksLeft--
-
 			overlapLeft := (a.ballX + ballSize/2) - b.x
 			overlapRight := (b.x + brickW) - (a.ballX - ballSize/2)
 			overlapTop := (a.ballY + ballSize/2) - b.y
 			overlapBottom := (b.y + brickH) - (a.ballY - ballSize/2)
-
 			minOverlapX := math.Min(overlapLeft, overlapRight)
 			minOverlapY := math.Min(overlapTop, overlapBottom)
-
 			if minOverlapX < minOverlapY {
 				a.ballDX = -a.ballDX
 			} else {
 				a.ballDY = -a.ballDY
 			}
-
 			a.speed = math.Min(8.0, a.speed+0.05)
-
 			if a.bricksLeft == 0 {
 				a.Playing = false
 				a.Message = "YOU WIN!"
@@ -412,14 +343,6 @@ func (a *Game) tick() {
 	}
 
 	a.syncCSS()
-}
-
-func (a *Game) Run() {
-	ticker := time.NewTicker(16 * time.Millisecond)
-	for range ticker.C {
-		a.tick()
-		a.Refresh()
-	}
 }
 
 func px(v float64) string {

@@ -61,6 +61,7 @@
         <a href="/play"{{if eq .Page "play"}} class="active"{{end}}>Play</a>
         <a href="/controller"{{if eq .Page "controller"}} class="active"{{end}}>Controller</a>
         <a href="/scores"{{if eq .Page "scores"}} class="active"{{end}}>Scores</a>
+        <div style="margin-left: auto;" g-component="status"></div>
     </nav>
     {{block "content" .}}{{end}}
     <script src="/godom.js"></script>

@@ -1,0 +1,180 @@
+<style>
+    .ctrl-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+        width: 100%;
+        max-width: 400px;
+        padding: 1rem;
+    }
+    .score-display {
+        font-size: 3rem;
+        font-weight: 700;
+        color: #fff;
+    }
+    .lives-display {
+        font-size: 1.5rem;
+        color: #e74c3c;
+        letter-spacing: 4px;
+    }
+    .dpad {
+        display: flex;
+        gap: 1.5rem;
+        align-items: center;
+    }
+    .dpad button {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        border: 2px solid rgba(255,255,255,0.2);
+        background: rgba(255,255,255,0.06);
+        color: #fff;
+        font-size: 2.5rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+    .dpad button:active {
+        background: rgba(93,173,226,0.3);
+        border-color: #5dade2;
+        box-shadow: 0 0 20px rgba(93,173,226,0.4);
+    }
+    .action-buttons {
+        display: flex;
+        gap: 1rem;
+    }
+    .action-buttons button {
+        padding: 0.8rem 2rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.2);
+        background: rgba(255,255,255,0.06);
+        color: #ccc;
+        font-size: 1rem;
+        font-family: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+    .action-buttons button:active {
+        background: rgba(255,255,255,0.15);
+    }
+    .tilt-display {
+        font-size: 0.85rem;
+        color: #666;
+        font-variant-numeric: tabular-nums;
+    }
+    .landscape-ctrl {
+        justify-content: center;
+        max-width: none;
+        width: 90%;
+        transform: rotate(90deg);
+        transform-origin: center center;
+        position: relative;
+    }
+    .landscape-line {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        height: 2px;
+        background: linear-gradient(to right,
+            transparent 0%, rgba(231,76,60,0.2) 15%,
+            rgba(231,76,60,0.4) 50%,
+            rgba(231,76,60,0.2) 85%, transparent 100%);
+        pointer-events: none;
+    }
+    .landscape-ctrl > * {
+        position: relative;
+        z-index: 1;
+    }
+    .tilt-bar {
+        width: 100%;
+        height: 40px;
+        background: linear-gradient(to bottom,
+            #1a5c2a 0%, #237a36 15%, #1e6e30 50%, #195a28 85%, #144d20 100%);
+        border-radius: 20px;
+        position: relative;
+        touch-action: none;
+        border: 2px solid rgba(255,255,255,0.12);
+        box-shadow:
+            inset 0 3px 6px rgba(0,0,0,0.5),
+            inset 0 -2px 4px rgba(255,255,255,0.08),
+            0 2px 8px rgba(0,0,0,0.4);
+        overflow: hidden;
+    }
+    .tilt-bar::before {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 5%;
+        right: 5%;
+        height: 35%;
+        background: linear-gradient(to bottom,
+            rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.08) 100%);
+        border-radius: 20px;
+        pointer-events: none;
+    }
+    .tilt-bar::after {
+        content: "";
+        position: absolute;
+        top: 20%;
+        bottom: 20%;
+        left: calc(50% - 0.5px);
+        width: 1.5px;
+        background: rgba(255,255,255,0.3);
+        pointer-events: none;
+        box-shadow:
+            -8px 0 0 rgba(255,255,255,0.15),
+            8px 0 0 rgba(255,255,255,0.15),
+            -16px 0 0 rgba(255,255,255,0.08),
+            16px 0 0 rgba(255,255,255,0.08);
+    }
+    .tilt-indicator {
+        position: absolute;
+        top: 50%;
+        width: 36px;
+        height: 26px;
+        background: radial-gradient(ellipse at 40% 35%,
+            rgba(255,255,255,0.85) 0%,
+            rgba(200,255,200,0.4) 35%,
+            rgba(150,230,150,0.15) 65%,
+            transparent 100%);
+        border-radius: 50%;
+        border: 1.5px solid rgba(255,255,255,0.35);
+        box-shadow:
+            0 0 8px rgba(255,255,255,0.15),
+            inset 0 1px 3px rgba(255,255,255,0.3),
+            inset 0 -1px 2px rgba(0,0,0,0.15);
+        transform: translate(-50%, -50%);
+        transition: left 0.08s linear;
+    }
+</style>
+
+<div class="ctrl-wrapper" g-class:landscape-ctrl="Landscape">
+    <div class="score-display" g-hide="Landscape" g-text="Score">0</div>
+    <div class="lives-display" g-hide="Landscape" g-text="Lives">3</div>
+    <div class="tilt-display" g-hide="Landscape" g-show="Tilt">Tilt: <span g-text="Tilt"></span></div>
+    <div class="dpad" g-hide="Landscape">
+        <button g-click="MoveLeft">&#9664;</button>
+        <button g-click="MoveRight">&#9654;</button>
+    </div>
+    <div class="landscape-line" g-show="Landscape"></div>
+    <div class="tilt-bar" g-show="Landscape">
+        <div class="tilt-indicator" g-style:left="TiltPct"></div>
+    </div>
+    <div class="action-buttons">
+        <button g-click="StartGame" g-text="StartBtn">START</button>
+        <button g-click="PauseToggle" g-text="PauseBtn">PAUSE</button>
+        <button g-click="GyroToggle" g-text="GyroBtn">GYRO: OFF</button>
+    </div>
+
+    <!-- Hidden elements for gyroscope bridge and shared state sync -->
+    <input id="gyro-input" g-bind="Tilt" style="position:absolute;opacity:0;pointer-events:none;">
+    <span id="gyro-mode" g-text="GyroMode" style="display:none;">off</span>
+    <span g-text="ControllerConnected" style="display:none;"></span>
+</div>

@@ -53,15 +53,27 @@ func main() {
 	scores := NewScores()
 	eng.Register("scores", scores, "components/scores/index.html")
 
-	game := NewGame()
-	game.onGameOver = func(score int) {
+	// Shared game state — both views embed the same *GameState pointer.
+	// Changes from either view are visible to both, and godom's shared
+	// pointer refresh keeps them in sync across browsers.
+	state := NewGameState()
+	state.onGameOver = func(score int) {
 		if score > 0 {
 			scores.Add(score)
 		}
 	}
-	eng.Register("game", game, "components/game/index.html")
 
-	go game.Run()
+	playView := &PlayView{GameState: state}
+	eng.Register("game", playView, "components/game/play.html")
+
+	controllerView := &ControllerView{GameState: state}
+	eng.Register("controller", controllerView, "components/game/controller.html")
+
+	statusView := &StatusView{GameState: state}
+	eng.Register("status", statusView, "components/status/index.html")
+
+	go playView.Run()
+	go statusView.RunStatusRefresh()
 
 	// User owns the mux and routes.
 	mux := http.NewServeMux()

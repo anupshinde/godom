@@ -18,10 +18,6 @@
             -webkit-user-select: none;
             overflow: hidden;
         }
-        /* Force controller view, hide game view */
-        .game-view { display: none !important; }
-        .controller { display: flex !important; }
-        /* Home link */
         .home-link {
             position: fixed;
             top: 0.5rem;
@@ -39,7 +35,15 @@
 </head>
 <body>
     <a href="/" class="home-link">Home</a>
-    <div g-component="game"></div>
+    <div g-component="controller"></div>
     <script src="/godom.js"></script>
+    <script>
+        // Heartbeat — periodically announce controller presence
+        function ping() {
+            var ns = window[window.GODOM_NS || "godom"];
+            if (ns && ns.call) ns.call("ControllerPing");
+        }
+        setInterval(ping, 2000);
+    </script>
 </body>
 </html>
