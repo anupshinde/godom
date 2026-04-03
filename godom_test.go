@@ -754,6 +754,48 @@ func TestCleanup_SkipsComponentWithoutCleanupMethod(t *testing.T) {
 	e.Cleanup()
 }
 
+// --- ExecJS ---
+
+func TestExecJS_NilCI(t *testing.T) {
+	c := Component{ci: nil}
+	// Should not panic
+	c.ExecJS("test", func(result []byte, err string) {
+		t.Error("callback should not be called when ci is nil")
+	})
+}
+
+func TestExecJS_DelegatesToInfo(t *testing.T) {
+	ci := &component.Info{}
+	called := false
+	ci.ExecJSFn = func(id int32, expr string) {
+		called = true
+		if expr != "location.href" {
+			t.Errorf("expected expr 'location.href', got %q", expr)
+		}
+	}
+
+	c := Component{ci: ci}
+	c.ExecJS("location.href", func(result []byte, err string) {})
+
+	if !called {
+		t.Error("expected ExecJSFn to be called")
+	}
+}
+
+func TestExecJS_DisabledReturnsError(t *testing.T) {
+	ci := &component.Info{ExecJSDisabled: true}
+	c := Component{ci: ci}
+
+	var gotErr string
+	c.ExecJS("test", func(result []byte, err string) {
+		gotErr = err
+	})
+
+	if gotErr != "ExecJS is disabled" {
+		t.Errorf("expected disabled error, got %q", gotErr)
+	}
+}
+
 // --- Helpers ---
 
 // runSubprocess re-runs the named test in a subprocess with the given env var set to "1".

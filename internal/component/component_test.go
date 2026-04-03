@@ -740,3 +740,231 @@ func TestSetField_MapBracket_BadJSON(t *testing.T) {
 		t.Error("map should not have key after failed SetField")
 	}
 }
+
+// --- ExecJS ---
+
+func TestExecJS_CallsExecJSFn(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	var gotID int32
+	var gotExpr string
+	ci.ExecJSFn = func(id int32, expr string) {
+		gotID = id
+		gotExpr = expr
+	}
+
+	ci.ExecJS("location.href", func(result []byte, err string) {})
+
+	if gotID != 1 {
+		t.Errorf("expected id=1, got %d", gotID)
+	}
+	if gotExpr != "location.href" {
+		t.Errorf("expected expr='location.href', got %q", gotExpr)
+	}
+}
+
+func TestExecJS_IncrementingIDs(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	var ids []int32
+	ci.ExecJSFn = func(id int32, expr string) {
+		ids = append(ids, id)
+	}
+
+	ci.ExecJS("a", func([]byte, string) {})
+	ci.ExecJS("b", func([]byte, string) {})
+	ci.ExecJS("c", func([]byte, string) {})
+
+	if len(ids) != 3 || ids[0] != 1 || ids[1] != 2 || ids[2] != 3 {
+		t.Errorf("expected incrementing IDs [1 2 3], got %v", ids)
+	}
+}
+
+func TestExecJS_RegistersCallback(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	ci.ExecJSFn = func(id int32, expr string) {}
+
+	called := false
+	ci.ExecJS("test", func(result []byte, err string) {
+		called = true
+	})
+
+	// Callback should be in the map
+	ci.JSCallbackMu.Lock()
+	cb, ok := ci.JSCallbacks[1]
+	ci.JSCallbackMu.Unlock()
+
+	if !ok || cb == nil {
+		t.Fatal("expected callback to be registered with id=1")
+	}
+
+	// Calling it should set our flag
+	cb(nil, "")
+	if !called {
+		t.Error("expected callback to be callable")
+	}
+}
+
+func TestExecJS_NilExecJSFn(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	// ExecJSFn not set — should not panic
+
+	called := false
+	ci.ExecJS("test", func(result []byte, err string) {
+		called = true
+	})
+
+	// Callback registered but not called (no broadcaster)
+	if called {
+		t.Error("callback should not be called when ExecJSFn is nil")
+	}
+}
+
+func TestExecJS_NilCallback(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	var gotID int32
+	ci.ExecJSFn = func(id int32, expr string) {
+		gotID = id
+	}
+
+	// nil callback should not panic
+	ci.ExecJS("test", nil)
+
+	if gotID != 1 {
+		t.Errorf("expected ExecJSFn to be called even with nil callback, got id=%d", gotID)
+	}
+}
+
+func TestExecJS_Disabled(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	ci.ExecJSDisabled = true
+
+	var gotErr string
+	ci.ExecJS("test", func(result []byte, err string) {
+		gotErr = err
+	})
+
+	if gotErr != "ExecJS is disabled" {
+		t.Errorf("expected disabled error, got %q", gotErr)
+	}
+}
+
+func TestExecJS_DisabledNilCallback(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	ci.ExecJSDisabled = true
+
+	// nil callback + disabled should not panic
+	ci.ExecJS("test", nil)
+}
+
+func TestExecJS_DisabledDoesNotCallExecJSFn(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	ci.ExecJSDisabled = true
+	called := false
+	ci.ExecJSFn = func(id int32, expr string) {
+		called = true
+	}
+
+	ci.ExecJS("test", func([]byte, string) {})
+
+	if called {
+		t.Error("ExecJSFn should not be called when disabled")
+	}
+}
+
+// --- HandleJSResult ---
+
+func TestHandleJSResult_DispatchesToCallback(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	ci.ExecJSFn = func(id int32, expr string) {}
+
+	var gotResult []byte
+	var gotErr string
+	ci.ExecJS("test", func(result []byte, err string) {
+		gotResult = result
+		gotErr = err
+	})
+
+	ci.HandleJSResult(1, []byte(`"hello"`), "")
+
+	if string(gotResult) != `"hello"` {
+		t.Errorf("expected result '\"hello\"', got %q", string(gotResult))
+	}
+	if gotErr != "" {
+		t.Errorf("expected empty error, got %q", gotErr)
+	}
+}
+
+func TestHandleJSResult_WithError(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	ci.ExecJSFn = func(id int32, expr string) {}
+
+	var gotErr string
+	ci.ExecJS("test", func(result []byte, err string) {
+		gotErr = err
+	})
+
+	ci.HandleJSResult(1, nil, "eval failed")
+
+	if gotErr != "eval failed" {
+		t.Errorf("expected 'eval failed', got %q", gotErr)
+	}
+}
+
+func TestHandleJSResult_UnknownID(t *testing.T) {
+	ci := newTestCI(&testComp{})
+
+	// No callback registered for id=999 — should not panic
+	ci.HandleJSResult(999, []byte(`"test"`), "")
+}
+
+func TestHandleJSResult_MultipleBrowserResponses(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	ci.ExecJSFn = func(id int32, expr string) {}
+
+	count := 0
+	ci.ExecJS("test", func(result []byte, err string) {
+		count++
+	})
+
+	// Simulate 3 browsers responding to the same call
+	ci.HandleJSResult(1, []byte(`"a"`), "")
+	ci.HandleJSResult(1, []byte(`"b"`), "")
+	ci.HandleJSResult(1, []byte(`"c"`), "")
+
+	if count != 3 {
+		t.Errorf("expected 3 callback invocations (one per browser), got %d", count)
+	}
+}
+
+func TestHandleJSResult_NilCallback(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	ci.ExecJSFn = func(id int32, expr string) {}
+
+	ci.ExecJS("test", nil)
+
+	// nil callback registered — HandleJSResult should not panic
+	ci.HandleJSResult(1, []byte(`"test"`), "")
+}
+
+// --- HasMethod ---
+
+func TestHasMethod_Exists(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	if !ci.HasMethod("Increment") {
+		t.Error("expected HasMethod('Increment') = true")
+	}
+}
+
+func TestHasMethod_NotExists(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	if ci.HasMethod("NonExistent") {
+		t.Error("expected HasMethod('NonExistent') = false")
+	}
+}
+
+func TestHasMethod_Unexported(t *testing.T) {
+	ci := newTestCI(&testComp{})
+	// unexported methods should not be found
+	if ci.HasMethod("increment") {
+		t.Error("expected HasMethod('increment') = false for unexported")
+	}
+}
