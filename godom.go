@@ -16,7 +16,6 @@ import (
 	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/middleware"
 	"github.com/anupshinde/godom/internal/server"
-	"github.com/anupshinde/godom/internal/template"
 	"github.com/anupshinde/godom/internal/utils"
 	"github.com/anupshinde/godom/internal/vdom"
 )
@@ -166,44 +165,6 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts
 }
 
-// registerInternal is the shared registration logic used by Register.
-func (a *Engine) registerInternal(comp interface{}, fsys fs.FS, entryPath string) {
-	v := reflect.ValueOf(comp)
-	t := v.Elem().Type()
-
-	indexHTML, err := fs.ReadFile(fsys, entryPath)
-	if err != nil {
-		log.Fatalf("godom: failed to read %s: %v", entryPath, err)
-	}
-
-	composed, err := template.ExpandComponents(string(indexHTML), fsys, path.Dir(entryPath))
-	if err != nil {
-		log.Fatalf("godom: failed to expand components: %v", err)
-	}
-
-	ci := &component.Info{
-		Value:    v,
-		Typ:      t,
-		HTMLBody: composed,
-	}
-
-	if err := template.ValidateDirectives(composed, ci); err != nil {
-		log.Fatalf("godom: %v", err)
-	}
-
-	templates, err := vdom.ParseTemplate(composed)
-	if err != nil {
-		log.Fatalf("godom: failed to parse templates: %v", err)
-	}
-	ci.VDOMTemplates = templates
-
-	ci.Value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
-
-	idx := len(a.comps)
-	a.comps = append(a.comps, ci)
-	a.compIndex[comp] = idx
-}
-
 // Register registers a named component with a template. The name is used in
 // g-component="name" attributes on elements in parent templates.
 //
@@ -256,8 +217,10 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 		entryPath: entryPath,
 	}
 
-	// Register the component internally
-	a.registerInternal(comp, a.componentFS, entryPath)
+	ci := server.BuildComponentInfo(comp, a.componentFS, entryPath)
+	ci.Value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
+	a.comps = append(a.comps, ci)
+	a.compIndex[comp] = len(a.comps) - 1
 }
 
 // Run initializes the component lifecycle, registers /ws and /godom.js handlers

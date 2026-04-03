@@ -3,9 +3,12 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"path"
+	"reflect"
 	"strings"
 
 	"github.com/anupshinde/godom/internal/component"
@@ -13,6 +16,7 @@ import (
 	"github.com/anupshinde/godom/internal/middleware"
 	gproto "github.com/anupshinde/godom/internal/proto"
 	"github.com/anupshinde/godom/internal/render"
+	"github.com/anupshinde/godom/internal/template"
 	"github.com/anupshinde/godom/internal/vdom"
 	"github.com/gorilla/websocket"
 	"google.golang.org/protobuf/proto"
@@ -30,6 +34,42 @@ type EngineConfig interface {
 	GodomScriptPath() string
 	Auth() middleware.AuthFunc
 	ExecJSDisabled() bool
+}
+
+// BuildComponentInfo reads a template, expands nested components, validates
+// directives, and parses the VDOM templates. Returns a ready-to-use Info
+// (caller still needs to wire the godom.Component embed and add it to the slice).
+func BuildComponentInfo(comp interface{}, fsys fs.FS, entryPath string) *component.Info {
+	v := reflect.ValueOf(comp)
+	t := v.Elem().Type()
+
+	indexHTML, err := fs.ReadFile(fsys, entryPath)
+	if err != nil {
+		log.Fatalf("godom: failed to read %s: %v", entryPath, err)
+	}
+
+	composed, err := template.ExpandComponents(string(indexHTML), fsys, path.Dir(entryPath))
+	if err != nil {
+		log.Fatalf("godom: failed to expand components: %v", err)
+	}
+
+	ci := &component.Info{
+		Value:    v,
+		Typ:      t,
+		HTMLBody: composed,
+	}
+
+	if err := template.ValidateDirectives(composed, ci); err != nil {
+		log.Fatalf("godom: %v", err)
+	}
+
+	templates, err := vdom.ParseTemplate(composed)
+	if err != nil {
+		log.Fatalf("godom: failed to parse templates: %v", err)
+	}
+	ci.VDOMTemplates = templates
+
+	return ci
 }
 
 // serverCtx holds shared state used by event processors and handlers.
