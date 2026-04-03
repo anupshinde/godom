@@ -120,11 +120,17 @@
         ws.binaryType = "arraybuffer";
 
         ws.onopen = function() {
-            // In embedded mode (no document.body component), scan for
-            // g-component targets immediately — no SERVER_INIT will arrive
-            // to trigger it. In root mode, the static HTML may contain
-            // unresolved template expressions (e.g. {{slot.Name}}) so we
-            // wait for SERVER_INIT to render the real DOM first.
+            hideDisconnectOverlay();
+            reconnectDelay = 1000;
+            if (!firedOnConnect && ns.onconnect) {
+                firedOnConnect = true;
+                ns.onconnect();
+            }
+            // In embedded mode, scan for g-component targets immediately —
+            // no SERVER_INIT will arrive to trigger it. In root mode, the
+            // static HTML may contain unresolved template expressions
+            // (e.g. {{slot.Name}}) so we wait for SERVER_INIT to render
+            // the real DOM first.
             if (!window.GODOM_ROOT) {
                 scanAndRequestComponents();
             }
@@ -135,14 +141,8 @@
 
             switch (msg.kind) {
             case SK.SERVER_INIT:
-                hideDisconnectOverlay();
-                reconnectDelay = 1000;
                 initTarget(msg.target || "", msg);
                 scanAndRequestComponents();
-                if (!firedOnConnect && ns.onconnect) {
-                    firedOnConnect = true;
-                    ns.onconnect();
-                }
                 break;
             case SK.SERVER_PATCH:
                 var name = msg.target || "";
