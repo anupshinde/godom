@@ -79,16 +79,23 @@ type Info struct {
 	NodeStableIDs map[int]string // nodeID → stableKey (rebuilt each resolve)
 
 	// ExecJS support
-	ExecJSFn     func(id int32, expr string)                          // broadcast JSCall to all browsers (set by server)
-	JSCallbacks  map[int32]func(result []byte, err string)            // pending callbacks by request ID
-	JSCallbackMu sync.Mutex
-	jsCallID     int32                                                 // monotonic ID counter
+	ExecJSFn       func(id int32, expr string)                        // broadcast JSCall to all browsers (set by server)
+	ExecJSDisabled bool                                                // when true, ExecJS calls are silently dropped
+	JSCallbacks    map[int32]func(result []byte, err string)           // pending callbacks by request ID
+	JSCallbackMu   sync.Mutex
+	jsCallID       int32                                               // monotonic ID counter
 }
 
 // ExecJS sends a JavaScript expression to all connected browsers and calls the
 // callback for each response. The callback receives JSON-encoded result bytes
 // and an error string (empty on success).
 func (ci *Info) ExecJS(expr string, cb func(result []byte, err string)) {
+	if ci.ExecJSDisabled {
+		if cb != nil {
+			cb(nil, "ExecJS is disabled")
+		}
+		return
+	}
 	ci.JSCallbackMu.Lock()
 	ci.jsCallID++
 	id := ci.jsCallID

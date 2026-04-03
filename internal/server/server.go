@@ -28,10 +28,11 @@ type Config struct {
 	ProtobufMinJS string
 	ProtocolJS    string
 
-	UserMux    *http.ServeMux      // custom mux from eng.SetMux(); nil = godom creates one
-	WSPath     string              // WebSocket endpoint path (default "/ws")
-	ScriptPath string              // godom.js script path (default "/godom.js")
-	AuthFn     middleware.AuthFunc // auth check for /ws; nil = no auth
+	UserMux       *http.ServeMux      // custom mux from eng.SetMux(); nil = godom creates one
+	WSPath        string              // WebSocket endpoint path (default "/ws")
+	ScriptPath    string              // godom.js script path (default "/godom.js")
+	AuthFn        middleware.AuthFunc // auth check for /ws; nil = no auth
+	DisableExecJS bool               // disable ExecJS — don't wire ExecJSFn, don't send JSCall
 }
 
 // serverCtx holds shared state used by event processors and handlers.
@@ -77,6 +78,13 @@ func Run(cfg Config) error {
 	// Wire up ExecJS for each component — broadcasts JSCall to all browsers.
 	for _, ci := range cfg.Comps {
 		ci := ci // capture for closure
+		ci.ExecJSDisabled = cfg.DisableExecJS
+		if cfg.DisableExecJS {
+			if env.Debug {
+				log.Printf("godom: ExecJS disabled for component %q", ci.SlotName)
+			}
+			continue
+		}
 		ci.ExecJSFn = func(id int32, expr string) {
 			if env.Debug {
 				log.Printf("godom: ExecJS id=%d expr=%q", id, expr)
@@ -125,6 +133,9 @@ func Run(cfg Config) error {
 				bundleJS += js + "\n"
 			}
 		}
+	}
+	if cfg.DisableExecJS {
+		bundleJS += "window.GODOM_DISABLE_EXEC=true;\n"
 	}
 	bundleJS += strings.Replace(cfg.BridgeJS, "__GODOM_WS_PATH__", cfg.WSPath, 1)
 

@@ -132,9 +132,7 @@
             }
 
             if (tag === 2) {
-                console.log("[godom] received JSCall, payload length:", payload.length);
                 var call = Proto.JSCall.decode(payload);
-                console.log("[godom] JSCall id:", call.id, "expr:", call.expr);
                 handleJSCall(call);
                 return;
             }
@@ -799,6 +797,12 @@
         var expr = call.expr;
         var result = null;
         var error = "";
+
+        if (window.GODOM_DISABLE_EXEC) {
+            sendJSResult(id, new Uint8Array(0), "ExecJS is disabled on this browser");
+            return;
+        }
+
         try {
             var val = (0, eval)(expr); // indirect eval — global scope
             var json = JSON.stringify(val);

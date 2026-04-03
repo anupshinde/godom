@@ -29,6 +29,7 @@ func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(components)
 	eng.RegisterPlugin("tree", treePluginJS)
+	// eng.DisableExecJS = true // uncomment to disable ExecJS (server won't send, bridge won't execute)
 
 	// Browser info component — uses ExecJS
 	info := &BrowserInfo{}

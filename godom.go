@@ -39,6 +39,7 @@ type Engine struct {
 	FixedAuthToken string // fixed auth token; empty = generate random token
 	NoBrowser      bool   // don't open browser on start
 	Quiet          bool   // suppress startup output
+	DisableExecJS  bool   // disable ExecJS — server won't send, bridge won't execute
 
 	comps      []*component.Info        // mounted components
 	plugins    map[string][]string      // plugin name → JS scripts
@@ -284,6 +285,7 @@ func (a *Engine) Run() error {
 		WSPath:        wsPath,
 		ScriptPath:    scriptPath,
 		AuthFn:        a.authFn,
+		DisableExecJS: a.DisableExecJS,
 	}
 
 	return server.Run(cfg)
