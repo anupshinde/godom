@@ -1,8 +1,8 @@
-// bridge.js — godom VDOM bridge.
+// bridge.js — godom bridge.
 //
-// Receives binary protobuf VDomMessage from Go over WebSocket.
-// On "init": builds DOM from tree description, registers events.
-// On "patch": applies minimal DOM mutations using nodeMap[id] lookups.
+// Receives binary protobuf ServerMessage from Go over WebSocket.
+// On init: builds DOM from tree description, registers events.
+// On patch: applies minimal DOM mutations using nodeMap[id] lookups.
 //
 // Each render target is identified by name (from g-component attribute).
 // The root component has name "document.body" and renders into document.body.
@@ -34,6 +34,8 @@
     var targets = {};   // targetName (string) → [target context, ...]
 
     var Proto = godomProto;
+    var SK = Proto.ServerKind;   // cached enum constants for fast dispatch
+    var BK = Proto.BrowserKind;
     var textDecoder = new TextDecoder();
     var textEncoder = new TextEncoder();
 
@@ -117,7 +119,6 @@
 
         ws.onmessage = function(evt) {
             var msg = Proto.ServerMessage.decode(new Uint8Array(evt.data));
-            var SK = Proto.ServerKind;
 
             switch (msg.kind) {
             case SK.SERVER_INIT:
@@ -516,7 +517,7 @@
 
         function sendNodeEvent(nodeId, value) {
             var msg = Proto.BrowserMessage.encode({
-                kind: Proto.BrowserKind.BROWSER_INPUT,
+                kind: BK.BROWSER_INPUT,
                 nodeId: nodeId,
                 value: value
             }).finish();
@@ -563,7 +564,7 @@
 
         function sendMethodCall(nodeId, method, args) {
             var msg = Proto.BrowserMessage.encode({
-                kind: Proto.BrowserKind.BROWSER_METHOD,
+                kind: BK.BROWSER_METHOD,
                 nodeId: nodeId,
                 method: method,
                 args: args
@@ -806,7 +807,7 @@
 
     function sendJSResult(id, result, error) {
         var msg = Proto.BrowserMessage.encode({
-            kind: Proto.BrowserKind.BROWSER_JSRESULT,
+            kind: BK.BROWSER_JSRESULT,
             callId: id,
             result: result,
             error: error
@@ -830,7 +831,7 @@
             }
         }
         var msg = Proto.BrowserMessage.encode({
-            kind: Proto.BrowserKind.BROWSER_METHOD,
+            kind: BK.BROWSER_METHOD,
             nodeId: 0,
             method: method,
             args: args
