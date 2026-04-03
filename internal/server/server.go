@@ -18,21 +18,18 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Config holds everything the server needs to run.
-type Config struct {
-	Comps   []*component.Info
-	Plugins map[string][]string
-
-	// Embedded JS scripts (passed from root via //go:embed)
-	BridgeJS      string
-	ProtobufMinJS string
-	ProtocolJS    string
-
-	UserMux       *http.ServeMux      // custom mux from eng.SetMux(); nil = godom creates one
-	WSPath        string              // WebSocket endpoint path (default "/ws")
-	ScriptPath    string              // godom.js script path (default "/godom.js")
-	AuthFn        middleware.AuthFunc // auth check for /ws; nil = no auth
-	DisableExecJS bool               // disable ExecJS — don't wire ExecJSFn, don't send JSCall
+// EngineConfig is the interface that the root Engine satisfies.
+// It replaces the old Config struct, eliminating field duplication
+// between the public Engine and the internal server package.
+type EngineConfig interface {
+	Components() []*component.Info
+	PluginScripts() map[string][]string
+	EmbeddedJS() (bridge, protobufMin, protocol string)
+	Mux() *http.ServeMux
+	WebSocketPath() string
+	GodomScriptPath() string
+	Auth() middleware.AuthFunc
+	ExecJSDisabled() bool
 }
 
 // serverCtx holds shared state used by event processors and handlers.
@@ -45,19 +42,28 @@ type serverCtx struct {
 }
 
 // Run starts the HTTP server, opens the browser, and blocks forever.
-func Run(cfg Config) error {
-	if cfg.UserMux == nil {
+func Run(cfg EngineConfig) error {
+	mux := cfg.Mux()
+	if mux == nil {
 		log.Fatal("godom: SetMux() must be called before Run()")
 	}
+
+	comps := cfg.Components()
+	plugins := cfg.PluginScripts()
+	bridgeJS, protobufMinJS, protocolJS := cfg.EmbeddedJS()
+	wsPath := cfg.WebSocketPath()
+	scriptPath := cfg.GodomScriptPath()
+	authFn := cfg.Auth()
+	disableExecJS := cfg.ExecJSDisabled()
 
 	pool := &connPool{}
 
 	// Ensure document.body component is first — the bridge needs the root
 	// DOM before children can find their g-component targets.
-	for i, ci := range cfg.Comps {
+	for i, ci := range comps {
 		if ci.SlotName == "document.body" && i > 0 {
-			copy(cfg.Comps[1:i+1], cfg.Comps[:i])
-			cfg.Comps[0] = ci
+			copy(comps[1:i+1], comps[:i])
+			comps[0] = ci
 			break
 		}
 	}
@@ -65,21 +71,21 @@ func Run(cfg Config) error {
 	// All components share a single IDCounter so node IDs are globally
 	// unique across the bridge's nodeMap.
 	sharedIDCounter := &vdom.IDCounter{}
-	for _, ci := range cfg.Comps {
+	for _, ci := range comps {
 		ci.IDCounter = sharedIDCounter
 	}
 
 	// Wire up Refresh for each component.
-	for _, ci := range cfg.Comps {
+	for _, ci := range comps {
 		ci := ci // capture for closure
 		wireRefresh(ci)
 	}
 
 	// Wire up ExecJS for each component — broadcasts JSCall to all browsers.
-	for _, ci := range cfg.Comps {
+	for _, ci := range comps {
 		ci := ci // capture for closure
-		ci.ExecJSDisabled = cfg.DisableExecJS
-		if cfg.DisableExecJS {
+		ci.ExecJSDisabled = disableExecJS
+		if disableExecJS {
 			if env.Debug {
 				log.Printf("godom: ExecJS disabled for component %q", ci.SlotName)
 			}
@@ -100,49 +106,47 @@ func Run(cfg Config) error {
 	}
 
 	// Build shared pointer maps for auto-refreshing sibling components.
-	sm := buildSharedPtrMaps(cfg.Comps)
+	sm := buildSharedPtrMaps(comps)
 	sm.pool = pool
 
 	ctx := &serverCtx{
 		pool:   pool,
 		sm:     sm,
 		lookup: newNodeLookup(),
-		comps:  cfg.Comps,
+		comps:  comps,
 	}
 
 	// Start event queue processor for each component.
-	for idx, ci := range cfg.Comps {
+	for idx, ci := range comps {
 		ci.EventCh = make(chan component.Event, 64)
 		idx, ci := idx, ci // capture for closure
 		go ctx.processEvents(ci, idx)
 	}
 
-	mux := cfg.UserMux
-
 	// Build the JS bundle once: protobuf, protocol, plugins, bridge.
 	var bundleJS string
-	bundleJS += cfg.ProtobufMinJS + "\n" + cfg.ProtocolJS + "\n"
-	if len(cfg.Plugins) > 0 {
+	bundleJS += protobufMinJS + "\n" + protocolJS + "\n"
+	if len(plugins) > 0 {
 		bundleJS += "var godom=window[window.GODOM_NS||'godom']=window[window.GODOM_NS||'godom']||{};godom._plugins=godom._plugins||{};godom.register=function(n,h){godom._plugins[n]=h};\n"
-		for _, pluginScripts := range cfg.Plugins {
+		for _, pluginScripts := range plugins {
 			for _, js := range pluginScripts {
 				bundleJS += js + "\n"
 			}
 		}
 	}
-	if cfg.DisableExecJS {
+	if disableExecJS {
 		bundleJS += "window.GODOM_DISABLE_EXEC=true;\n"
 	}
-	bundleJS += strings.Replace(cfg.BridgeJS, "__GODOM_WS_PATH__", cfg.WSPath, 1)
+	bundleJS += strings.Replace(bridgeJS, "__GODOM_WS_PATH__", wsPath, 1)
 
 	// Serve as external script.
-	mux.HandleFunc(cfg.ScriptPath, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(scriptPath, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript")
 		fmt.Fprint(w, bundleJS)
 	})
 
-	mux.HandleFunc(cfg.WSPath, func(w http.ResponseWriter, r *http.Request) {
-		if cfg.AuthFn != nil && !cfg.AuthFn(w, r) {
+	mux.HandleFunc(wsPath, func(w http.ResponseWriter, r *http.Request) {
+		if authFn != nil && !authFn(w, r) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -155,7 +159,7 @@ func Run(cfg Config) error {
 		wc := pool.add(conn)
 
 		// Send init for each component in mount order (root first, children after).
-		for _, ci := range cfg.Comps {
+		for _, ci := range comps {
 			if err := handleInit(wc, ci, ci.SlotName); err != nil {
 				log.Printf("godom: failed to compute init for slot %q: %v", ci.SlotName, err)
 				pool.remove(wc)

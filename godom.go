@@ -49,6 +49,8 @@ type Engine struct {
 	userMux    *http.ServeMux           // custom mux from SetMux()
 	muxOpts    *MuxOptions              // custom paths for /ws and /godom.js
 	authFn     middleware.AuthFunc      // auth check; nil = no auth
+	wsPath     string                   // resolved WebSocket path (from muxOpts or default)
+	scriptPath string                   // resolved script path (from muxOpts or default)
 }
 
 // MuxOptions configures custom paths for godom's handlers when using SetMux.
@@ -147,6 +149,17 @@ func (a *Engine) SetMux(mux *http.ServeMux, opts *MuxOptions) {
 func (a *Engine) SetAuth(fn middleware.AuthFunc) {
 	a.authFn = fn
 }
+
+// --- EngineConfig interface methods (used by internal/server) ---
+
+func (a *Engine) Components() []*component.Info         { return a.comps }
+func (a *Engine) PluginScripts() map[string][]string    { return a.plugins }
+func (a *Engine) EmbeddedJS() (string, string, string)  { return bridgeJS, protobufMinJS, protocolJS }
+func (a *Engine) Mux() *http.ServeMux                   { return a.userMux }
+func (a *Engine) WebSocketPath() string                  { return a.wsPath }
+func (a *Engine) GodomScriptPath() string                { return a.scriptPath }
+func (a *Engine) Auth() middleware.AuthFunc              { return a.authFn }
+func (a *Engine) ExecJSDisabled() bool                   { return a.DisableExecJS }
 
 // RegisterPlugin registers a named plugin with one or more JS scripts.
 func (a *Engine) RegisterPlugin(name string, scripts ...string) {
@@ -276,14 +289,14 @@ func (a *Engine) Run() error {
 	}
 
 	// Resolve MuxOptions paths.
-	wsPath := "/ws"
-	scriptPath := "/godom.js"
+	a.wsPath = "/ws"
+	a.scriptPath = "/godom.js"
 	if a.muxOpts != nil {
 		if a.muxOpts.WSPath != "" {
-			wsPath = a.muxOpts.WSPath
+			a.wsPath = a.muxOpts.WSPath
 		}
 		if a.muxOpts.ScriptPath != "" {
-			scriptPath = a.muxOpts.ScriptPath
+			a.scriptPath = a.muxOpts.ScriptPath
 		}
 	}
 
@@ -292,20 +305,7 @@ func (a *Engine) Run() error {
 		a.FixedAuthToken, a.authFn = middleware.TokenAuth()
 	}
 
-	cfg := server.Config{
-		Comps:         a.comps,
-		Plugins:       a.plugins,
-		BridgeJS:      bridgeJS,
-		ProtobufMinJS: protobufMinJS,
-		ProtocolJS:    protocolJS,
-		UserMux:       a.userMux,
-		WSPath:        wsPath,
-		ScriptPath:    scriptPath,
-		AuthFn:        a.authFn,
-		DisableExecJS: a.DisableExecJS,
-	}
-
-	return server.Run(cfg)
+	return server.Run(a)
 }
 
 // ListenAndServe binds a port using the startup config (Port, Host), wraps
