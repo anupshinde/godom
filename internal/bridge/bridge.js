@@ -114,6 +114,7 @@
 
     function connect() {
         var wsUrl = window.GODOM_WS_URL || (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "__GODOM_WS_PATH__";
+        var firedOnConnect = false;
         ws = new WebSocket(wsUrl);
         ws.binaryType = "arraybuffer";
 
@@ -125,6 +126,10 @@
                 hideDisconnectOverlay();
                 reconnectDelay = 1000;
                 initTarget(msg.target || "", msg);
+                if (!firedOnConnect && ns.onconnect) {
+                    firedOnConnect = true;
+                    ns.onconnect();
+                }
                 break;
             case SK.SERVER_PATCH:
                 var name = msg.target || "";
@@ -144,15 +149,18 @@
         };
 
         ws.onclose = function(evt) {
+            firedOnConnect = false;
             var errorMsg = evt.reason || null;
             showDisconnectOverlay(errorMsg);
+            if (ns.ondisconnect) ns.ondisconnect(errorMsg);
             if (!errorMsg) {
                 setTimeout(connect, reconnectDelay);
                 reconnectDelay = Math.min(reconnectDelay * 2, 30000);
             }
         };
 
-        ws.onerror = function() {
+        ws.onerror = function(evt) {
+            if (ns.onerror) ns.onerror(evt);
             ws.close();
         };
     }
