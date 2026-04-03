@@ -70,8 +70,8 @@ func TestVDOMBuildInit(t *testing.T) {
 
 	msg := BuildInit(ci)
 
-	if msg.Type != "init" {
-		t.Fatalf("expected type 'init', got %q", msg.Type)
+	if msg.Kind != gproto.ServerKind_SERVER_INIT {
+		t.Fatalf("expected type 'init', got %q", msg.Kind)
 	}
 
 	if len(msg.Tree) == 0 {
@@ -129,8 +129,8 @@ func TestVDOMBuildUpdate_Increment(t *testing.T) {
 	if msg == nil {
 		t.Fatal("expected patch message after increment")
 	}
-	if msg.Type != "patch" {
-		t.Fatalf("expected type 'patch', got %q", msg.Type)
+	if msg.Kind != gproto.ServerKind_SERVER_PATCH {
+		t.Fatalf("expected type 'patch', got %q", msg.Kind)
 	}
 
 	// Should have a text patch changing "0" to "1"
@@ -163,7 +163,7 @@ func TestVDOMBuildUpdate_NoChange(t *testing.T) {
 	// No state change
 	msg, _ := BuildUpdate(ci)
 	if msg != nil {
-		t.Errorf("expected nil message when nothing changed, got type=%q patches=%d", msg.Type, len(msg.Patches))
+		t.Errorf("expected nil message when nothing changed, got type=%q patches=%d", msg.Kind, len(msg.Patches))
 	}
 }
 
@@ -444,7 +444,7 @@ func TestProcessEvents_DispatchesMethodCall(t *testing.T) {
 	// Send a method call event.
 	ci.EventCh <- component.Event{
 		Kind: component.MethodCallKind,
-		Call: &gproto.MethodCall{Method: "Increment", NodeId: 1},
+		Msg: &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment", NodeId: 1},
 	}
 
 	close(ci.EventCh)
@@ -665,12 +665,12 @@ func TestHandleInit_SendsInitMessage(t *testing.T) {
 		t.Fatalf("expected binary message, got %d", mt)
 	}
 
-	var msg gproto.VDomMessage
+	var msg gproto.ServerMessage
 	if err := proto.Unmarshal(data, &msg); err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if msg.Type != "init" {
-		t.Errorf("expected type 'init', got %q", msg.Type)
+	if msg.Kind != gproto.ServerKind_SERVER_INIT {
+		t.Errorf("expected type 'init', got %q", msg.Kind)
 	}
 	if len(msg.Tree) == 0 {
 		t.Error("expected non-empty tree")
@@ -752,12 +752,12 @@ func TestHandleNodeEvent_UpdatesTreeAndBroadcasts(t *testing.T) {
 	if mt != websocket.BinaryMessage {
 		t.Fatalf("expected binary, got %d", mt)
 	}
-	var msg gproto.VDomMessage
+	var msg gproto.ServerMessage
 	if err := proto.Unmarshal(data, &msg); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if msg.Type != "patch" {
-		t.Errorf("expected 'patch', got %q", msg.Type)
+	if msg.Kind != gproto.ServerKind_SERVER_PATCH {
+		t.Errorf("expected 'patch', got %q", msg.Kind)
 	}
 	// Verify the patch carries the correct value
 	var hasValuePatch bool
@@ -825,7 +825,7 @@ func TestHandleMethodCall_CallsMethod(t *testing.T) {
 		}
 	}
 
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
 	// Verify method was called: Count should be 3 (0 + Step=3)
@@ -842,7 +842,7 @@ func TestHandleMethodCall_CallsMethod(t *testing.T) {
 	if mt != websocket.BinaryMessage {
 		t.Fatalf("expected binary, got %d", mt)
 	}
-	var msg gproto.VDomMessage
+	var msg gproto.ServerMessage
 	if err := proto.Unmarshal(data, &msg); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -888,7 +888,7 @@ func TestHandleMethodCall_RebuildReflectsNewState(t *testing.T) {
 		}
 	}
 
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
 	// The broadcast should contain a tree with the new count "5"
@@ -897,12 +897,12 @@ func TestHandleMethodCall_RebuildReflectsNewState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	var msg gproto.VDomMessage
+	var msg gproto.ServerMessage
 	if err := proto.Unmarshal(data, &msg); err != nil {
 		t.Fatal(err)
 	}
-	if msg.Type != "patch" {
-		t.Fatalf("expected 'patch', got %q", msg.Type)
+	if msg.Kind != gproto.ServerKind_SERVER_PATCH {
+		t.Fatalf("expected 'patch', got %q", msg.Kind)
 	}
 
 	// Verify the patch message contains patches (the state change)
@@ -919,7 +919,7 @@ func TestHandleMethodCall_InvalidMethod(t *testing.T) {
 	ci.Mu.Unlock()
 
 	pool := &connPool{}
-	call := &gproto.MethodCall{Method: "NonExistent"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "NonExistent"}
 	// Should not panic — logs error and returns
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
@@ -999,7 +999,7 @@ func TestHandleMethodCall_SkipsRebuildWhenRefreshed(t *testing.T) {
 	// Let the app call RefreshFn
 	app.refreshFn = ci.RefreshFn
 
-	call := &gproto.MethodCall{Method: "IncrementAndRefresh"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "IncrementAndRefresh"}
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
 	// Method was called
@@ -1025,7 +1025,7 @@ func TestHandleMethodCall_SkipsRebuildWhenRefreshed(t *testing.T) {
 	if mt != websocket.BinaryMessage {
 		t.Fatalf("expected binary, got %d", mt)
 	}
-	var msg gproto.VDomMessage
+	var msg gproto.ServerMessage
 	if err := proto.Unmarshal(data, &msg); err != nil {
 		t.Fatal(err)
 	}
@@ -1056,7 +1056,7 @@ func TestHandleMethodCall_SyncsBindValues(t *testing.T) {
 	// handleMethodCall calls ci.RefreshFn() after the method
 	ci.RefreshFn = func() {}
 
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
 	// Step should have been synced from tree prop to struct field
@@ -1730,7 +1730,7 @@ func TestHandleNodeEvent_NotElementNode(t *testing.T) {
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleNodeEvent(ci, 0, int32(textNodeID), "value")
 }
 
-// --- handleMethodCall: method with arguments ---
+// --- handleMethodMsg: method with arguments ---
 
 type argsApp struct {
 	Component struct{}
@@ -1760,7 +1760,7 @@ func TestHandleMethodCall_WithArgs(t *testing.T) {
 	pool := &connPool{}
 	ci.RefreshFn = func() {}
 
-	call := &gproto.MethodCall{
+	call := &gproto.BrowserMessage{
 		Method: "SetResult",
 		Args:   [][]byte{[]byte(`"hello world"`)},
 	}
@@ -1771,7 +1771,7 @@ func TestHandleMethodCall_WithArgs(t *testing.T) {
 	}
 }
 
-// --- handleMethodCall: bind sync edge cases ---
+// --- handleMethodMsg: bind sync edge cases ---
 
 func TestHandleMethodCall_BindSyncWithExpr(t *testing.T) {
 	// When a binding has Expr set, handleMethodCall should use Expr as the
@@ -1808,7 +1808,7 @@ func TestHandleMethodCall_BindSyncWithExpr(t *testing.T) {
 	pool := &connPool{}
 	ci.RefreshFn = func() {}
 
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
 	// The bind sync should have set Step=7
@@ -1844,7 +1844,7 @@ func TestHandleMethodCall_BindSyncNilProps(t *testing.T) {
 	pool := &connPool{}
 	ci.RefreshFn = func() {}
 
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
 	// Step should remain 5 (nil props → sync skipped)
@@ -1878,7 +1878,7 @@ func TestHandleMethodCall_BindSyncNoValueProp(t *testing.T) {
 	pool := &connPool{}
 	ci.RefreshFn = func() {}
 
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
 	// Step should remain 3 (no "value" prop → sync skipped)
@@ -1921,7 +1921,7 @@ func TestHandleMethodCall_BindSyncSkipsNonElementNode(t *testing.T) {
 	ci.RefreshFn = func() {}
 
 	// Should not panic — bind sync skips non-element nodes
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
 	// Step should remain 1 (sync skipped), so Count = 0 + 1 = 1
@@ -1950,7 +1950,7 @@ func TestHandleMethodCall_DebugLogging(t *testing.T) {
 	env.Debug = true
 	defer func() { env.Debug = prev }()
 
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
 	if app.Count != 1 {
@@ -2168,12 +2168,12 @@ func TestRun_WebSocketUpgrade(t *testing.T) {
 	if mt != websocket.BinaryMessage {
 		t.Fatalf("expected binary, got %d", mt)
 	}
-	var msg gproto.VDomMessage
+	var msg gproto.ServerMessage
 	if err := proto.Unmarshal(data, &msg); err != nil {
 		t.Fatal(err)
 	}
-	if msg.Type != "init" {
-		t.Errorf("expected init, got %q", msg.Type)
+	if msg.Kind != gproto.ServerKind_SERVER_INIT {
+		t.Errorf("expected init, got %q", msg.Kind)
 	}
 }
 
@@ -2206,9 +2206,9 @@ func TestRun_WebSocketMethodCall(t *testing.T) {
 	}
 
 	// Send a method call (tag=2)
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	payload, _ := proto.Marshal(call)
-	msg := append([]byte{2}, payload...)
+	msg := payload
 	if err := client.WriteMessage(websocket.BinaryMessage, msg); err != nil {
 		t.Fatal(err)
 	}
@@ -2219,7 +2219,7 @@ func TestRun_WebSocketMethodCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	var resp gproto.VDomMessage
+	var resp gproto.ServerMessage
 	if err := proto.Unmarshal(data, &resp); err != nil {
 		t.Fatal(err)
 	}
@@ -2230,7 +2230,7 @@ func TestRun_WebSocketMethodCall(t *testing.T) {
 	}
 
 	// The response should contain the updated tree with "2"
-	if resp.Type == "init" && len(resp.Tree) > 0 {
+	if resp.Kind == gproto.ServerKind_SERVER_INIT && len(resp.Tree) > 0 {
 		var tree render.WireNode
 		if err := json.Unmarshal(resp.Tree, &tree); err == nil {
 			if !findTextInTree(&tree, "2") {
@@ -2278,9 +2278,9 @@ func TestRun_WebSocketNodeEvent(t *testing.T) {
 	}
 
 	// Send node event (tag=1)
-	evt := &gproto.NodeEvent{NodeId: int32(inputNodeID), Value: "99"}
+	evt := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_INPUT, NodeId: int32(inputNodeID), Value: "99"}
 	payload, _ := proto.Marshal(evt)
-	msg := append([]byte{1}, payload...)
+	msg := payload
 	if err := client.WriteMessage(websocket.BinaryMessage, msg); err != nil {
 		t.Fatal(err)
 	}
@@ -2291,12 +2291,12 @@ func TestRun_WebSocketNodeEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	var resp gproto.VDomMessage
+	var resp gproto.ServerMessage
 	if err := proto.Unmarshal(data, &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Type != "patch" {
-		t.Errorf("expected patch, got %q", resp.Type)
+	if resp.Kind != gproto.ServerKind_SERVER_PATCH {
+		t.Errorf("expected patch, got %q", resp.Kind)
 	}
 	var hasValue99 bool
 	for _, p := range resp.Patches {
@@ -2473,7 +2473,7 @@ func TestHandleMethodCall_EmptyMethod(t *testing.T) {
 	ci.Mu.Unlock()
 
 	pool := &connPool{}
-	call := &gproto.MethodCall{Method: ""}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: ""}
 	// Should not panic — empty method name
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 }
@@ -2619,7 +2619,7 @@ func TestHandleMethodCall_NilTree(t *testing.T) {
 	ci.RefreshFn = func() {}
 
 	pool := &connPool{}
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
 	// Method should still execute
@@ -2645,7 +2645,7 @@ func TestHandleMethodCall_BindNodeMissing(t *testing.T) {
 
 	ci.RefreshFn = func() {}
 	pool := &connPool{}
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	// Should not panic — skips the missing node
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
@@ -2674,7 +2674,7 @@ func TestHandleMethodCall_BindNodeNilProps(t *testing.T) {
 
 	ci.RefreshFn = func() {}
 	pool := &connPool{}
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	// Should not panic — skips the nil Props
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
@@ -2703,7 +2703,7 @@ func TestHandleMethodCall_BindValueMissing(t *testing.T) {
 
 	ci.RefreshFn = func() {}
 	pool := &connPool{}
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 
 	// Step should remain 5 (no value to sync)
@@ -2749,16 +2749,16 @@ func TestRun_WebSocketIgnoresNonBinary(t *testing.T) {
 	client.WriteMessage(websocket.BinaryMessage, []byte{0xFF, 0x00})
 
 	// Server should still be alive — send a valid method call
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	payload, _ := proto.Marshal(call)
-	client.WriteMessage(websocket.BinaryMessage, append([]byte{2}, payload...))
+	client.WriteMessage(websocket.BinaryMessage, payload)
 
 	client.SetReadDeadline(time.Now().Add(time.Second))
 	_, data, err := client.ReadMessage()
 	if err != nil {
 		t.Fatalf("server died after invalid messages: %v", err)
 	}
-	var msg gproto.VDomMessage
+	var msg gproto.ServerMessage
 	proto.Unmarshal(data, &msg)
 	if app.Count != 1 {
 		t.Errorf("expected Count=1 after surviving bad messages, got %d", app.Count)
@@ -2790,16 +2790,16 @@ func TestRun_WebSocketBadProtobuf(t *testing.T) {
 	client.SetReadDeadline(time.Now().Add(time.Second))
 	_, _, _ = client.ReadMessage()
 
-	// Send tag=1 (NodeEvent) with garbage protobuf
-	client.WriteMessage(websocket.BinaryMessage, []byte{0x01, 0xFF, 0xFF, 0xFF})
+	// Send garbage protobuf (should be ignored, not crash)
+	client.WriteMessage(websocket.BinaryMessage, []byte{0xFF, 0xFF, 0xFF, 0xFF})
 
-	// Send tag=2 (MethodCall) with garbage protobuf
-	client.WriteMessage(websocket.BinaryMessage, []byte{0x02, 0xFF, 0xFF, 0xFF})
+	// Send another garbage message
+	client.WriteMessage(websocket.BinaryMessage, []byte{0x01, 0x02, 0x03})
 
 	// Server should still respond to valid requests
-	call := &gproto.MethodCall{Method: "Increment"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
 	payload, _ := proto.Marshal(call)
-	client.WriteMessage(websocket.BinaryMessage, append([]byte{2}, payload...))
+	client.WriteMessage(websocket.BinaryMessage, payload)
 
 	client.SetReadDeadline(time.Now().Add(time.Second))
 	_, _, err = client.ReadMessage()
@@ -2854,8 +2854,8 @@ func TestBuildUpdate_NilTree(t *testing.T) {
 	if msg == nil {
 		t.Fatal("expected init message when Tree is nil")
 	}
-	if msg.Type != "init" {
-		t.Errorf("expected type 'init' for first build, got %q", msg.Type)
+	if msg.Kind != gproto.ServerKind_SERVER_INIT {
+		t.Errorf("expected type 'init' for first build, got %q", msg.Kind)
 	}
 }
 
@@ -2867,8 +2867,8 @@ func TestBuildInit_Idempotent(t *testing.T) {
 	msg2 := BuildInit(ci)
 
 	// Both should produce the same tree
-	if msg1.Type != msg2.Type {
-		t.Errorf("expected same type, got %q and %q", msg1.Type, msg2.Type)
+	if msg1.Kind != msg2.Kind {
+		t.Errorf("expected same type, got %q and %q", msg1.Kind, msg2.Kind)
 	}
 	if string(msg1.Tree) != string(msg2.Tree) {
 		t.Error("expected identical trees from repeated BuildInit")
@@ -3179,24 +3179,18 @@ func startTestServer(t *testing.T, cfg Config) (string, error) {
 			if err != nil {
 				return
 			}
-			if msgType != websocket.BinaryMessage || len(data) < 2 {
+			if msgType != websocket.BinaryMessage || len(data) == 0 {
 				continue
 			}
-			tag := data[0]
-			payload := data[1:]
-			switch tag {
-			case 1:
-				evt := &gproto.NodeEvent{}
-				if err := proto.Unmarshal(payload, evt); err != nil {
-					continue
-				}
-				(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleNodeEvent(ci, 0, evt.NodeId, evt.Value)
-			case 2:
-				call := &gproto.MethodCall{}
-				if err := proto.Unmarshal(payload, call); err != nil {
-					continue
-				}
-				(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
+			msg := &gproto.BrowserMessage{}
+			if err := proto.Unmarshal(data, msg); err != nil {
+				continue
+			}
+			switch msg.Kind {
+			case gproto.BrowserKind_BROWSER_INPUT:
+				(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleNodeEvent(ci, 0, msg.NodeId, msg.Value)
+			case gproto.BrowserKind_BROWSER_METHOD:
+				(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, msg)
 			}
 		}
 	})
@@ -3748,7 +3742,7 @@ func TestHandleMethodCall_SyncsPropBindings(t *testing.T) {
 	el.Facts.Props["checked"] = true
 
 	// Call a method — handleMethodCall should sync Dark from tree to struct
-	call := &gproto.MethodCall{Method: "ToggleDark"}
+	call := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "ToggleDark"}
 	pool := &connPool{}
 	(&serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}).handleMethodCall(ci, 0, call)
 

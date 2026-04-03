@@ -1,8 +1,8 @@
-// bridge.js — godom VDOM bridge.
+// bridge.js — godom bridge.
 //
-// Receives binary protobuf VDomMessage from Go over WebSocket.
-// On "init": builds DOM from tree description, registers events.
-// On "patch": applies minimal DOM mutations using nodeMap[id] lookups.
+// Receives binary protobuf ServerMessage from Go over WebSocket.
+// On init: builds DOM from tree description, registers events.
+// On patch: applies minimal DOM mutations using nodeMap[id] lookups.
 //
 // Each render target is identified by name (from g-component attribute).
 // The root component has name "document.body" and renders into document.body.
@@ -34,6 +34,8 @@
     var targets = {};   // targetName (string) → [target context, ...]
 
     var Proto = godomProto;
+    var SK = Proto.ServerKind;   // cached enum constants for fast dispatch
+    var BK = Proto.BrowserKind;
     var textDecoder = new TextDecoder();
     var textEncoder = new TextEncoder();
 
@@ -116,14 +118,16 @@
         ws.binaryType = "arraybuffer";
 
         ws.onmessage = function(evt) {
-            var msg = Proto.VDomMessage.decode(new Uint8Array(evt.data));
-            var name = msg.targetName || "";
+            var msg = Proto.ServerMessage.decode(new Uint8Array(evt.data));
 
-            if (msg.type === "init") {
+            switch (msg.kind) {
+            case SK.SERVER_INIT:
                 hideDisconnectOverlay();
                 reconnectDelay = 1000;
-                initTarget(name, msg);
-            } else if (msg.type === "patch") {
+                initTarget(msg.target || "", msg);
+                break;
+            case SK.SERVER_PATCH:
+                var name = msg.target || "";
                 var ctxList = targets[name];
                 if (!ctxList || ctxList.length === 0) {
                     console.warn("[godom patch] no target context for name=" + name);
@@ -132,6 +136,10 @@
                 for (var i = 0; i < ctxList.length; i++) {
                     ctxList[i].applyPatches(msg.patches);
                 }
+                break;
+            case SK.SERVER_JSCALL:
+                handleJSCall(msg);
+                break;
             }
         };
 
@@ -508,11 +516,12 @@
         // --- Event handling ---
 
         function sendNodeEvent(nodeId, value) {
-            var msg = Proto.NodeEvent.encode({nodeId: nodeId, value: value}).finish();
-            var tagged = new Uint8Array(1 + msg.length);
-            tagged[0] = 1;
-            tagged.set(msg, 1);
-            ws.send(tagged);
+            var msg = Proto.BrowserMessage.encode({
+                kind: BK.BROWSER_INPUT,
+                nodeId: nodeId,
+                value: value
+            }).finish();
+            ws.send(msg);
         }
 
         function autoRegisterInputSync(nodeId, el, tag) {
@@ -554,15 +563,13 @@
         }
 
         function sendMethodCall(nodeId, method, args) {
-            var msg = Proto.MethodCall.encode({
+            var msg = Proto.BrowserMessage.encode({
+                kind: BK.BROWSER_METHOD,
                 nodeId: nodeId,
                 method: method,
                 args: args
             }).finish();
-            var tagged = new Uint8Array(1 + msg.length);
-            tagged[0] = 2;
-            tagged.set(msg, 1);
-            ws.send(tagged);
+            ws.send(msg);
         }
 
         function registerEvents(nodeId, el, events) {
@@ -764,6 +771,74 @@
 
     ns.register = function(name, handler) {
         ns._plugins[name] = handler;
+    };
+
+    // =========================================================================
+    // ExecJS — Go → browser → Go request/response
+    // =========================================================================
+
+    function handleJSCall(msg) {
+        var id = msg.callId;
+        var expr = msg.expr;
+        var result = null;
+        var error = "";
+
+        if (window.GODOM_DISABLE_EXEC) {
+            sendJSResult(id, new Uint8Array(0), "ExecJS is disabled on this browser");
+            return;
+        }
+
+        try {
+            var val = (0, eval)(expr); // indirect eval — global scope
+            var json = JSON.stringify(val);
+            if (json === undefined) {
+                // Value is non-serializable (undefined, function, symbol)
+                result = new Uint8Array(0);
+                error = "non-serializable value";
+            } else {
+                result = textEncoder.encode(json);
+            }
+        } catch (e) {
+            result = new Uint8Array(0);
+            error = e.message || String(e);
+        }
+        sendJSResult(id, result, error);
+    }
+
+    function sendJSResult(id, result, error) {
+        var msg = Proto.BrowserMessage.encode({
+            kind: BK.BROWSER_JSRESULT,
+            callId: id,
+            result: result,
+            error: error
+        }).finish();
+        ws.send(msg);
+    }
+
+    // =========================================================================
+    // godom.call — JS → Go method calls from arbitrary JavaScript
+    // =========================================================================
+
+    // ns.call(method, ...args) sends a MethodCall to Go.
+    // The method is dispatched to the component that owns the calling context.
+    // For now, uses nodeId=0 (server resolves to the first component).
+    ns.call = function(method) {
+        var args = [];
+        for (var i = 1; i < arguments.length; i++) {
+            var json = JSON.stringify(arguments[i]);
+            if (json !== undefined) {
+                args.push(textEncoder.encode(json));
+            }
+        }
+        var msg = Proto.BrowserMessage.encode({
+            kind: BK.BROWSER_METHOD,
+            nodeId: 0,
+            method: method,
+            args: args
+        }).finish();
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(msg);
+        }
     };
 
     // =========================================================================

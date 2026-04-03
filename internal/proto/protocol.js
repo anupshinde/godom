@@ -1,4 +1,4 @@
-// Protocol buffer type definitions for godom VDOM wire protocol.
+// Protocol buffer type definitions for godom wire protocol.
 // IMPORTANT: This file must stay in sync with protocol.proto.
 // Update this file whenever protocol.proto changes.
 var godomProto = (function() {
@@ -6,22 +6,32 @@ var godomProto = (function() {
 
     var Root = protobuf.Root,
         Type = protobuf.Type,
-        Field = protobuf.Field;
+        Field = protobuf.Field,
+        Enum = protobuf.Enum;
 
     var root = new Root();
 
-    // NodeEvent — browser → Go, Layer 1: just node ID + value (tag byte 0x01)
-    var NodeEvent = new Type("NodeEvent")
-        .add(new Field("nodeId", 1, "int32"))
-        .add(new Field("value", 2, "string"));
+    // --- Enums ---
 
-    // MethodCall — browser → Go, Layer 2: method dispatch (tag byte 0x02)
-    var MethodCall = new Type("MethodCall")
-        .add(new Field("nodeId", 1, "int32"))
-        .add(new Field("method", 2, "string"))
-        .add(new Field("args", 3, "bytes", "repeated"));
+    var ServerKind = new Enum("ServerKind", {
+        SERVER_INIT: 0,
+        SERVER_PATCH: 1,
+        SERVER_JSCALL: 2,
+        SERVER_STREAM: 3,
+        SERVER_BROADCAST: 4
+    });
 
-    // DomPatch — single DOM mutation from diff
+    var BrowserKind = new Enum("BrowserKind", {
+        BROWSER_INPUT: 0,
+        BROWSER_METHOD: 1,
+        BROWSER_JSRESULT: 2,
+        BROWSER_INIT_REQUEST: 3,
+        BROWSER_PAGE_INFO: 4,
+        BROWSER_BROADCAST: 5
+    });
+
+    // --- DomPatch ---
+
     var DomPatch = new Type("DomPatch")
         .add(new Field("nodeId", 1, "int32"))
         .add(new Field("op", 2, "string"))
@@ -33,22 +43,43 @@ var godomProto = (function() {
         .add(new Field("pluginData", 15, "bytes"))
         .add(new Field("subPatches", 16, "DomPatch", "repeated"));
 
-    // VDomMessage — top-level Go → browser message
-    var VDomMessage = new Type("VDomMessage")
-        .add(new Field("type", 1, "string"))
-        .add(new Field("patches", 3, "DomPatch", "repeated"))
-        .add(new Field("tree", 5, "bytes"))
-        .add(new Field("targetName", 6, "string"));
+    // --- ServerMessage ---
 
-    root.add(VDomMessage);
+    var ServerMessage = new Type("ServerMessage")
+        .add(ServerKind)
+        .add(new Field("kind", 1, "ServerKind"))
+        .add(new Field("target", 2, "string"))
+        .add(new Field("tree", 10, "bytes"))
+        .add(new Field("patches", 11, "DomPatch", "repeated"))
+        .add(new Field("callId", 20, "int32"))
+        .add(new Field("expr", 21, "string"));
+
+    // --- BrowserMessage ---
+
+    var BrowserMessage = new Type("BrowserMessage")
+        .add(BrowserKind)
+        .add(new Field("kind", 1, "BrowserKind"))
+        .add(new Field("nodeId", 2, "int32"))
+        .add(new Field("value", 10, "string"))
+        .add(new Field("method", 20, "string"))
+        .add(new Field("args", 21, "bytes", "repeated"))
+        .add(new Field("callId", 30, "int32"))
+        .add(new Field("result", 31, "bytes"))
+        .add(new Field("error", 32, "string"));
+
+    root.add(ServerMessage);
     root.add(DomPatch);
-    root.add(NodeEvent);
-    root.add(MethodCall);
+    root.add(BrowserMessage);
+
+    // Enum constants for use in bridge.js
+    var SK = ServerKind.values;
+    var BK = BrowserKind.values;
 
     return {
-        VDomMessage: VDomMessage,
+        ServerMessage: ServerMessage,
         DomPatch: DomPatch,
-        NodeEvent: NodeEvent,
-        MethodCall: MethodCall
+        BrowserMessage: BrowserMessage,
+        ServerKind: SK,
+        BrowserKind: BK
     };
 })();

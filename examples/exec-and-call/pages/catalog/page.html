@@ -1,0 +1,11 @@
+{{define "content"}}
+<div class="page">
+    <h1 style="font-size: 1.5rem; margin-bottom: 1rem;">Catalog</h1>
+    <p style="color: #888; font-size: 0.9rem; margin-bottom: 1.5rem;">
+        The tree uses a <strong>Shoelace</strong> web component rendered by a godom plugin.
+        Clicking a tree item calls <strong>godom.call("SelectCategory", id)</strong> — the
+        plugin sends the event to Go, which updates the description. All browsers stay in sync.
+    </p>
+    <div g-component="catalog"></div>
+</div>
+{{end}}
