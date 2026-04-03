@@ -76,7 +76,7 @@ Both directions use raw protobuf — no tag bytes, no framing. Each WebSocket me
 - `internal/server/server.go` — binary WebSocket read/write with `proto.Marshal`/`Unmarshal`
 - `internal/render/encode.go` — builds protobuf `DomPatch` types from VDOM patches
 - `internal/render/tree_encode.go` — encodes VDOM trees to JSON wire format
-- `internal/bridge/bridge.js` — decodes `VDomMessage`, builds DOM from tree, applies patches, encodes `NodeEvent`/`MethodCall`
+- `internal/bridge/bridge.js` — decodes `ServerMessage`, builds DOM from tree, applies patches, encodes `BrowserMessage`
 
 **Design decisions:**
 
