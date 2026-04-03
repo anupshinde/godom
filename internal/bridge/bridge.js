@@ -119,6 +119,14 @@
         ws = new WebSocket(wsUrl);
         ws.binaryType = "arraybuffer";
 
+        ws.onopen = function() {
+            // Scan for g-component targets on connect. In embedded mode
+            // (no document.body), this is the only trigger. In root mode,
+            // static HTML has no g-component attrs so this is a no-op —
+            // the real scan happens after SERVER_INIT renders the body.
+            scanAndRequestComponents();
+        };
+
         ws.onmessage = function(evt) {
             var msg = Proto.ServerMessage.decode(new Uint8Array(evt.data));
 

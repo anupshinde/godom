@@ -98,16 +98,6 @@ func Run(cfg EngineConfig) error {
 
 	pool := &connPool{}
 
-	// NOTE: document.body ordering removed — bridge now drives mount order
-	// via BROWSER_INIT_REQUEST (pull-based init). Keeping commented for reference.
-	// for i, ci := range comps {
-	// 	if ci.SlotName == "document.body" && i > 0 {
-	// 		copy(comps[1:i+1], comps[:i])
-	// 		comps[0] = ci
-	// 		break
-	// 	}
-	// }
-
 	// All components share a single IDCounter so node IDs are globally
 	// unique across the bridge's nodeMap.
 	sharedIDCounter := &vdom.IDCounter{}
