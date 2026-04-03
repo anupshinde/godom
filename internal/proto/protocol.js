@@ -6,11 +6,32 @@ var godomProto = (function() {
 
     var Root = protobuf.Root,
         Type = protobuf.Type,
-        Field = protobuf.Field;
+        Field = protobuf.Field,
+        Enum = protobuf.Enum;
 
     var root = new Root();
 
-    // DomPatch — single DOM mutation from diff
+    // --- Enums ---
+
+    var ServerKind = new Enum("ServerKind", {
+        SERVER_INIT: 0,
+        SERVER_PATCH: 1,
+        SERVER_JSCALL: 2,
+        SERVER_STREAM: 3,
+        SERVER_BROADCAST: 4
+    });
+
+    var BrowserKind = new Enum("BrowserKind", {
+        BROWSER_INPUT: 0,
+        BROWSER_METHOD: 1,
+        BROWSER_JSRESULT: 2,
+        BROWSER_INIT_REQUEST: 3,
+        BROWSER_PAGE_INFO: 4,
+        BROWSER_BROADCAST: 5
+    });
+
+    // --- DomPatch ---
+
     var DomPatch = new Type("DomPatch")
         .add(new Field("nodeId", 1, "int32"))
         .add(new Field("op", 2, "string"))
@@ -22,18 +43,22 @@ var godomProto = (function() {
         .add(new Field("pluginData", 15, "bytes"))
         .add(new Field("subPatches", 16, "DomPatch", "repeated"));
 
-    // ServerMessage — Go → browser (all message types)
+    // --- ServerMessage ---
+
     var ServerMessage = new Type("ServerMessage")
-        .add(new Field("kind", 1, "string"))
+        .add(ServerKind)
+        .add(new Field("kind", 1, "ServerKind"))
         .add(new Field("target", 2, "string"))
         .add(new Field("tree", 10, "bytes"))
         .add(new Field("patches", 11, "DomPatch", "repeated"))
         .add(new Field("callId", 20, "int32"))
         .add(new Field("expr", 21, "string"));
 
-    // BrowserMessage — browser → Go (all message types)
+    // --- BrowserMessage ---
+
     var BrowserMessage = new Type("BrowserMessage")
-        .add(new Field("kind", 1, "string"))
+        .add(BrowserKind)
+        .add(new Field("kind", 1, "BrowserKind"))
         .add(new Field("nodeId", 2, "int32"))
         .add(new Field("value", 10, "string"))
         .add(new Field("method", 20, "string"))
@@ -46,9 +71,15 @@ var godomProto = (function() {
     root.add(DomPatch);
     root.add(BrowserMessage);
 
+    // Enum constants for use in bridge.js
+    var SK = ServerKind.values;
+    var BK = BrowserKind.values;
+
     return {
         ServerMessage: ServerMessage,
         DomPatch: DomPatch,
-        BrowserMessage: BrowserMessage
+        BrowserMessage: BrowserMessage,
+        ServerKind: SK,
+        BrowserKind: BK
     };
 })();

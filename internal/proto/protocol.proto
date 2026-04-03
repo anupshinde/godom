@@ -4,27 +4,48 @@ package godom;
 
 option go_package = "./proto";
 
+// --- Enums ---
+
+// ServerKind identifies the type of message sent from Go to the browser.
+enum ServerKind {
+  SERVER_INIT = 0;
+  SERVER_PATCH = 1;
+  SERVER_JSCALL = 2;
+  SERVER_STREAM = 3;        // future
+  SERVER_BROADCAST = 4;     // future
+}
+
+// BrowserKind identifies the type of message sent from the browser to Go.
+enum BrowserKind {
+  BROWSER_INPUT = 0;
+  BROWSER_METHOD = 1;
+  BROWSER_JSRESULT = 2;
+  BROWSER_INIT_REQUEST = 3;  // future
+  BROWSER_PAGE_INFO = 4;     // future
+  BROWSER_BROADCAST = 5;     // future
+}
+
 // --- Server → Browser ---
 
 // ServerMessage is the single message type sent from Go to the browser.
 // The `kind` field determines which payload fields are relevant.
 message ServerMessage {
-  string kind = 1;                    // "init", "patch", "jscall", "stream" (future), "broadcast" (future)
+  ServerKind kind = 1;
   string target = 2;                  // component instance name (for init, patch, stream)
 
-  // VDOM fields (kind: "init", "patch")
+  // VDOM fields (kind: INIT, PATCH)
   bytes tree = 10;                    // JSON-encoded tree description (init only)
   repeated DomPatch patches = 11;     // incremental patches (patch only)
 
-  // ExecJS fields (kind: "jscall")
+  // ExecJS fields (kind: JSCALL)
   int32 call_id = 20;                 // unique request ID for correlating responses
   string expr = 21;                   // JavaScript expression to evaluate
 
-  // Stream fields (kind: "stream") — future
+  // Stream fields (kind: STREAM) — future
   // bytes data = 30;
   // bool append = 31;
 
-  // Broadcast fields (kind: "broadcast") — future
+  // Broadcast fields (kind: BROADCAST) — future
   // string channel = 40;
   // bytes payload = 41;
 }
@@ -49,28 +70,28 @@ message DomPatch {
 // BrowserMessage is the single message type sent from the browser to Go.
 // The `kind` field determines which payload fields are relevant.
 message BrowserMessage {
-  string kind = 1;                    // "input", "method", "jsresult", "init_request" (future), "page_info" (future), "broadcast" (future)
+  BrowserKind kind = 1;
   int32 node_id = 2;                  // source node (0 = none, e.g. godom.call)
 
-  // Input sync fields (kind: "input")
+  // Input sync fields (kind: INPUT)
   string value = 10;                  // current DOM value (e.g. input.value)
 
-  // Method call fields (kind: "method")
+  // Method call fields (kind: METHOD)
   string method = 20;                 // Go method name (e.g. "AddTodo", "Toggle")
   repeated bytes args = 21;           // JSON-encoded arguments
 
-  // JSResult fields (kind: "jsresult")
+  // JSResult fields (kind: JSRESULT)
   int32 call_id = 30;                 // matches the ServerMessage.call_id
   bytes result = 31;                  // JSON-encoded result value
   string error = 32;                  // error message if eval failed
 
-  // Init request fields (kind: "init_request") — future
+  // Init request fields (kind: INIT_REQUEST) — future
   // string component = 40;
 
-  // Page info fields (kind: "page_info") — future
+  // Page info fields (kind: PAGE_INFO) — future
   // string page_path = 50;
 
-  // Broadcast fields (kind: "broadcast") — future
+  // Broadcast fields (kind: BROADCAST) — future
   // string channel = 60;
   // bytes payload = 61;
 }

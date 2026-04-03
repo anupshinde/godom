@@ -23,7 +23,7 @@ func TestEncodePatchMessage_Text(t *testing.T) {
 		{Type: vdom.PatchText, NodeID: 3, Data: vdom.PatchTextData{Text: "hello"}},
 	}
 	msg := EncodePatchMessage(patches)
-	if msg.Kind != "patch" {
+	if msg.Kind != gproto.ServerKind_SERVER_PATCH {
 		t.Errorf("expected type 'patch', got %q", msg.Kind)
 	}
 	if len(msg.Patches) != 1 {
@@ -273,7 +273,7 @@ func TestEncodePatchMessage_UnknownType(t *testing.T) {
 
 func TestEncodePatchMessage_Empty(t *testing.T) {
 	msg := EncodePatchMessage(nil)
-	if msg.Kind != "patch" {
+	if msg.Kind != gproto.ServerKind_SERVER_PATCH {
 		t.Errorf("expected type 'patch', got %q", msg.Kind)
 	}
 	if len(msg.Patches) != 0 {
@@ -1226,7 +1226,7 @@ func TestEncodeInitTreeMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg.Kind != "init" {
+	if msg.Kind != gproto.ServerKind_SERVER_INIT {
 		t.Errorf("expected type 'init', got %q", msg.Kind)
 	}
 	if len(msg.Tree) == 0 {
@@ -1242,7 +1242,7 @@ func TestEncodeInitTreeMessage(t *testing.T) {
 	if err := proto.Unmarshal(data, msg2); err != nil {
 		t.Fatal(err)
 	}
-	if msg2.Kind != "init" {
+	if msg2.Kind != gproto.ServerKind_SERVER_INIT {
 		t.Errorf("expected 'init' after round-trip, got %q", msg2.Kind)
 	}
 }
@@ -1252,7 +1252,7 @@ func TestEncodeInitTreeMessage_NilRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg.Kind != "init" {
+	if msg.Kind != gproto.ServerKind_SERVER_INIT {
 		t.Errorf("expected type 'init', got %q", msg.Kind)
 	}
 	// Tree should be "null" JSON
@@ -1433,7 +1433,7 @@ func TestEndToEnd_ParseResolveDiffEncode(t *testing.T) {
 
 	// Encode
 	msg := EncodePatchMessage(patches)
-	if msg.Kind != "patch" {
+	if msg.Kind != gproto.ServerKind_SERVER_PATCH {
 		t.Errorf("expected 'patch', got %q", msg.Kind)
 	}
 
@@ -1947,7 +1947,7 @@ func TestEncodeInitTreeMessage_UnknownNodeType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if msg.Kind != "init" {
+	if msg.Kind != gproto.ServerKind_SERVER_INIT {
 		t.Errorf("expected type 'init', got %q", msg.Kind)
 	}
 	if string(msg.Tree) != "null" {

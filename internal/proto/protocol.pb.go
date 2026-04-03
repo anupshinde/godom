@@ -21,16 +21,131 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// ServerKind identifies the type of message sent from Go to the browser.
+type ServerKind int32
+
+const (
+	ServerKind_SERVER_INIT      ServerKind = 0
+	ServerKind_SERVER_PATCH     ServerKind = 1
+	ServerKind_SERVER_JSCALL    ServerKind = 2
+	ServerKind_SERVER_STREAM    ServerKind = 3 // future
+	ServerKind_SERVER_BROADCAST ServerKind = 4 // future
+)
+
+// Enum value maps for ServerKind.
+var (
+	ServerKind_name = map[int32]string{
+		0: "SERVER_INIT",
+		1: "SERVER_PATCH",
+		2: "SERVER_JSCALL",
+		3: "SERVER_STREAM",
+		4: "SERVER_BROADCAST",
+	}
+	ServerKind_value = map[string]int32{
+		"SERVER_INIT":      0,
+		"SERVER_PATCH":     1,
+		"SERVER_JSCALL":    2,
+		"SERVER_STREAM":    3,
+		"SERVER_BROADCAST": 4,
+	}
+)
+
+func (x ServerKind) Enum() *ServerKind {
+	p := new(ServerKind)
+	*p = x
+	return p
+}
+
+func (x ServerKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ServerKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_protocol_proto_enumTypes[0].Descriptor()
+}
+
+func (ServerKind) Type() protoreflect.EnumType {
+	return &file_protocol_proto_enumTypes[0]
+}
+
+func (x ServerKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ServerKind.Descriptor instead.
+func (ServerKind) EnumDescriptor() ([]byte, []int) {
+	return file_protocol_proto_rawDescGZIP(), []int{0}
+}
+
+// BrowserKind identifies the type of message sent from the browser to Go.
+type BrowserKind int32
+
+const (
+	BrowserKind_BROWSER_INPUT        BrowserKind = 0
+	BrowserKind_BROWSER_METHOD       BrowserKind = 1
+	BrowserKind_BROWSER_JSRESULT     BrowserKind = 2
+	BrowserKind_BROWSER_INIT_REQUEST BrowserKind = 3 // future
+	BrowserKind_BROWSER_PAGE_INFO    BrowserKind = 4 // future
+	BrowserKind_BROWSER_BROADCAST    BrowserKind = 5 // future
+)
+
+// Enum value maps for BrowserKind.
+var (
+	BrowserKind_name = map[int32]string{
+		0: "BROWSER_INPUT",
+		1: "BROWSER_METHOD",
+		2: "BROWSER_JSRESULT",
+		3: "BROWSER_INIT_REQUEST",
+		4: "BROWSER_PAGE_INFO",
+		5: "BROWSER_BROADCAST",
+	}
+	BrowserKind_value = map[string]int32{
+		"BROWSER_INPUT":        0,
+		"BROWSER_METHOD":       1,
+		"BROWSER_JSRESULT":     2,
+		"BROWSER_INIT_REQUEST": 3,
+		"BROWSER_PAGE_INFO":    4,
+		"BROWSER_BROADCAST":    5,
+	}
+)
+
+func (x BrowserKind) Enum() *BrowserKind {
+	p := new(BrowserKind)
+	*p = x
+	return p
+}
+
+func (x BrowserKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (BrowserKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_protocol_proto_enumTypes[1].Descriptor()
+}
+
+func (BrowserKind) Type() protoreflect.EnumType {
+	return &file_protocol_proto_enumTypes[1]
+}
+
+func (x BrowserKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use BrowserKind.Descriptor instead.
+func (BrowserKind) EnumDescriptor() ([]byte, []int) {
+	return file_protocol_proto_rawDescGZIP(), []int{1}
+}
+
 // ServerMessage is the single message type sent from Go to the browser.
 // The `kind` field determines which payload fields are relevant.
 type ServerMessage struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
-	Kind   string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`     // "init", "patch", "jscall", "stream" (future), "broadcast" (future)
+	Kind   ServerKind             `protobuf:"varint,1,opt,name=kind,proto3,enum=godom.ServerKind" json:"kind,omitempty"`
 	Target string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"` // component instance name (for init, patch, stream)
-	// VDOM fields (kind: "init", "patch")
+	// VDOM fields (kind: INIT, PATCH)
 	Tree    []byte      `protobuf:"bytes,10,opt,name=tree,proto3" json:"tree,omitempty"`       // JSON-encoded tree description (init only)
 	Patches []*DomPatch `protobuf:"bytes,11,rep,name=patches,proto3" json:"patches,omitempty"` // incremental patches (patch only)
-	// ExecJS fields (kind: "jscall")
+	// ExecJS fields (kind: JSCALL)
 	CallId        int32  `protobuf:"varint,20,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"` // unique request ID for correlating responses
 	Expr          string `protobuf:"bytes,21,opt,name=expr,proto3" json:"expr,omitempty"`                    // JavaScript expression to evaluate
 	unknownFields protoimpl.UnknownFields
@@ -67,11 +182,11 @@ func (*ServerMessage) Descriptor() ([]byte, []int) {
 	return file_protocol_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *ServerMessage) GetKind() string {
+func (x *ServerMessage) GetKind() ServerKind {
 	if x != nil {
 		return x.Kind
 	}
-	return ""
+	return ServerKind_SERVER_INIT
 }
 
 func (x *ServerMessage) GetTarget() string {
@@ -223,14 +338,14 @@ func (x *DomPatch) GetSubPatches() []*DomPatch {
 // The `kind` field determines which payload fields are relevant.
 type BrowserMessage struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
-	Kind   string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`                    // "input", "method", "jsresult", "init_request" (future), "page_info" (future), "broadcast" (future)
+	Kind   BrowserKind            `protobuf:"varint,1,opt,name=kind,proto3,enum=godom.BrowserKind" json:"kind,omitempty"`
 	NodeId int32                  `protobuf:"varint,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"` // source node (0 = none, e.g. godom.call)
-	// Input sync fields (kind: "input")
+	// Input sync fields (kind: INPUT)
 	Value string `protobuf:"bytes,10,opt,name=value,proto3" json:"value,omitempty"` // current DOM value (e.g. input.value)
-	// Method call fields (kind: "method")
+	// Method call fields (kind: METHOD)
 	Method string   `protobuf:"bytes,20,opt,name=method,proto3" json:"method,omitempty"` // Go method name (e.g. "AddTodo", "Toggle")
 	Args   [][]byte `protobuf:"bytes,21,rep,name=args,proto3" json:"args,omitempty"`     // JSON-encoded arguments
-	// JSResult fields (kind: "jsresult")
+	// JSResult fields (kind: JSRESULT)
 	CallId        int32  `protobuf:"varint,30,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"` // matches the ServerMessage.call_id
 	Result        []byte `protobuf:"bytes,31,opt,name=result,proto3" json:"result,omitempty"`                // JSON-encoded result value
 	Error         string `protobuf:"bytes,32,opt,name=error,proto3" json:"error,omitempty"`                  // error message if eval failed
@@ -268,11 +383,11 @@ func (*BrowserMessage) Descriptor() ([]byte, []int) {
 	return file_protocol_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *BrowserMessage) GetKind() string {
+func (x *BrowserMessage) GetKind() BrowserKind {
 	if x != nil {
 		return x.Kind
 	}
-	return ""
+	return BrowserKind_BROWSER_INPUT
 }
 
 func (x *BrowserMessage) GetNodeId() int32 {
@@ -328,9 +443,9 @@ var File_protocol_proto protoreflect.FileDescriptor
 
 const file_protocol_proto_rawDesc = "" +
 	"\n" +
-	"\x0eprotocol.proto\x12\x05godom\"\xa7\x01\n" +
-	"\rServerMessage\x12\x12\n" +
-	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
+	"\x0eprotocol.proto\x12\x05godom\"\xba\x01\n" +
+	"\rServerMessage\x12%\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x11.godom.ServerKindR\x04kind\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\tR\x06target\x12\x12\n" +
 	"\x04tree\x18\n" +
 	" \x01(\fR\x04tree\x12)\n" +
@@ -349,9 +464,9 @@ const file_protocol_proto_rawDesc = "" +
 	"\vplugin_data\x18\x0f \x01(\fR\n" +
 	"pluginData\x120\n" +
 	"\vsub_patches\x18\x10 \x03(\v2\x0f.godom.DomPatchR\n" +
-	"subPatches\"\xc6\x01\n" +
-	"\x0eBrowserMessage\x12\x12\n" +
-	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x17\n" +
+	"subPatches\"\xda\x01\n" +
+	"\x0eBrowserMessage\x12&\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x12.godom.BrowserKindR\x04kind\x12\x17\n" +
 	"\anode_id\x18\x02 \x01(\x05R\x06nodeId\x12\x14\n" +
 	"\x05value\x18\n" +
 	" \x01(\tR\x05value\x12\x16\n" +
@@ -359,7 +474,21 @@ const file_protocol_proto_rawDesc = "" +
 	"\x04args\x18\x15 \x03(\fR\x04args\x12\x17\n" +
 	"\acall_id\x18\x1e \x01(\x05R\x06callId\x12\x16\n" +
 	"\x06result\x18\x1f \x01(\fR\x06result\x12\x14\n" +
-	"\x05error\x18  \x01(\tR\x05errorB\tZ\a./protob\x06proto3"
+	"\x05error\x18  \x01(\tR\x05error*k\n" +
+	"\n" +
+	"ServerKind\x12\x0f\n" +
+	"\vSERVER_INIT\x10\x00\x12\x10\n" +
+	"\fSERVER_PATCH\x10\x01\x12\x11\n" +
+	"\rSERVER_JSCALL\x10\x02\x12\x11\n" +
+	"\rSERVER_STREAM\x10\x03\x12\x14\n" +
+	"\x10SERVER_BROADCAST\x10\x04*\x92\x01\n" +
+	"\vBrowserKind\x12\x11\n" +
+	"\rBROWSER_INPUT\x10\x00\x12\x12\n" +
+	"\x0eBROWSER_METHOD\x10\x01\x12\x14\n" +
+	"\x10BROWSER_JSRESULT\x10\x02\x12\x18\n" +
+	"\x14BROWSER_INIT_REQUEST\x10\x03\x12\x15\n" +
+	"\x11BROWSER_PAGE_INFO\x10\x04\x12\x15\n" +
+	"\x11BROWSER_BROADCAST\x10\x05B\tZ\a./protob\x06proto3"
 
 var (
 	file_protocol_proto_rawDescOnce sync.Once
@@ -373,20 +502,25 @@ func file_protocol_proto_rawDescGZIP() []byte {
 	return file_protocol_proto_rawDescData
 }
 
+var file_protocol_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_protocol_proto_goTypes = []any{
-	(*ServerMessage)(nil),  // 0: godom.ServerMessage
-	(*DomPatch)(nil),       // 1: godom.DomPatch
-	(*BrowserMessage)(nil), // 2: godom.BrowserMessage
+	(ServerKind)(0),        // 0: godom.ServerKind
+	(BrowserKind)(0),       // 1: godom.BrowserKind
+	(*ServerMessage)(nil),  // 2: godom.ServerMessage
+	(*DomPatch)(nil),       // 3: godom.DomPatch
+	(*BrowserMessage)(nil), // 4: godom.BrowserMessage
 }
 var file_protocol_proto_depIdxs = []int32{
-	1, // 0: godom.ServerMessage.patches:type_name -> godom.DomPatch
-	1, // 1: godom.DomPatch.sub_patches:type_name -> godom.DomPatch
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	0, // 0: godom.ServerMessage.kind:type_name -> godom.ServerKind
+	3, // 1: godom.ServerMessage.patches:type_name -> godom.DomPatch
+	3, // 2: godom.DomPatch.sub_patches:type_name -> godom.DomPatch
+	1, // 3: godom.BrowserMessage.kind:type_name -> godom.BrowserKind
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_protocol_proto_init() }
@@ -399,13 +533,14 @@ func file_protocol_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_protocol_proto_rawDesc), len(file_protocol_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      2,
 			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_protocol_proto_goTypes,
 		DependencyIndexes: file_protocol_proto_depIdxs,
+		EnumInfos:         file_protocol_proto_enumTypes,
 		MessageInfos:      file_protocol_proto_msgTypes,
 	}.Build()
 	File_protocol_proto = out.File

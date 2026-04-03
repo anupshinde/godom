@@ -117,13 +117,15 @@
 
         ws.onmessage = function(evt) {
             var msg = Proto.ServerMessage.decode(new Uint8Array(evt.data));
-            var kind = msg.kind || "";
+            var SK = Proto.ServerKind;
 
-            if (kind === "init") {
+            switch (msg.kind) {
+            case SK.SERVER_INIT:
                 hideDisconnectOverlay();
                 reconnectDelay = 1000;
                 initTarget(msg.target || "", msg);
-            } else if (kind === "patch") {
+                break;
+            case SK.SERVER_PATCH:
                 var name = msg.target || "";
                 var ctxList = targets[name];
                 if (!ctxList || ctxList.length === 0) {
@@ -133,8 +135,10 @@
                 for (var i = 0; i < ctxList.length; i++) {
                     ctxList[i].applyPatches(msg.patches);
                 }
-            } else if (kind === "jscall") {
+                break;
+            case SK.SERVER_JSCALL:
                 handleJSCall(msg);
+                break;
             }
         };
 
@@ -512,7 +516,7 @@
 
         function sendNodeEvent(nodeId, value) {
             var msg = Proto.BrowserMessage.encode({
-                kind: "input",
+                kind: Proto.BrowserKind.BROWSER_INPUT,
                 nodeId: nodeId,
                 value: value
             }).finish();
@@ -559,7 +563,7 @@
 
         function sendMethodCall(nodeId, method, args) {
             var msg = Proto.BrowserMessage.encode({
-                kind: "method",
+                kind: Proto.BrowserKind.BROWSER_METHOD,
                 nodeId: nodeId,
                 method: method,
                 args: args
@@ -802,7 +806,7 @@
 
     function sendJSResult(id, result, error) {
         var msg = Proto.BrowserMessage.encode({
-            kind: "jsresult",
+            kind: Proto.BrowserKind.BROWSER_JSRESULT,
             callId: id,
             result: result,
             error: error
@@ -826,7 +830,7 @@
             }
         }
         var msg = Proto.BrowserMessage.encode({
-            kind: "method",
+            kind: Proto.BrowserKind.BROWSER_METHOD,
             nodeId: 0,
             method: method,
             args: args

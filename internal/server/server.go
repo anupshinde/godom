@@ -89,7 +89,7 @@ func Run(cfg Config) error {
 			if env.Debug {
 				log.Printf("godom: ExecJS id=%d expr=%q", id, expr)
 			}
-			msg := &gproto.ServerMessage{Kind: "jscall", CallId: id, Expr: expr}
+			msg := &gproto.ServerMessage{Kind: gproto.ServerKind_SERVER_JSCALL, CallId: id, Expr: expr}
 			data, err := proto.Marshal(msg)
 			if err != nil {
 				log.Printf("godom: ExecJS marshal error: %v", err)
@@ -195,7 +195,7 @@ func Run(cfg Config) error {
 			}
 
 			switch msg.Kind {
-			case "input":
+			case gproto.BrowserKind_BROWSER_INPUT:
 				if ci := findComponent(int(msg.NodeId), ctx.comps, ctx.lookup); ci != nil {
 					e := component.Event{Kind: component.NodeEventKind, NodeID: msg.NodeId, Value: msg.Value}
 					if shouldEnqueue(e) {
@@ -203,7 +203,7 @@ func Run(cfg Config) error {
 					}
 				}
 
-			case "method":
+			case gproto.BrowserKind_BROWSER_METHOD:
 				if msg.NodeId == 0 {
 					// nodeId=0 means godom.call() from JS — find the component that has this method.
 					for _, ci := range ctx.comps {
@@ -225,7 +225,7 @@ func Run(cfg Config) error {
 					}
 				}
 
-			case "jsresult":
+			case gproto.BrowserKind_BROWSER_JSRESULT:
 				if env.Debug {
 					log.Printf("godom: JSResult id=%d result=%d bytes err=%q", msg.CallId, len(msg.Result), msg.Error)
 				}

@@ -166,7 +166,7 @@ func EncodeInitTreeMessage(root vdom.Node) (*gproto.ServerMessage, error) {
 		return nil, err
 	}
 	return &gproto.ServerMessage{
-		Kind: "init",
+		Kind: gproto.ServerKind_SERVER_INIT,
 		Tree: treeJSON,
 	}, nil
 }
