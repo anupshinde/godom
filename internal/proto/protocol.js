@@ -21,6 +21,17 @@ var godomProto = (function() {
         .add(new Field("method", 2, "string"))
         .add(new Field("args", 3, "bytes", "repeated"));
 
+    // JSResult — browser → Go: response to JSCall (tag byte 0x03)
+    var JSResult = new Type("JSResult")
+        .add(new Field("id", 1, "int32"))
+        .add(new Field("result", 2, "bytes"))
+        .add(new Field("error", 3, "string"));
+
+    // JSCall — Go → browser: execute JS expression (tag byte 0x02 in Go→browser direction)
+    var JSCall = new Type("JSCall")
+        .add(new Field("id", 1, "int32"))
+        .add(new Field("expr", 2, "string"));
+
     // DomPatch — single DOM mutation from diff
     var DomPatch = new Type("DomPatch")
         .add(new Field("nodeId", 1, "int32"))
@@ -44,11 +55,15 @@ var godomProto = (function() {
     root.add(DomPatch);
     root.add(NodeEvent);
     root.add(MethodCall);
+    root.add(JSResult);
+    root.add(JSCall);
 
     return {
         VDomMessage: VDomMessage,
         DomPatch: DomPatch,
         NodeEvent: NodeEvent,
-        MethodCall: MethodCall
+        MethodCall: MethodCall,
+        JSResult: JSResult,
+        JSCall: JSCall
     };
 })();

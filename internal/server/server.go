@@ -74,6 +74,27 @@ func Run(cfg Config) error {
 		wireRefresh(ci)
 	}
 
+	// Wire up ExecJS for each component — broadcasts JSCall to all browsers.
+	for _, ci := range cfg.Comps {
+		ci := ci // capture for closure
+		ci.ExecJSFn = func(id int32, expr string) {
+			if env.Debug {
+				log.Printf("godom: ExecJS id=%d expr=%q", id, expr)
+			}
+			call := &gproto.JSCall{Id: id, Expr: expr}
+			data, err := proto.Marshal(call)
+			if err != nil {
+				log.Printf("godom: ExecJS marshal error: %v", err)
+				return
+			}
+			// Tag 2: JSCall (Go → browser)
+			tagged := make([]byte, 1+len(data))
+			tagged[0] = 2
+			copy(tagged[1:], data)
+			pool.broadcast(tagged)
+		}
+	}
+
 	// Build shared pointer maps for auto-refreshing sibling components.
 	sm := buildSharedPtrMaps(cfg.Comps)
 	sm.pool = pool
@@ -183,11 +204,39 @@ func Run(cfg Config) error {
 					log.Printf("godom: method call unmarshal error: %v", err)
 					continue
 				}
-				if ci := findComponent(int(call.NodeId), ctx.comps, ctx.lookup); ci != nil {
-					e := component.Event{Kind: component.MethodCallKind, Call: call}
-					if shouldEnqueue(e) {
-						ci.EventCh <- e
+				if call.NodeId == 0 {
+					// nodeId=0 means godom.call() from JS — find the component that has this method.
+					for _, ci := range ctx.comps {
+						if ci.HasMethod(call.Method) {
+							e := component.Event{Kind: component.MethodCallKind, Call: call}
+							if shouldEnqueue(e) {
+								ci.EventCh <- e
+							}
+							break
+						}
 					}
+				} else {
+					ci := findComponent(int(call.NodeId), ctx.comps, ctx.lookup)
+					if ci != nil {
+						e := component.Event{Kind: component.MethodCallKind, Call: call}
+						if shouldEnqueue(e) {
+							ci.EventCh <- e
+						}
+					}
+				}
+
+			case 3: // JSResult (response to ExecJS)
+				result := &gproto.JSResult{}
+				if err := proto.Unmarshal(payload, result); err != nil {
+					log.Printf("godom: js result unmarshal error: %v", err)
+					continue
+				}
+				if env.Debug {
+					log.Printf("godom: JSResult id=%d result=%d bytes err=%q", result.Id, len(result.Result), result.Error)
+				}
+				// Dispatch to all components — only the one with a matching callback will handle it.
+				for _, ci := range ctx.comps {
+					ci.HandleJSResult(result.Id, result.Result, result.Error)
 				}
 			}
 		}

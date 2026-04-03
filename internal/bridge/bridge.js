@@ -116,7 +116,31 @@
         ws.binaryType = "arraybuffer";
 
         ws.onmessage = function(evt) {
-            var msg = Proto.VDomMessage.decode(new Uint8Array(evt.data));
+            var raw = new Uint8Array(evt.data);
+
+            // Tagged messages: first byte is the tag.
+            // Tag 1 = VDomMessage, Tag 2 = JSCall.
+            // Legacy untagged messages start with protobuf field bytes (>= 0x08).
+            var tag = raw[0];
+            var payload;
+            if (tag <= 2) {
+                payload = raw.subarray(1);
+            } else {
+                // Legacy: no tag byte, entire message is VDomMessage
+                tag = 1;
+                payload = raw;
+            }
+
+            if (tag === 2) {
+                console.log("[godom] received JSCall, payload length:", payload.length);
+                var call = Proto.JSCall.decode(payload);
+                console.log("[godom] JSCall id:", call.id, "expr:", call.expr);
+                handleJSCall(call);
+                return;
+            }
+
+            // Tag 1: VDomMessage
+            var msg = Proto.VDomMessage.decode(payload);
             var name = msg.targetName || "";
 
             if (msg.type === "init") {
@@ -764,6 +788,72 @@
 
     ns.register = function(name, handler) {
         ns._plugins[name] = handler;
+    };
+
+    // =========================================================================
+    // ExecJS — Go → browser → Go request/response
+    // =========================================================================
+
+    function handleJSCall(call) {
+        var id = call.id;
+        var expr = call.expr;
+        var result = null;
+        var error = "";
+        try {
+            var val = (0, eval)(expr); // indirect eval — global scope
+            var json = JSON.stringify(val);
+            if (json === undefined) {
+                // Value is non-serializable (undefined, function, symbol)
+                result = new Uint8Array(0);
+                error = "non-serializable value";
+            } else {
+                result = textEncoder.encode(json);
+            }
+        } catch (e) {
+            result = new Uint8Array(0);
+            error = e.message || String(e);
+        }
+        sendJSResult(id, result, error);
+    }
+
+    function sendJSResult(id, result, error) {
+        var msg = Proto.JSResult.encode({
+            id: id,
+            result: result,
+            error: error
+        }).finish();
+        var tagged = new Uint8Array(1 + msg.length);
+        tagged[0] = 3; // tag 3: JSResult
+        tagged.set(msg, 1);
+        ws.send(tagged);
+    }
+
+    // =========================================================================
+    // godom.call — JS → Go method calls from arbitrary JavaScript
+    // =========================================================================
+
+    // ns.call(method, ...args) sends a MethodCall to Go.
+    // The method is dispatched to the component that owns the calling context.
+    // For now, uses nodeId=0 (server resolves to the first component).
+    ns.call = function(method) {
+        var args = [];
+        for (var i = 1; i < arguments.length; i++) {
+            var json = JSON.stringify(arguments[i]);
+            if (json !== undefined) {
+                args.push(textEncoder.encode(json));
+            }
+        }
+        var msg = Proto.MethodCall.encode({
+            nodeId: 0,
+            method: method,
+            args: args
+        }).finish();
+        var tagged = new Uint8Array(1 + msg.length);
+        tagged[0] = 2;
+        tagged.set(msg, 1);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(tagged);
+        }
     };
 
     // =========================================================================

@@ -78,6 +78,23 @@ func (c Component) MarkRefresh(fields ...string) {
 	c.ci.AddMarkedFields(fields...)
 }
 
+// ExecJS sends a JavaScript expression to all connected browsers for execution.
+// The callback fires once per connected browser with the JSON-encoded result
+// and an error string (empty on success).
+//
+// Example:
+//
+//	c.ExecJS("location.pathname", func(result json.RawMessage, err string) {
+//	    var path string
+//	    json.Unmarshal(result, &path)
+//	})
+func (c Component) ExecJS(expr string, cb func(result []byte, err string)) {
+	if c.ci == nil {
+		return
+	}
+	c.ci.ExecJS(expr, cb)
+}
+
 // Refresh pushes updates to all connected browsers.
 // If fields were marked via MarkRefresh(), only those bound nodes are patched.
 // Otherwise, a full refresh is sent.

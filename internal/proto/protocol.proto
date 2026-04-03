@@ -67,7 +67,16 @@ message DomPatch {
   repeated DomPatch sub_patches = 16; // patchLazy: patches inside lazy node
 }
 
-// --- Browser → Go messages ---
+// --- Go → Browser messages (tagged) ---
+
+// JSCall is sent from Go to the browser to execute arbitrary JavaScript.
+// Tag byte: 0x02 (Go → browser).
+message JSCall {
+  int32 id = 1;                       // unique request ID for correlating responses
+  string expr = 2;                    // JavaScript expression to evaluate
+}
+
+// --- Browser → Go messages (tagged) ---
 
 // NodeEvent is sent from the browser when a node's value changes (Layer 1).
 // Tag byte: 0x01.
@@ -82,4 +91,12 @@ message MethodCall {
   int32 node_id = 1;                  // stable node ID of the element that fired
   string method = 2;                  // Go method name (e.g. "AddTodo", "Toggle")
   repeated bytes args = 3;            // JSON-encoded arguments
+}
+
+// JSResult is sent from the browser as a response to a JSCall.
+// Tag byte: 0x03.
+message JSResult {
+  int32 id = 1;                       // matches the JSCall.id
+  bytes result = 2;                   // JSON-encoded result value
+  string error = 3;                   // error message if eval failed
 }
