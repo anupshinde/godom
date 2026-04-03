@@ -13,7 +13,10 @@ import (
 var components embed.FS
 
 //go:embed index.html
-var indexHTML string
+var jsPageHTML string
+
+//go:embed godom.html
+var godomPageHTML string
 
 func main() {
 	eng := godom.NewEngine()
@@ -25,6 +28,9 @@ func main() {
 	clock := &Clock{}
 	eng.Register("clock", clock, "components/clock/index.html")
 
+	layout := &Layout{}
+	eng.Register("layout", layout, "components/layout/index.html")
+
 	go clock.startClock()
 
 	mux := http.NewServeMux()
@@ -34,7 +40,11 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(indexHTML))
+		w.Write([]byte(jsPageHTML))
+	})
+	mux.HandleFunc("/godom", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(godomPageHTML))
 	})
 
 	eng.SetMux(mux, nil)
