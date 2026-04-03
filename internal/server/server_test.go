@@ -14,12 +14,27 @@ import (
 
 	"github.com/anupshinde/godom/internal/component"
 	"github.com/anupshinde/godom/internal/env"
+	"github.com/anupshinde/godom/internal/middleware"
 	gproto "github.com/anupshinde/godom/internal/proto"
 	"github.com/anupshinde/godom/internal/render"
 	"github.com/anupshinde/godom/internal/vdom"
 	"github.com/gorilla/websocket"
 	"google.golang.org/protobuf/proto"
 )
+
+// testConfig is a plain data bag used by startTestServer. It replaces the
+// deleted server.Config struct for test purposes only — tests don't call Run().
+type testConfig struct {
+	Comps         []*component.Info
+	Plugins       map[string][]string
+	BridgeJS      string
+	ProtobufMinJS string
+	ProtocolJS    string
+	WSPath        string
+	ScriptPath    string
+	AuthFn        middleware.AuthFunc
+	DisableExecJS bool
+}
 
 // counterApp mirrors the counter example's state struct.
 type counterApp struct {
@@ -2026,7 +2041,7 @@ func TestRun_ServesHTML(t *testing.T) {
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
 
-	cfg := Config{
+	cfg := testConfig{
 		Comps:    []*component.Info{ci},
 		BridgeJS: "// bridge",
 	}
@@ -2062,7 +2077,7 @@ func TestRun_AuthRejectsWithoutToken(t *testing.T) {
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
 
-	cfg := Config{
+	cfg := testConfig{
 		Comps:  []*component.Info{ci},
 		AuthFn: fixedTokenAuthFn("testsecret"),
 	}
@@ -2088,7 +2103,7 @@ func TestRun_AuthAcceptsWithToken(t *testing.T) {
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
 
-	cfg := Config{
+	cfg := testConfig{
 		Comps:  []*component.Info{ci},
 		AuthFn: fixedTokenAuthFn("testsecret"),
 	}
@@ -2143,7 +2158,7 @@ func TestRun_WebSocketUpgrade(t *testing.T) {
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
 
-	cfg := Config{
+	cfg := testConfig{
 		Comps: []*component.Info{ci},
 	}
 
@@ -2182,7 +2197,7 @@ func TestRun_WebSocketMethodCall(t *testing.T) {
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
 
-	cfg := Config{
+	cfg := testConfig{
 		Comps: []*component.Info{ci},
 	}
 
@@ -2245,7 +2260,7 @@ func TestRun_WebSocketNodeEvent(t *testing.T) {
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
 
-	cfg := Config{
+	cfg := testConfig{
 		Comps: []*component.Info{ci},
 	}
 
@@ -2314,7 +2329,7 @@ func TestRun_WebSocketAuthReject(t *testing.T) {
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
 
-	cfg := Config{
+	cfg := testConfig{
 		Comps:  []*component.Info{ci},
 		AuthFn: fixedTokenAuthFn("secret"),
 	}
@@ -2340,7 +2355,7 @@ func TestRun_PluginScripts(t *testing.T) {
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
 
-	cfg := Config{
+	cfg := testConfig{
 		Comps:    []*component.Info{ci},
 		Plugins:  map[string][]string{"chart": {"console.log('chart')"}},
 		BridgeJS: "// bridge",
@@ -2719,7 +2734,7 @@ func TestRun_WebSocketIgnoresNonBinary(t *testing.T) {
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
 
-	cfg := Config{
+	cfg := testConfig{
 		Comps: []*component.Info{ci},
 	}
 
@@ -2770,7 +2785,7 @@ func TestRun_WebSocketBadProtobuf(t *testing.T) {
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
 
-	cfg := Config{
+	cfg := testConfig{
 		Comps: []*component.Info{ci},
 	}
 
@@ -3076,7 +3091,7 @@ func walkTree(n vdom.Node, fn func(vdom.Node)) {
 }
 
 // startTestServer starts a Run-style server in the background and returns its address.
-func startTestServer(t *testing.T, cfg Config) (string, error) {
+func startTestServer(t *testing.T, cfg testConfig) (string, error) {
 	t.Helper()
 
 	ci := cfg.Comps[0]

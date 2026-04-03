@@ -16,7 +16,6 @@ import (
 	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/middleware"
 	"github.com/anupshinde/godom/internal/server"
-	"github.com/anupshinde/godom/internal/template"
 	"github.com/anupshinde/godom/internal/utils"
 	"github.com/anupshinde/godom/internal/vdom"
 )
@@ -49,6 +48,8 @@ type Engine struct {
 	userMux    *http.ServeMux           // custom mux from SetMux()
 	muxOpts    *MuxOptions              // custom paths for /ws and /godom.js
 	authFn     middleware.AuthFunc      // auth check; nil = no auth
+	wsPath     string                   // resolved WebSocket path (from muxOpts or default)
+	scriptPath string                   // resolved script path (from muxOpts or default)
 }
 
 // MuxOptions configures custom paths for godom's handlers when using SetMux.
@@ -148,47 +149,20 @@ func (a *Engine) SetAuth(fn middleware.AuthFunc) {
 	a.authFn = fn
 }
 
+// --- EngineConfig interface methods (used by internal/server) ---
+
+func (a *Engine) Components() []*component.Info         { return a.comps }
+func (a *Engine) PluginScripts() map[string][]string    { return a.plugins }
+func (a *Engine) EmbeddedJS() (string, string, string)  { return bridgeJS, protobufMinJS, protocolJS }
+func (a *Engine) Mux() *http.ServeMux                   { return a.userMux }
+func (a *Engine) WebSocketPath() string                  { return a.wsPath }
+func (a *Engine) GodomScriptPath() string                { return a.scriptPath }
+func (a *Engine) Auth() middleware.AuthFunc              { return a.authFn }
+func (a *Engine) ExecJSDisabled() bool                   { return a.DisableExecJS }
+
 // RegisterPlugin registers a named plugin with one or more JS scripts.
 func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts
-}
-
-// mountInternal is the shared mount logic used by Register.
-func (a *Engine) mountInternal(comp interface{}, fsys fs.FS, entryPath string) {
-	v := reflect.ValueOf(comp)
-	t := v.Elem().Type()
-
-	indexHTML, err := fs.ReadFile(fsys, entryPath)
-	if err != nil {
-		log.Fatalf("godom: failed to read %s: %v", entryPath, err)
-	}
-
-	composed, err := template.ExpandComponents(string(indexHTML), fsys, path.Dir(entryPath))
-	if err != nil {
-		log.Fatalf("godom: failed to expand components: %v", err)
-	}
-
-	ci := &component.Info{
-		Value:    v,
-		Typ:      t,
-		HTMLBody: composed,
-	}
-
-	if err := template.ValidateDirectives(composed, ci); err != nil {
-		log.Fatalf("godom: %v", err)
-	}
-
-	templates, err := vdom.ParseTemplate(composed)
-	if err != nil {
-		log.Fatalf("godom: failed to parse templates: %v", err)
-	}
-	ci.VDOMTemplates = templates
-
-	ci.Value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
-
-	idx := len(a.comps)
-	a.comps = append(a.comps, ci)
-	a.compIndex[comp] = idx
 }
 
 // Register registers a named component with a template. The name is used in
@@ -243,8 +217,10 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 		entryPath: entryPath,
 	}
 
-	// Register the component internally
-	a.mountInternal(comp, a.componentFS, entryPath)
+	ci := server.BuildComponentInfo(comp, a.componentFS, entryPath)
+	ci.Value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
+	a.comps = append(a.comps, ci)
+	a.compIndex[comp] = len(a.comps) - 1
 }
 
 // Run initializes the component lifecycle, registers /ws and /godom.js handlers
@@ -276,14 +252,14 @@ func (a *Engine) Run() error {
 	}
 
 	// Resolve MuxOptions paths.
-	wsPath := "/ws"
-	scriptPath := "/godom.js"
+	a.wsPath = "/ws"
+	a.scriptPath = "/godom.js"
 	if a.muxOpts != nil {
 		if a.muxOpts.WSPath != "" {
-			wsPath = a.muxOpts.WSPath
+			a.wsPath = a.muxOpts.WSPath
 		}
 		if a.muxOpts.ScriptPath != "" {
-			scriptPath = a.muxOpts.ScriptPath
+			a.scriptPath = a.muxOpts.ScriptPath
 		}
 	}
 
@@ -292,20 +268,7 @@ func (a *Engine) Run() error {
 		a.FixedAuthToken, a.authFn = middleware.TokenAuth()
 	}
 
-	cfg := server.Config{
-		Comps:         a.comps,
-		Plugins:       a.plugins,
-		BridgeJS:      bridgeJS,
-		ProtobufMinJS: protobufMinJS,
-		ProtocolJS:    protocolJS,
-		UserMux:       a.userMux,
-		WSPath:        wsPath,
-		ScriptPath:    scriptPath,
-		AuthFn:        a.authFn,
-		DisableExecJS: a.DisableExecJS,
-	}
-
-	return server.Run(cfg)
+	return server.Run(a)
 }
 
 // ListenAndServe binds a port using the startup config (Port, Host), wraps
