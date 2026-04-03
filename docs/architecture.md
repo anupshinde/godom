@@ -10,14 +10,14 @@ The core abstraction is a **virtual DOM** — Go builds a tree of virtual nodes 
 ┌─────────────────────────────────┐       WebSocket        ┌──────────────────────┐
 │           Go process            │ ◄───────────────────► │       Browser        │
 │                                 │                        │                      │
-│  App struct (your code)         │   VDomMessage ────►    │  bridge.js           │
-│  ├─ exported fields = state     │   (init tree,          │  ├─ builds DOM       │
-│  └─ exported methods = handlers │    diff patches)       │  ├─ applies patches  │
+│  App struct (your code)         │   ServerMessage ───►   │  bridge.js           │
+│  ├─ exported fields = state     │   (INIT tree,          │  ├─ builds DOM       │
+│  └─ exported methods = handlers │    PATCH diffs)        │  ├─ applies patches  │
 │                                 │                        │  └─ forwards events  │
-│  godom framework                │   ◄────── events       │                      │
-│  ├─ parse HTML templates        │   (NodeEvent,          │  HTML + CSS          │
-│  ├─ resolve to VDOM tree        │    MethodCall)         │  (your templates)    │
-│  ├─ diff old tree vs new tree   │                        │                      │
+│  godom framework                │   ◄── BrowserMessage   │                      │
+│  ├─ parse HTML templates        │   (INPUT sync,         │  HTML + CSS          │
+│  ├─ resolve to VDOM tree        │    METHOD dispatch,    │  (your templates)    │
+│  ├─ diff old tree vs new tree   │    JSRESULT response)  │                      │
 │  └─ encode patches (protobuf)   │                        │                      │
 └─────────────────────────────────┘                        └──────────────────────┘
 ```
@@ -86,6 +86,8 @@ log.Fatal(eng.ListenAndServe())                             // bind port, open b
 | `internal/bridge/` | `bridge.js` — browser-side DOM construction, patch execution, event handling |
 | `internal/proto/` | `protocol.proto`, generated Go types, `protocol.js`, `protobuf.min.js` |
 | `internal/env/` | Environment config utilities (`GODOM_*` env var readers) |
+| `internal/middleware/` | Pluggable auth (`AuthFunc`, `TokenAuth`) |
+| `internal/utils/` | Shared helpers (`LocalIP`, `PrintQR`, `OpenBrowser`) |
 | `plugins/chartjs/` | Chart.js plugin — embeds library + thin bridge adapter |
 
 ## Data flow
@@ -96,7 +98,7 @@ When a browser tab connects via WebSocket:
 
 1. Go resolves the template tree against the component struct's current state, producing a concrete VDOM node tree. Each node gets a unique stable ID from a monotonic counter
 2. The tree is encoded as a JSON description — element tags, facts (properties, attributes, styles, events), and children
-3. Go sends a `VDomMessage` with `type: "init"` containing the full tree as JSON bytes
+3. Go sends a `ServerMessage` with `kind: SERVER_INIT` containing the full tree as JSON bytes
 4. The bridge builds the entire DOM from the tree description, registering each node's ID in `nodeMap` for O(1) lookup on subsequent patches
 5. Event handlers in the tree are wired up as DOM listeners that send `MethodCall` messages back to Go
 
@@ -104,30 +106,30 @@ When a browser tab connects via WebSocket:
 
 When the user clicks a button with `g-click="AddTodo"`:
 
-1. The bridge sends a `MethodCall` message with `method: "AddTodo"` and the node ID
+1. The bridge sends a `BrowserMessage` with `kind: BROWSER_METHOD`, `method: "AddTodo"`, and the node ID
 2. Go calls `AddTodo()` on the struct via reflection
 3. Go resolves the template tree again against the new state, producing a new VDOM tree
 4. Go diffs the old tree against the new tree, producing a minimal list of patches (text changes, fact changes, appends, removals, reorders)
 5. The old tree is updated in place via `MergeTree` to preserve node IDs for the next render
-6. Go sends a `VDomMessage` with `type: "patch"` containing the patches as protobuf `DomPatch` messages
+6. Go sends a `ServerMessage` with `kind: SERVER_PATCH` containing the patches as protobuf `DomPatch` messages
 7. The bridge applies each patch by looking up target nodes via `nodeMap[nodeID]`
 8. All connected tabs receive the patches (broadcast)
 
 ### Browser → Go: two layers
 
-The browser sends two types of messages to Go, each serving a different purpose. They use different wire tags (see [protocol.md](protocol.md)) and trigger different server-side behavior.
+The browser sends two types of messages to Go, each serving a different purpose. They use different `BrowserKind` enum values (see [protocol.md](protocol.md)) and trigger different server-side behavior.
 
-**Layer 1 — Input sync (`NodeEvent`, tag 0x01)**
+**Layer 1 — Input sync (`BROWSER_INPUT`)**
 
-Automatic and implicit. When an element has `g-bind="Name"`, the bridge sends a `NodeEvent` on every `input` event — every keystroke, every paste, every change. The server receives it, updates the struct field (`Name = "new value"`), and **does not re-render**. No tree resolution, no diff, no patches sent back.
+Automatic and implicit. When an element has `g-bind="Name"`, the bridge sends a `BrowserMessage` with `kind: BROWSER_INPUT` on every `input` event — every keystroke, every paste, every change. The server receives it, updates the struct field (`Name = "new value"`), and **does not re-render**. No tree resolution, no diff, no patches sent back.
 
 This keeps Go's state perfectly in sync with what the user is typing, cheaply. A text field updating 10 times per second doesn't trigger 10 full render cycles.
 
 The server does broadcast the new value to other connected tabs so they see the typing in real time, but this is a targeted value patch — not a tree diff.
 
-**Layer 2 — Event dispatch (`MethodCall`, tag 0x02)**
+**Layer 2 — Event dispatch (`BROWSER_METHOD`)**
 
-Explicit and user-triggered. When the user clicks a button with `g-click="Save"`, the bridge sends a `MethodCall` with the method name and arguments. The server calls the method on the struct via reflection, then **re-renders**: resolves the template tree, diffs against the old tree, and broadcasts patches to all tabs.
+Explicit and user-triggered. When the user clicks a button with `g-click="Save"`, the bridge sends a `BrowserMessage` with `kind: BROWSER_METHOD`, the method name, and arguments. The server calls the method on the struct via reflection, then **re-renders**: resolves the template tree, diffs against the old tree, and broadcasts patches to all tabs.
 
 This is the intentional state change path. Methods are where business logic lives — add an item, delete a row, toggle a flag. The re-render ensures the UI reflects the new state.
 
@@ -141,7 +143,7 @@ Without Layer 1, you'd need a method for every input (`g-click="OnNameChange"`) 
 User types "hello" into g-bind="Name"     User clicks g-click="Save"
           │                                          │
           ▼                                          ▼
-   Layer 1: NodeEvent                        Layer 2: MethodCall
+   Layer 1: BROWSER_INPUT                    Layer 2: BROWSER_METHOD
    5× "h","e","l","l","o"                    1× Save()
           │                                          │
           ▼                                          ▼
@@ -152,7 +154,7 @@ User types "hello" into g-bind="Name"     User clicks g-click="Save"
 
 **Unbound inputs**
 
-Inputs without `g-bind` still participate in Layer 1. The bridge sends `NodeEvent` for any `<input>`, `<textarea>`, or `<select>` — even without a directive. The server stores the value and broadcasts it to other tabs. This means multi-tab sync works for all inputs, not just bound ones. The difference is that unbound input values don't map to a struct field — they're tracked by node ID in the VDOM tree.
+Inputs without `g-bind` still participate in Layer 1. The bridge sends `BROWSER_INPUT` for any `<input>`, `<textarea>`, or `<select>` — even without a directive. The server stores the value and broadcasts it to other tabs. This means multi-tab sync works for all inputs, not just bound ones. The difference is that unbound input values don't map to a struct field — they're tracked by node ID in the VDOM tree.
 
 ### Server-pushed updates (Refresh)
 
@@ -162,11 +164,11 @@ Not all state changes come from user interaction. Background goroutines (timers,
 2. The processor goroutine picks it up, resolves the template tree, diffs against the old tree, produces patches
 3. Broadcasts the patches to all connected tabs
 
-This uses the same `VDomMessage` patch format as user-triggered changes — the bridge doesn't know the difference.
+This uses the same `ServerMessage` patch format as user-triggered changes — the bridge doesn't know the difference.
 
 ### Event queue (concurrency model)
 
-Each component instance has a buffered event channel (`EventCh`) and a single processor goroutine. All browser input changes (`NodeEventKind`), method calls (`MethodCallKind`), and background refreshes (`RefreshKind`) are sent to this channel and processed sequentially.
+Each component instance has a buffered event channel (`EventCh`) and a single processor goroutine. All browser input changes (`NodeEventKind`), method calls (`MethodCallKind`), background refreshes (`RefreshKind`), and ExecJS results are sent to this channel and processed sequentially.
 
 This eliminates race conditions between concurrent sources (multiple browser tabs, background goroutines) without requiring locks on the component's state. Node-to-component routing uses a lazily-populated `nodeLookup` index (O(1) on hit, tree traversal on first miss). One exception uses `ci.Mu` directly: `handleInit` (writes the tree on new connection — must be synchronous to preserve mount order).
 
@@ -366,8 +368,10 @@ The bridge is vanilla JS with no dependencies. It:
 - On `init`: builds the entire DOM from a JSON tree description, registering every node by ID in `nodeMap`
 - On `patch`: applies patches by looking up target nodes via `nodeMap[nodeID]` — text changes, fact updates, appends, removals, keyed reorders, plugin updates, and full redraws
 - Applies facts: DOM properties, HTML attributes, namespaced attributes (SVG), inline styles, and event listeners
-- Layer 1 (input sync): sends `NodeEvent` — cheap field update, no re-render (see [two layers](#browser--go-two-layers))
-- Layer 2 (method calls): sends `MethodCall` — calls Go method, triggers re-render (see [two layers](#browser--go-two-layers))
+- Layer 1 (input sync): sends `BROWSER_INPUT` — cheap field update, no re-render (see [two layers](#browser--go-two-layers))
+- Layer 2 (method calls): sends `BROWSER_METHOD` — calls Go method, triggers re-render (see [two layers](#browser--go-two-layers))
+- ExecJS: evaluates JavaScript expressions sent by Go (`SERVER_JSCALL`), returns results via `BROWSER_JSRESULT`
+- `godom.call()`: allows JavaScript to invoke Go methods on components via `BROWSER_METHOD` with `node_id: 0`
 - Manages HTML5 drag-and-drop: `draggable` sets up `dragstart`/`dragend` with group-specific MIME types; drop handlers filter by group, apply CSS feedback classes (`.g-dragging`, `.g-drag-over`, `.g-drag-over-above`/`.g-drag-over-below`), and send drop data via `MethodCall`
 - Defers plugin `init` calls until the element is actually in the DOM (for libraries that need to measure dimensions)
 - Preserves focus and selection across patch application
@@ -392,21 +396,23 @@ The plugin state is tracked per node ID. The bridge calls `init` once per elemen
 
 All messages are **binary Protocol Buffers** over WebSocket. The schema is defined in `internal/proto/protocol.proto`.
 
-### Go → Browser (VDomMessage)
+### Go → Browser (`ServerMessage`)
 
-A `VDomMessage` contains a `type` (`"init"` or `"patch"`).
+`ServerMessage` is the single message type from Go to the browser. The `kind` field (`ServerKind` enum) determines the payload:
 
-- **init**: carries a `tree` field — JSON-encoded tree description of the entire DOM. The bridge builds the DOM from this description.
-- **patch**: carries a list of `DomPatch` messages, each targeting a node by its stable numeric ID with an operation type and type-specific payload (text content, facts diff, tree description for redraws/appends, count for removals, reorder operations, or plugin data).
+- **`SERVER_INIT`**: carries a `tree` field — JSON-encoded tree description of the entire DOM. The bridge builds the DOM from this description.
+- **`SERVER_PATCH`**: carries a list of `DomPatch` messages, each targeting a node by its stable numeric ID with an operation type and type-specific payload (text content, facts diff, tree description for redraws/appends, count for removals, reorder operations, or plugin data).
+- **`SERVER_JSCALL`**: carries `call_id` and `expr` — a JavaScript expression for the bridge to evaluate. The bridge returns the result via `BROWSER_JSRESULT`.
 
-### Browser → Go (tagged binary)
+### Browser → Go (`BrowserMessage`)
 
-The browser sends binary messages with a one-byte tag prefix:
+`BrowserMessage` is the single message type from the browser to Go. The `kind` field (`BrowserKind` enum) determines the payload:
 
-- **Tag 0x01 — `NodeEvent`**: Layer 1 auto-sync of input values. Contains `node_id` and `value` (the current DOM value of the input element). Sent on every `input` event for elements with `g-bind`.
-- **Tag 0x02 — `MethodCall`**: Layer 2 event dispatch. Contains `node_id`, `method` name, and JSON-encoded `args`. Sent when the user triggers an event (click, keydown, drop, etc.).
+- **`BROWSER_INPUT`**: Layer 1 auto-sync of input values. Contains `node_id` and `value` (the current DOM value of the input element). Sent on every `input` event for elements with `g-bind`.
+- **`BROWSER_METHOD`**: Layer 2 event dispatch. Contains `node_id`, `method` name, and JSON-encoded `args`. Sent when the user triggers an event (click, keydown, drop, etc.) or when JavaScript calls `godom.call()`.
+- **`BROWSER_JSRESULT`**: Response to `SERVER_JSCALL`. Contains `call_id`, `result` (JSON-encoded), and `error`.
 
-The bridge constructs these messages directly from event data — it does not wrap pre-built bytes.
+Both directions use raw protobuf — each WebSocket message is a single protobuf-encoded message. The `kind` enum enables fast dispatch via switch statement.
 
 ## Drag and drop
 
