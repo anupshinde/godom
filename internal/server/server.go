@@ -167,6 +167,16 @@ func Run(cfg EngineConfig) error {
 	if disableExecJS {
 		bundleJS += "window.GODOM_DISABLE_EXEC=true;\n"
 	}
+	hasRoot := false
+	for _, ci := range comps {
+		if ci.SlotName == "document.body" {
+			hasRoot = true
+			break
+		}
+	}
+	if hasRoot {
+		bundleJS += "window.GODOM_ROOT=true;\n"
+	}
 	bundleJS += strings.Replace(bridgeJS, "__GODOM_WS_PATH__", wsPath, 1)
 
 	// Serve as external script.

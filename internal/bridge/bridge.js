@@ -120,11 +120,14 @@
         ws.binaryType = "arraybuffer";
 
         ws.onopen = function() {
-            // Scan for g-component targets on connect. In embedded mode
-            // (no document.body), this is the only trigger. In root mode,
-            // static HTML has no g-component attrs so this is a no-op —
-            // the real scan happens after SERVER_INIT renders the body.
-            scanAndRequestComponents();
+            // In embedded mode (no document.body component), scan for
+            // g-component targets immediately — no SERVER_INIT will arrive
+            // to trigger it. In root mode, the static HTML may contain
+            // unresolved template expressions (e.g. {{slot.Name}}) so we
+            // wait for SERVER_INIT to render the real DOM first.
+            if (!window.GODOM_ROOT) {
+                scanAndRequestComponents();
+            }
         };
 
         ws.onmessage = function(evt) {
