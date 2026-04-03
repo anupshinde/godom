@@ -15,6 +15,9 @@ var components embed.FS
 //go:embed pages
 var pages embed.FS
 
+//go:embed tree_plugin.js
+var treePluginJS string
+
 var (
 	infoTmpl    = template.Must(template.ParseFS(pages, "pages/layout/base.html", "pages/info/page.html"))
 	catalogTmpl = template.Must(template.ParseFS(pages, "pages/layout/base.html", "pages/catalog/page.html"))

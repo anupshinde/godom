@@ -43,10 +43,11 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 | COR-49: Connection-agnostic engine: custom server integration | Done — SetMux, MuxOptions, user owns server |
 | COR-74: Simplify multi-component2 example to use default MuxOptions | Done — renamed to multi-page, uses nil opts |
 | COR-50: Multiple filesystem support (AddFS) | Cancelled — not needed, user serves own static files |
+| COR-80: ExecJS — Go-to-browser request/response | Done — unified ServerMessage, DisableExecJS flag |
+| COR-81: godom.call — JS-to-Go method calls | Done — plugin events back to Go via BrowserMessage |
 
 ### Future phases
 
 | # | Issue | Type | Milestone |
 |---|-------|------|-----------|
 | 17 | Template compiler (compile HTML + directives to Go render functions) | Feature | Phase 2 |
-| 18 | Two-way plugin communication (JS library events back to Go) | Feature | Phase 3 |

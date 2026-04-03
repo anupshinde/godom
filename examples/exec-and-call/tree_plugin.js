@@ -1,9 +1,6 @@
-package main
-
-// treePluginJS is the inline Shoelace tree bridge plugin.
-// It renders sl-tree/sl-tree-item from Go data, syncs selection and
+// Shoelace tree bridge plugin for godom.
+// Renders sl-tree/sl-tree-item from Go data, syncs selection and
 // expand/collapse state via godom.call back to Go.
-var treePluginJS = `
 (function() {
     var godom = window[window.GODOM_NS || 'godom'];
     var suppressEvents = false; // prevent feedback loops during state sync
@@ -104,4 +101,3 @@ var treePluginJS = `
         }
     }
 })();
-`
