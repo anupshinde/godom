@@ -44,6 +44,22 @@ Each `DomPatch` targets a node by its stable numeric `node_id` (assigned by Go d
 | `plugin` | `plugin_data` (JSON) | Updated data for a plugin node |
 | `lazy` | `sub_patches` (nested) | Patches inside a lazy node's subtree |
 
+### Go → Browser: Tagged binary messages
+
+Go sends binary messages with a one-byte tag prefix:
+
+**Tag 0x01 — VDomMessage (VDOM init or patch)** *(legacy: sent without tag, bridge auto-detects)*
+
+The standard VDOM message — either an init tree or diff patches. See above.
+
+**Tag 0x02 — JSCall (ExecJS request)**
+
+Sent when a Go component calls `ExecJS()`. Contains:
+- `id` (int32) — unique request ID for correlating responses
+- `expr` (string) — JavaScript expression to evaluate
+
+The bridge evaluates the expression via indirect `eval()`, `JSON.stringify`'s the result, and sends a JSResult back.
+
 ### Browser → Go: Tagged binary messages
 
 The browser sends binary messages with a one-byte tag prefix:
@@ -58,12 +74,23 @@ Layer 1 updates the struct field without triggering a re-render. This keeps Go i
 
 **Tag 0x02 — MethodCall (Layer 2: event dispatch)**
 
-Sent when the user triggers an event (click, keydown, mousedown, drop, etc.). Contains:
-- `node_id` (int32) — stable node ID of the element that fired
+Sent when the user triggers an event (click, keydown, mousedown, drop, etc.) or when JavaScript calls `godom.call()`. Contains:
+- `node_id` (int32) — stable node ID of the element that fired (0 for `godom.call`)
 - `method` (string) — Go method name (e.g., `"AddTodo"`, `"Toggle"`)
 - `args` (repeated bytes) — JSON-encoded arguments
 
 Layer 2 calls the method via reflection and triggers a full re-render (tree resolution, diff, broadcast patches).
+
+When `node_id` is 0 (from `godom.call`), the server searches all components for one that has the named method and dispatches to the first match.
+
+**Tag 0x03 — JSResult (ExecJS response)**
+
+Sent as a response to a JSCall. Contains:
+- `id` (int32) — matches the JSCall.id
+- `result` (bytes) — JSON-encoded result value
+- `error` (string) — error message if eval failed or ExecJS is disabled
+
+The server dispatches the result to the component that made the ExecJS call, matching by request ID.
 
 The bridge constructs these messages directly from event data and the event handler information embedded in the VDOM tree's facts. See [architecture.md — Browser → Go: two layers](architecture.md#browser--go-two-layers) for the design rationale.
 

@@ -17,7 +17,7 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 - Single binary output via `go build`; QuickServe for simple apps, SetMux+Run+ListenAndServe for full control
 
 ## Internal packages
-- `godom.go` — public API: Engine, SetFS, SetMux, Register, Run, QuickServe, ListenAndServe, SetAuth, Cleanup, Component, Refresh, MarkRefresh
+- `godom.go` — public API: Engine, SetFS, SetMux, Register, Run, QuickServe, ListenAndServe, SetAuth, Cleanup, Component, Refresh, MarkRefresh, ExecJS
 - `internal/vdom/` — VDOM node types, template parsing, tree resolution, diffing, merging
 - `internal/component/` — component struct, Info, method dispatch, field access
 - `internal/server/` — WebSocket handling, connection pool, init/update pipeline
