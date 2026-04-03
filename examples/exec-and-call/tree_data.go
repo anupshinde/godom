@@ -2,7 +2,27 @@ package main
 
 // TreeData is the data struct sent to the tree plugin via g-plugin:tree.
 type TreeData struct {
-	Items []TreeItem
+	Items       []TreeItem
+	SelectedID  string
+	ExpandedIDs []string
+}
+
+func (d *TreeData) addExpanded(id string) {
+	for _, eid := range d.ExpandedIDs {
+		if eid == id {
+			return
+		}
+	}
+	d.ExpandedIDs = append(d.ExpandedIDs, id)
+}
+
+func (d *TreeData) removeExpanded(id string) {
+	for i, eid := range d.ExpandedIDs {
+		if eid == id {
+			d.ExpandedIDs = append(d.ExpandedIDs[:i], d.ExpandedIDs[i+1:]...)
+			return
+		}
+	}
 }
 
 // TreeItem is a single item in the tree, matching what the plugin JS expects.

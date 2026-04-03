@@ -15,6 +15,7 @@ type Catalog struct {
 	godom.Component
 	Categories   []Category
 	Tree         TreeData // plugin data for g-plugin:tree
+	SelectedID   string
 	SelectedName string
 	SelectedDesc string
 }
@@ -22,6 +23,8 @@ type Catalog struct {
 // SelectCategory is called by godom.call from the Shoelace tree plugin
 // when a tree item is clicked.
 func (c *Catalog) SelectCategory(id string) {
+	c.SelectedID = id
+	c.Tree.SelectedID = id
 	cat := c.findCategory(id, c.Categories)
 	if cat != nil {
 		c.SelectedName = cat.Name
@@ -30,6 +33,16 @@ func (c *Catalog) SelectCategory(id string) {
 		c.SelectedName = ""
 		c.SelectedDesc = "Select a category from the tree."
 	}
+}
+
+// ExpandCategory is called by godom.call when a tree item is expanded.
+func (c *Catalog) ExpandCategory(id string) {
+	c.Tree.addExpanded(id)
+}
+
+// CollapseCategory is called by godom.call when a tree item is collapsed.
+func (c *Catalog) CollapseCategory(id string) {
+	c.Tree.removeExpanded(id)
 }
 
 func (c *Catalog) findCategory(id string, cats []Category) *Category {
