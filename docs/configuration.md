@@ -123,6 +123,24 @@ Change the global namespace the bridge registers on. Default is `"godom"` (`wind
 <script src="http://localhost:9091/godom.js"></script>
 ```
 
+### Lifecycle hooks
+
+The bridge exposes callbacks for WebSocket lifecycle events:
+
+| Hook | When it fires |
+|------|---------------|
+| `godom.onconnect` | After first init message — WS open, godom.call works. Fires on reconnect too. |
+| `godom.ondisconnect(errorMsg)` | When WS closes. `null` = clean close (will reconnect). Non-null = fatal. |
+| `godom.onerror(evt)` | On WS error, before close. |
+
+```html
+<script>
+var godom = window.godom;
+godom.onconnect = function() { /* connected */ };
+godom.ondisconnect = function(err) { /* disconnected */ };
+</script>
+```
+
 ## Environment variables
 
 godom reads `GODOM_*` environment variables when `NewEngine()` is called:
