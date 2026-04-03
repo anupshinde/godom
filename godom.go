@@ -39,6 +39,7 @@ type Engine struct {
 	FixedAuthToken string // fixed auth token; empty = generate random token
 	NoBrowser      bool   // don't open browser on start
 	Quiet          bool   // suppress startup output
+	DisableExecJS  bool   // disable ExecJS — server won't send, bridge won't execute
 
 	comps      []*component.Info        // mounted components
 	plugins    map[string][]string      // plugin name → JS scripts
@@ -76,6 +77,23 @@ func (c Component) MarkRefresh(fields ...string) {
 		return
 	}
 	c.ci.AddMarkedFields(fields...)
+}
+
+// ExecJS sends a JavaScript expression to all connected browsers for execution.
+// The callback fires once per connected browser with the JSON-encoded result
+// and an error string (empty on success).
+//
+// Example:
+//
+//	c.ExecJS("location.pathname", func(result json.RawMessage, err string) {
+//	    var path string
+//	    json.Unmarshal(result, &path)
+//	})
+func (c Component) ExecJS(expr string, cb func(result []byte, err string)) {
+	if c.ci == nil {
+		return
+	}
+	c.ci.ExecJS(expr, cb)
 }
 
 // Refresh pushes updates to all connected browsers.
@@ -267,6 +285,7 @@ func (a *Engine) Run() error {
 		WSPath:        wsPath,
 		ScriptPath:    scriptPath,
 		AuthFn:        a.authFn,
+		DisableExecJS: a.DisableExecJS,
 	}
 
 	return server.Run(cfg)

@@ -22,8 +22,8 @@ const (
 )
 
 // EncodePatchMessage builds a VDomMessage with patches from a diff.
-func EncodePatchMessage(patches []vdom.Patch) *gproto.VDomMessage {
-	msg := &gproto.VDomMessage{Type: "patch"}
+func EncodePatchMessage(patches []vdom.Patch) *gproto.ServerMessage {
+	msg := &gproto.ServerMessage{Kind: gproto.ServerKind_SERVER_PATCH}
 	for _, p := range patches {
 		dp := encodePatch(p)
 		if dp != nil {

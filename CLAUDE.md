@@ -11,13 +11,13 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 - User owns the HTTP server and mux; godom registers /ws and /godom.js handlers on it
 - Virtual DOM in Go: templates parsed once, resolved per render, diffed for minimal patches
 - Binary WebSocket connection (Protocol Buffers) between browser and Go
-- Go → browser: `VDomMessage` with tree init or diff patches (`DomPatch`)
-- Browser → Go: `NodeEvent` (input sync) and `MethodCall` (event dispatch) with tagged binary format
+- Go → browser: `ServerMessage` with tree init, diff patches (`DomPatch`), or ExecJS calls
+- Browser → Go: `BrowserMessage` for input sync, method calls, ExecJS results, and `godom.call`
 - State lives in the Go process, survives browser close/reopen
 - Single binary output via `go build`; QuickServe for simple apps, SetMux+Run+ListenAndServe for full control
 
 ## Internal packages
-- `godom.go` — public API: Engine, SetFS, SetMux, Register, Run, QuickServe, ListenAndServe, SetAuth, Cleanup, Component, Refresh, MarkRefresh
+- `godom.go` — public API: Engine, SetFS, SetMux, Register, Run, QuickServe, ListenAndServe, SetAuth, Cleanup, Component, Refresh, MarkRefresh, ExecJS
 - `internal/vdom/` — VDOM node types, template parsing, tree resolution, diffing, merging
 - `internal/component/` — component struct, Info, method dispatch, field access
 - `internal/server/` — WebSocket handling, connection pool, init/update pipeline

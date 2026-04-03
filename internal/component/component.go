@@ -27,7 +27,7 @@ type Event struct {
 	Kind   EventKind
 	NodeID int32
 	Value  string
-	Call   *gproto.MethodCall
+	Msg    *gproto.BrowserMessage // for MethodCallKind — carries method + args
 }
 
 // Info holds reflection data about a mounted component.
@@ -77,6 +77,55 @@ type Info struct {
 	// Unbound input support
 	UnboundValues map[string]any // stableKey → value (survives tree rebuilds)
 	NodeStableIDs map[int]string // nodeID → stableKey (rebuilt each resolve)
+
+	// ExecJS support
+	ExecJSFn       func(id int32, expr string)                        // broadcast JSCall to all browsers (set by server)
+	ExecJSDisabled bool                                                // when true, ExecJS calls are silently dropped
+	JSCallbacks    map[int32]func(result []byte, err string)           // pending callbacks by request ID
+	JSCallbackMu   sync.Mutex
+	jsCallID       int32                                               // monotonic ID counter
+}
+
+// ExecJS sends a JavaScript expression to all connected browsers and calls the
+// callback for each response. The callback receives JSON-encoded result bytes
+// and an error string (empty on success).
+func (ci *Info) ExecJS(expr string, cb func(result []byte, err string)) {
+	if ci.ExecJSDisabled {
+		if cb != nil {
+			cb(nil, "ExecJS is disabled")
+		}
+		return
+	}
+	ci.JSCallbackMu.Lock()
+	ci.jsCallID++
+	id := ci.jsCallID
+	if ci.JSCallbacks == nil {
+		ci.JSCallbacks = make(map[int32]func(result []byte, err string))
+	}
+	ci.JSCallbacks[id] = cb
+	ci.JSCallbackMu.Unlock()
+
+	if ci.ExecJSFn != nil {
+		ci.ExecJSFn(id, expr)
+	}
+}
+
+// HandleJSResult dispatches a JSResult to the registered callback.
+func (ci *Info) HandleJSResult(id int32, result []byte, errMsg string) {
+	ci.JSCallbackMu.Lock()
+	cb, ok := ci.JSCallbacks[id]
+	// Don't delete — multiple browsers may respond with the same ID.
+	// Cleanup happens via timeout or explicit clear.
+	ci.JSCallbackMu.Unlock()
+
+	if ok && cb != nil {
+		cb(result, errMsg)
+	}
+}
+
+// HasMethod returns true if the component has an exported method with the given name.
+func (ci *Info) HasMethod(name string) bool {
+	return ci.Value.MethodByName(name).IsValid()
 }
 
 // AddMarkedFields appends field names for surgical refresh. Thread-safe.
@@ -221,11 +270,6 @@ func (ci *Info) HasField(name string) bool {
 		return false
 	}
 	return f.IsExported() && f.Name != "Component"
-}
-
-// HasMethod checks if the component has an exported method with the given name.
-func (ci *Info) HasMethod(name string) bool {
-	return ci.Value.MethodByName(name).IsValid()
 }
 
 // ParseCallExpr parses "MethodName" or "MethodName(arg1, arg2)" into method name and arg strings.

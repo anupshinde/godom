@@ -539,6 +539,108 @@ See [plugins.md](plugins.md) for writing your own plugins, and [javascript-libra
 
 ---
 
+## Executing JavaScript from Go (ExecJS)
+
+Go components can execute arbitrary JavaScript in connected browsers and receive results back.
+
+### Querying browser state
+
+```go
+func (a *App) FetchBrowserInfo() {
+    a.ExecJS("({url: location.href, vw: window.innerWidth})", func(result []byte, err string) {
+        if err != "" {
+            log.Println("ExecJS error:", err)
+            return
+        }
+        var info struct {
+            URL string `json:"url"`
+            VW  int    `json:"vw"`
+        }
+        json.Unmarshal(result, &info)
+        a.BrowserURL = info.URL
+        a.Refresh()
+    })
+}
+```
+
+The expression is evaluated in the browser via `eval()`. The result is `JSON.stringify`'d automatically — you receive raw JSON bytes in the callback. Unmarshal into whatever type you need.
+
+### Executing actions
+
+```go
+func (a *App) NavigateTo(path string) {
+    a.ExecJS(fmt.Sprintf("window.location.href = %q", path), func(result []byte, err string) {
+        // Browser navigates — no result needed
+    })
+}
+```
+
+### Multiple browsers
+
+The callback fires once per connected browser. If 3 tabs are open, you get 3 callbacks. Each response contains that browser's own state.
+
+### Disabling ExecJS
+
+For security, ExecJS can be disabled at two levels:
+
+**Server-side** — prevents the server from sending ExecJS calls:
+
+```go
+eng.DisableExecJS = true
+```
+
+**Browser-side** — the page owner prevents execution regardless of server config:
+
+```html
+<script>window.GODOM_DISABLE_EXEC = true;</script>
+<script src="/godom.js"></script>
+```
+
+When disabled, ExecJS callbacks receive `err = "ExecJS is disabled"`. See [configuration.md](configuration.md#godom_disable_exec) for details.
+
+---
+
+## Calling Go from JavaScript (godom.call)
+
+JavaScript running in the browser — plugin code, inline scripts, third-party widgets — can call Go methods on components.
+
+### From a plugin
+
+```js
+// In a Shoelace tree plugin's click handler:
+tree.addEventListener("sl-selection-change", function(e) {
+    var id = e.detail.selection[0].getAttribute("data-id");
+    godom.call("SelectCategory", id);
+});
+```
+
+### From inline JavaScript
+
+```html
+<button onclick="godom.call('DoSomething', 42)">Click me</button>
+```
+
+### Go side
+
+The method is a normal exported method on the component struct:
+
+```go
+func (a *App) SelectCategory(id string) {
+    // Update state — all browsers see the change
+    a.SelectedID = id
+}
+```
+
+Arguments are JSON-encoded. The server finds the component that has the method and dispatches the call. After the method runs, godom automatically refreshes all connected browsers.
+
+### How godom.call finds the component
+
+When `godom.call("MethodName", args...)` is sent, the server searches all registered components for one that has `MethodName` as an exported method. The first match wins. If no component has the method, an error is logged.
+
+See the `examples/exec-and-call/` example for a working demo of both features.
+
+---
+
 ## Multi-Tab Sync
 
 Open your app in two browser tabs. Type in one — both update instantly. godom broadcasts patches to all connected clients. State is always consistent because it lives in one place: your Go struct.

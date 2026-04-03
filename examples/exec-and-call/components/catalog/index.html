@@ -1,0 +1,58 @@
+<style>
+    .catalog-layout {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 1.5rem;
+        min-height: 400px;
+    }
+    @media (max-width: 600px) {
+        .catalog-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+    .tree-panel {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 1rem;
+        overflow-y: auto;
+        max-height: 500px;
+    }
+    .detail-panel {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 1.5rem;
+    }
+    .detail-name {
+        font-size: 1.3rem;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 0.8rem;
+    }
+    .detail-desc {
+        color: #666;
+        font-size: 0.95rem;
+        line-height: 1.6;
+    }
+    .detail-empty {
+        color: #bbb;
+        font-size: 0.9rem;
+        padding: 2rem 0;
+    }
+</style>
+
+<div class="catalog-layout">
+    <div class="tree-panel">
+        <div g-plugin:tree="Tree"></div>
+    </div>
+    <div class="detail-panel">
+        <div g-show="SelectedName">
+            <div class="detail-name" g-text="SelectedName">—</div>
+            <div class="detail-desc" g-text="SelectedDesc">—</div>
+        </div>
+        <div class="detail-empty" g-hide="SelectedName">
+            Select a category from the tree.
+        </div>
+    </div>
+</div>

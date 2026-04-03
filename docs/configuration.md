@@ -94,6 +94,26 @@ Override the WebSocket URL the bridge connects to. By default, the bridge derive
 
 When using `MuxOptions` with a custom `WSPath`, the server automatically injects the correct path into the JS bundle via the `__GODOM_WS_PATH__` template — no need to set `GODOM_WS_URL` for same-origin setups.
 
+### GODOM_DISABLE_EXEC
+
+Prevent godom from executing arbitrary JavaScript via `ExecJS`. When set, the bridge refuses to evaluate JS expressions sent by the server, returning an error instead.
+
+```html
+<script>window.GODOM_DISABLE_EXEC = true;</script>
+<script src="http://localhost:9091/godom.js"></script>
+```
+
+This is a **page-owner control** — the person who writes the HTML decides whether the godom server can execute JS in their page. The server cannot override this because the flag is checked before any JS is evaluated, including attempts to change the flag itself.
+
+There is also a server-side equivalent (`eng.DisableExecJS = true`) that prevents the server from sending ExecJS calls at all. Both can be used independently or together:
+
+| | Server sends JSCall | Bridge executes |
+|---|---|---|
+| Neither set | Yes | Yes |
+| `eng.DisableExecJS = true` | No | N/A (nothing arrives) |
+| `GODOM_DISABLE_EXEC = true` | Yes | No (returns error) |
+| Both set | No | No |
+
 ### GODOM_NS
 
 Change the global namespace the bridge registers on. Default is `"godom"` (`window.godom`). Useful when embedding godom in a third-party page to avoid name collisions.
