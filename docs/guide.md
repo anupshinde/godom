@@ -443,7 +443,9 @@ eng.Register("a", &CounterA{SharedState: shared}, "ui/a/index.html")
 eng.Register("b", &CounterB{SharedState: shared}, "ui/b/index.html")
 ```
 
-When one component modifies the shared state and calls `Refresh()`, both components update. See `examples/shared-state/` for a working example.
+When one component modifies the shared state and calls `Refresh()`, both components update. See `examples/shared-state/` and `examples/breakout-game/` for working examples.
+
+> **Note:** Each component instance can only be registered once. The same pointer cannot be used with `Register()` twice — each instance holds its own VDOM tree and bindings. To share state between components with different templates, use the embedded pointer pattern above.
 
 ### Without a layout (external hosting)
 
@@ -638,6 +640,34 @@ Arguments are JSON-encoded. The server finds the component that has the method a
 When `godom.call("MethodName", args...)` is sent, the server searches all registered components for one that has `MethodName` as an exported method. The first match wins. If no component has the method, an error is logged.
 
 See the `examples/exec-and-call/` example for a working demo of both features.
+
+---
+
+## WebSocket Lifecycle Hooks
+
+The bridge exposes three lifecycle callbacks for monitoring the WebSocket connection from JavaScript:
+
+```js
+var godom = window.godom;
+
+godom.onconnect = function() {
+    console.log("Connected to godom server");
+};
+
+godom.ondisconnect = function(errorMsg) {
+    console.log("Disconnected:", errorMsg || "clean close");
+};
+
+godom.onerror = function(evt) {
+    console.log("WebSocket error");
+};
+```
+
+- **`onconnect`** — fires once per WebSocket connection, after the first init message. Fires again on reconnect.
+- **`ondisconnect(errorMsg)`** — fires when the WebSocket closes. `errorMsg` is null for clean disconnects (server will auto-reconnect). Non-null means a fatal error.
+- **`onerror(evt)`** — fires on WebSocket error, before the connection closes.
+
+These hooks work even on pages with no `g-component` elements — useful for monitoring connection state or implementing heartbeat patterns. See `examples/ws-lifecycle/` for a working demo.
 
 ---
 

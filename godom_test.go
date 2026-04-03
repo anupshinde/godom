@@ -547,6 +547,24 @@ func TestRegister_InvalidDirective(t *testing.T) {
 	}
 }
 
+func TestRegister_DuplicateInstanceFatals(t *testing.T) {
+	if os.Getenv("TEST_FATAL_REGISTER_DUPINST") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		app := &testApp{}
+		e.Register("first", app, "index.html")
+		e.Register("second", app, "index.html") // same pointer
+		return
+	}
+	out := runSubprocess(t, "TestRegister_DuplicateInstanceFatals", "TEST_FATAL_REGISTER_DUPINST")
+	if !strings.Contains(out, "same instance already registered") {
+		t.Errorf("expected duplicate instance error, got: %s", out)
+	}
+	if !strings.Contains(out, `"first"`) {
+		t.Errorf("expected error to mention existing name 'first', got: %s", out)
+	}
+}
+
 // --- Auto-wiring ---
 
 func TestAutoWire_SetsSlotName(t *testing.T) {
@@ -596,6 +614,43 @@ func TestRun_NoComponents(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no components registered") {
 		t.Errorf("expected 'no components registered' error, got: %v", err)
+	}
+}
+
+func TestRun_WithMuxOptions(t *testing.T) {
+	e := NewEngine()
+	e.SetFS(makeTestFS())
+	e.Register("main", &testApp{}, "index.html")
+
+	mux := http.NewServeMux()
+	e.SetMux(mux, &MuxOptions{WSPath: "/app/ws", ScriptPath: "/app/godom.js"})
+
+	err := e.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Verify handlers were registered on custom paths
+	// (mux doesn't expose handlers, but we can check it doesn't panic)
+}
+
+func TestRun_DisableExecJS(t *testing.T) {
+	e := NewEngine()
+	e.DisableExecJS = true
+	e.SetFS(makeTestFS())
+	e.Register("main", &testApp{}, "index.html")
+
+	mux := http.NewServeMux()
+	e.SetMux(mux, nil)
+
+	err := e.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// The registered component's ci should have ExecJSDisabled set
+	if !e.comps[0].ExecJSDisabled {
+		t.Error("expected ExecJSDisabled to be set on component after Run with DisableExecJS")
 	}
 }
 
