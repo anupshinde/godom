@@ -21,12 +21,18 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// ServerMessage is the top-level message sent from Go to the browser.
+// ServerMessage is the single message type sent from Go to the browser.
+// The `kind` field determines which payload fields are relevant.
 type ServerMessage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"` // "init" or "update"
-	Commands      []*Command             `protobuf:"bytes,2,rep,name=commands,proto3" json:"commands,omitempty"`
-	Events        []*EventCommand        `protobuf:"bytes,3,rep,name=events,proto3" json:"events,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Kind   string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`     // "init", "patch", "jscall", "stream" (future), "broadcast" (future)
+	Target string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"` // component instance name (for init, patch, stream)
+	// VDOM fields (kind: "init", "patch")
+	Tree    []byte      `protobuf:"bytes,10,opt,name=tree,proto3" json:"tree,omitempty"`       // JSON-encoded tree description (init only)
+	Patches []*DomPatch `protobuf:"bytes,11,rep,name=patches,proto3" json:"patches,omitempty"` // incremental patches (patch only)
+	// ExecJS fields (kind: "jscall")
+	CallId        int32  `protobuf:"varint,20,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"` // unique request ID for correlating responses
+	Expr          string `protobuf:"bytes,21,opt,name=expr,proto3" json:"expr,omitempty"`                    // JavaScript expression to evaluate
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -61,369 +67,44 @@ func (*ServerMessage) Descriptor() ([]byte, []int) {
 	return file_protocol_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *ServerMessage) GetType() string {
+func (x *ServerMessage) GetKind() string {
 	if x != nil {
-		return x.Type
+		return x.Kind
 	}
 	return ""
 }
 
-func (x *ServerMessage) GetCommands() []*Command {
+func (x *ServerMessage) GetTarget() string {
 	if x != nil {
-		return x.Commands
-	}
-	return nil
-}
-
-func (x *ServerMessage) GetEvents() []*EventCommand {
-	if x != nil {
-		return x.Events
-	}
-	return nil
-}
-
-// Command is a single DOM operation.
-type Command struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	Op    string                 `protobuf:"bytes,1,opt,name=op,proto3" json:"op,omitempty"`     // "text","value","checked","display","class","attr","style","plugin","list","list-append","list-truncate","re-event"
-	Id    string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`     // data-gid of target element
-	Name  string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"` // class name (for "class" op), attr name, style property name, plugin name
-	// Types that are valid to be assigned to Val:
-	//
-	//	*Command_StrVal
-	//	*Command_BoolVal
-	//	*Command_NumVal
-	//	*Command_RawVal
-	Val           isCommand_Val `protobuf_oneof:"val"`
-	Items         []*ListItem   `protobuf:"bytes,8,rep,name=items,proto3" json:"items,omitempty"` // for "list" and "list-append" ops
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Command) Reset() {
-	*x = Command{}
-	mi := &file_protocol_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Command) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Command) ProtoMessage() {}
-
-func (x *Command) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Command.ProtoReflect.Descriptor instead.
-func (*Command) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *Command) GetOp() string {
-	if x != nil {
-		return x.Op
+		return x.Target
 	}
 	return ""
 }
 
-func (x *Command) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
-}
-
-func (x *Command) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *Command) GetVal() isCommand_Val {
-	if x != nil {
-		return x.Val
-	}
-	return nil
-}
-
-func (x *Command) GetStrVal() string {
-	if x != nil {
-		if x, ok := x.Val.(*Command_StrVal); ok {
-			return x.StrVal
-		}
-	}
-	return ""
-}
-
-func (x *Command) GetBoolVal() bool {
-	if x != nil {
-		if x, ok := x.Val.(*Command_BoolVal); ok {
-			return x.BoolVal
-		}
-	}
-	return false
-}
-
-func (x *Command) GetNumVal() float64 {
-	if x != nil {
-		if x, ok := x.Val.(*Command_NumVal); ok {
-			return x.NumVal
-		}
-	}
-	return 0
-}
-
-func (x *Command) GetRawVal() []byte {
-	if x != nil {
-		if x, ok := x.Val.(*Command_RawVal); ok {
-			return x.RawVal
-		}
-	}
-	return nil
-}
-
-func (x *Command) GetItems() []*ListItem {
-	if x != nil {
-		return x.Items
-	}
-	return nil
-}
-
-type isCommand_Val interface {
-	isCommand_Val()
-}
-
-type Command_StrVal struct {
-	StrVal string `protobuf:"bytes,4,opt,name=str_val,json=strVal,proto3,oneof"`
-}
-
-type Command_BoolVal struct {
-	BoolVal bool `protobuf:"varint,5,opt,name=bool_val,json=boolVal,proto3,oneof"`
-}
-
-type Command_NumVal struct {
-	NumVal float64 `protobuf:"fixed64,6,opt,name=num_val,json=numVal,proto3,oneof"`
-}
-
-type Command_RawVal struct {
-	RawVal []byte `protobuf:"bytes,7,opt,name=raw_val,json=rawVal,proto3,oneof"` // JSON bytes for plugin data, re-event, etc.
-}
-
-func (*Command_StrVal) isCommand_Val() {}
-
-func (*Command_BoolVal) isCommand_Val() {}
-
-func (*Command_NumVal) isCommand_Val() {}
-
-func (*Command_RawVal) isCommand_Val() {}
-
-// ListItem is a single item in a g-for list render.
-type ListItem struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Html          string                 `protobuf:"bytes,1,opt,name=html,proto3" json:"html,omitempty"`
-	Cmds          []*Command             `protobuf:"bytes,2,rep,name=cmds,proto3" json:"cmds,omitempty"`
-	Evts          []*EventCommand        `protobuf:"bytes,3,rep,name=evts,proto3" json:"evts,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListItem) Reset() {
-	*x = ListItem{}
-	mi := &file_protocol_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListItem) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListItem) ProtoMessage() {}
-
-func (x *ListItem) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListItem.ProtoReflect.Descriptor instead.
-func (*ListItem) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *ListItem) GetHtml() string {
-	if x != nil {
-		return x.Html
-	}
-	return ""
-}
-
-func (x *ListItem) GetCmds() []*Command {
-	if x != nil {
-		return x.Cmds
-	}
-	return nil
-}
-
-func (x *ListItem) GetEvts() []*EventCommand {
-	if x != nil {
-		return x.Evts
-	}
-	return nil
-}
-
-// EventCommand describes an event listener the bridge should register.
-type EventCommand struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`   // data-gid
-	On            string                 `protobuf:"bytes,2,opt,name=on,proto3" json:"on,omitempty"`   // "click","keydown","mousedown","mousemove","mouseup","wheel","input"
-	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"` // key filter for keydown
-	Msg           []byte                 `protobuf:"bytes,4,opt,name=msg,proto3" json:"msg,omitempty"` // pre-built message bytes — bridge sends back untouched
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *EventCommand) Reset() {
-	*x = EventCommand{}
-	mi := &file_protocol_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *EventCommand) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*EventCommand) ProtoMessage() {}
-
-func (x *EventCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use EventCommand.ProtoReflect.Descriptor instead.
-func (*EventCommand) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *EventCommand) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
-}
-
-func (x *EventCommand) GetOn() string {
-	if x != nil {
-		return x.On
-	}
-	return ""
-}
-
-func (x *EventCommand) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
-}
-
-func (x *EventCommand) GetMsg() []byte {
-	if x != nil {
-		return x.Msg
-	}
-	return nil
-}
-
-// VDomMessage is the top-level message for the VDOM pipeline.
-type VDomMessage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`                               // "init" or "patch"
-	Patches       []*DomPatch            `protobuf:"bytes,3,rep,name=patches,proto3" json:"patches,omitempty"`                         // incremental patches (patch only)
-	Tree          []byte                 `protobuf:"bytes,5,opt,name=tree,proto3" json:"tree,omitempty"`                               // JSON-encoded tree description (init only)
-	TargetName    string                 `protobuf:"bytes,6,opt,name=target_name,json=targetName,proto3" json:"target_name,omitempty"` // registered component instance name (empty = root, renders into body)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *VDomMessage) Reset() {
-	*x = VDomMessage{}
-	mi := &file_protocol_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *VDomMessage) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*VDomMessage) ProtoMessage() {}
-
-func (x *VDomMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use VDomMessage.ProtoReflect.Descriptor instead.
-func (*VDomMessage) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *VDomMessage) GetType() string {
-	if x != nil {
-		return x.Type
-	}
-	return ""
-}
-
-func (x *VDomMessage) GetPatches() []*DomPatch {
-	if x != nil {
-		return x.Patches
-	}
-	return nil
-}
-
-func (x *VDomMessage) GetTree() []byte {
+func (x *ServerMessage) GetTree() []byte {
 	if x != nil {
 		return x.Tree
 	}
 	return nil
 }
 
-func (x *VDomMessage) GetTargetName() string {
+func (x *ServerMessage) GetPatches() []*DomPatch {
 	if x != nil {
-		return x.TargetName
+		return x.Patches
+	}
+	return nil
+}
+
+func (x *ServerMessage) GetCallId() int32 {
+	if x != nil {
+		return x.CallId
+	}
+	return 0
+}
+
+func (x *ServerMessage) GetExpr() string {
+	if x != nil {
+		return x.Expr
 	}
 	return ""
 }
@@ -447,7 +128,7 @@ type DomPatch struct {
 
 func (x *DomPatch) Reset() {
 	*x = DomPatch{}
-	mi := &file_protocol_proto_msgTypes[5]
+	mi := &file_protocol_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -459,7 +140,7 @@ func (x *DomPatch) String() string {
 func (*DomPatch) ProtoMessage() {}
 
 func (x *DomPatch) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_msgTypes[5]
+	mi := &file_protocol_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -472,7 +153,7 @@ func (x *DomPatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DomPatch.ProtoReflect.Descriptor instead.
 func (*DomPatch) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_rawDescGZIP(), []int{5}
+	return file_protocol_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *DomPatch) GetNodeId() int32 {
@@ -538,31 +219,40 @@ func (x *DomPatch) GetSubPatches() []*DomPatch {
 	return nil
 }
 
-// JSCall is sent from Go to the browser to execute arbitrary JavaScript.
-// Tag byte: 0x02 (Go → browser).
-type JSCall struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int32                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`    // unique request ID for correlating responses
-	Expr          string                 `protobuf:"bytes,2,opt,name=expr,proto3" json:"expr,omitempty"` // JavaScript expression to evaluate
+// BrowserMessage is the single message type sent from the browser to Go.
+// The `kind` field determines which payload fields are relevant.
+type BrowserMessage struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Kind   string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`                    // "input", "method", "jsresult", "init_request" (future), "page_info" (future), "broadcast" (future)
+	NodeId int32                  `protobuf:"varint,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"` // source node (0 = none, e.g. godom.call)
+	// Input sync fields (kind: "input")
+	Value string `protobuf:"bytes,10,opt,name=value,proto3" json:"value,omitempty"` // current DOM value (e.g. input.value)
+	// Method call fields (kind: "method")
+	Method string   `protobuf:"bytes,20,opt,name=method,proto3" json:"method,omitempty"` // Go method name (e.g. "AddTodo", "Toggle")
+	Args   [][]byte `protobuf:"bytes,21,rep,name=args,proto3" json:"args,omitempty"`     // JSON-encoded arguments
+	// JSResult fields (kind: "jsresult")
+	CallId        int32  `protobuf:"varint,30,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"` // matches the ServerMessage.call_id
+	Result        []byte `protobuf:"bytes,31,opt,name=result,proto3" json:"result,omitempty"`                // JSON-encoded result value
+	Error         string `protobuf:"bytes,32,opt,name=error,proto3" json:"error,omitempty"`                  // error message if eval failed
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *JSCall) Reset() {
-	*x = JSCall{}
-	mi := &file_protocol_proto_msgTypes[6]
+func (x *BrowserMessage) Reset() {
+	*x = BrowserMessage{}
+	mi := &file_protocol_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *JSCall) String() string {
+func (x *BrowserMessage) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*JSCall) ProtoMessage() {}
+func (*BrowserMessage) ProtoMessage() {}
 
-func (x *JSCall) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_msgTypes[6]
+func (x *BrowserMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -573,197 +263,61 @@ func (x *JSCall) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use JSCall.ProtoReflect.Descriptor instead.
-func (*JSCall) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_rawDescGZIP(), []int{6}
+// Deprecated: Use BrowserMessage.ProtoReflect.Descriptor instead.
+func (*BrowserMessage) Descriptor() ([]byte, []int) {
+	return file_protocol_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *JSCall) GetId() int32 {
+func (x *BrowserMessage) GetKind() string {
 	if x != nil {
-		return x.Id
-	}
-	return 0
-}
-
-func (x *JSCall) GetExpr() string {
-	if x != nil {
-		return x.Expr
+		return x.Kind
 	}
 	return ""
 }
 
-// NodeEvent is sent from the browser when a node's value changes (Layer 1).
-// Tag byte: 0x01.
-type NodeEvent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	NodeId        int32                  `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"` // stable node ID (matches nodeMap on bridge)
-	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`                  // current DOM value (e.g. input.value)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *NodeEvent) Reset() {
-	*x = NodeEvent{}
-	mi := &file_protocol_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *NodeEvent) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*NodeEvent) ProtoMessage() {}
-
-func (x *NodeEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use NodeEvent.ProtoReflect.Descriptor instead.
-func (*NodeEvent) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *NodeEvent) GetNodeId() int32 {
+func (x *BrowserMessage) GetNodeId() int32 {
 	if x != nil {
 		return x.NodeId
 	}
 	return 0
 }
 
-func (x *NodeEvent) GetValue() string {
+func (x *BrowserMessage) GetValue() string {
 	if x != nil {
 		return x.Value
 	}
 	return ""
 }
 
-// MethodCall is sent from the browser when a user event triggers a Go method (Layer 2).
-// Tag byte: 0x02.
-type MethodCall struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	NodeId        int32                  `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"` // stable node ID of the element that fired
-	Method        string                 `protobuf:"bytes,2,opt,name=method,proto3" json:"method,omitempty"`                // Go method name (e.g. "AddTodo", "Toggle")
-	Args          [][]byte               `protobuf:"bytes,3,rep,name=args,proto3" json:"args,omitempty"`                    // JSON-encoded arguments
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *MethodCall) Reset() {
-	*x = MethodCall{}
-	mi := &file_protocol_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *MethodCall) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*MethodCall) ProtoMessage() {}
-
-func (x *MethodCall) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use MethodCall.ProtoReflect.Descriptor instead.
-func (*MethodCall) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *MethodCall) GetNodeId() int32 {
-	if x != nil {
-		return x.NodeId
-	}
-	return 0
-}
-
-func (x *MethodCall) GetMethod() string {
+func (x *BrowserMessage) GetMethod() string {
 	if x != nil {
 		return x.Method
 	}
 	return ""
 }
 
-func (x *MethodCall) GetArgs() [][]byte {
+func (x *BrowserMessage) GetArgs() [][]byte {
 	if x != nil {
 		return x.Args
 	}
 	return nil
 }
 
-// JSResult is sent from the browser as a response to a JSCall.
-// Tag byte: 0x03.
-type JSResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int32                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`        // matches the JSCall.id
-	Result        []byte                 `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"` // JSON-encoded result value
-	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`   // error message if eval failed
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *JSResult) Reset() {
-	*x = JSResult{}
-	mi := &file_protocol_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *JSResult) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*JSResult) ProtoMessage() {}
-
-func (x *JSResult) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_msgTypes[9]
+func (x *BrowserMessage) GetCallId() int32 {
 	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use JSResult.ProtoReflect.Descriptor instead.
-func (*JSResult) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *JSResult) GetId() int32 {
-	if x != nil {
-		return x.Id
+		return x.CallId
 	}
 	return 0
 }
 
-func (x *JSResult) GetResult() []byte {
+func (x *BrowserMessage) GetResult() []byte {
 	if x != nil {
 		return x.Result
 	}
 	return nil
 }
 
-func (x *JSResult) GetError() string {
+func (x *BrowserMessage) GetError() string {
 	if x != nil {
 		return x.Error
 	}
@@ -774,36 +328,15 @@ var File_protocol_proto protoreflect.FileDescriptor
 
 const file_protocol_proto_rawDesc = "" +
 	"\n" +
-	"\x0eprotocol.proto\x12\x05godom\"|\n" +
+	"\x0eprotocol.proto\x12\x05godom\"\xa7\x01\n" +
 	"\rServerMessage\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\tR\x04type\x12*\n" +
-	"\bcommands\x18\x02 \x03(\v2\x0e.godom.CommandR\bcommands\x12+\n" +
-	"\x06events\x18\x03 \x03(\v2\x13.godom.EventCommandR\x06events\"\xd9\x01\n" +
-	"\aCommand\x12\x0e\n" +
-	"\x02op\x18\x01 \x01(\tR\x02op\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\x12\x19\n" +
-	"\astr_val\x18\x04 \x01(\tH\x00R\x06strVal\x12\x1b\n" +
-	"\bbool_val\x18\x05 \x01(\bH\x00R\aboolVal\x12\x19\n" +
-	"\anum_val\x18\x06 \x01(\x01H\x00R\x06numVal\x12\x19\n" +
-	"\araw_val\x18\a \x01(\fH\x00R\x06rawVal\x12%\n" +
-	"\x05items\x18\b \x03(\v2\x0f.godom.ListItemR\x05itemsB\x05\n" +
-	"\x03val\"k\n" +
-	"\bListItem\x12\x12\n" +
-	"\x04html\x18\x01 \x01(\tR\x04html\x12\"\n" +
-	"\x04cmds\x18\x02 \x03(\v2\x0e.godom.CommandR\x04cmds\x12'\n" +
-	"\x04evts\x18\x03 \x03(\v2\x13.godom.EventCommandR\x04evts\"R\n" +
-	"\fEventCommand\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x0e\n" +
-	"\x02on\x18\x02 \x01(\tR\x02on\x12\x10\n" +
-	"\x03key\x18\x03 \x01(\tR\x03key\x12\x10\n" +
-	"\x03msg\x18\x04 \x01(\fR\x03msg\"\x81\x01\n" +
-	"\vVDomMessage\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\tR\x04type\x12)\n" +
-	"\apatches\x18\x03 \x03(\v2\x0f.godom.DomPatchR\apatches\x12\x12\n" +
-	"\x04tree\x18\x05 \x01(\fR\x04tree\x12\x1f\n" +
-	"\vtarget_name\x18\x06 \x01(\tR\n" +
-	"targetName\"\x83\x02\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
+	"\x06target\x18\x02 \x01(\tR\x06target\x12\x12\n" +
+	"\x04tree\x18\n" +
+	" \x01(\fR\x04tree\x12)\n" +
+	"\apatches\x18\v \x03(\v2\x0f.godom.DomPatchR\apatches\x12\x17\n" +
+	"\acall_id\x18\x14 \x01(\x05R\x06callId\x12\x12\n" +
+	"\x04expr\x18\x15 \x01(\tR\x04expr\"\x83\x02\n" +
 	"\bDomPatch\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x05R\x06nodeId\x12\x0e\n" +
 	"\x02op\x18\x02 \x01(\tR\x02op\x12\x12\n" +
@@ -816,22 +349,17 @@ const file_protocol_proto_rawDesc = "" +
 	"\vplugin_data\x18\x0f \x01(\fR\n" +
 	"pluginData\x120\n" +
 	"\vsub_patches\x18\x10 \x03(\v2\x0f.godom.DomPatchR\n" +
-	"subPatches\",\n" +
-	"\x06JSCall\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x12\n" +
-	"\x04expr\x18\x02 \x01(\tR\x04expr\":\n" +
-	"\tNodeEvent\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\x05R\x06nodeId\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\"Q\n" +
-	"\n" +
-	"MethodCall\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\x05R\x06nodeId\x12\x16\n" +
-	"\x06method\x18\x02 \x01(\tR\x06method\x12\x12\n" +
-	"\x04args\x18\x03 \x03(\fR\x04args\"H\n" +
-	"\bJSResult\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x16\n" +
-	"\x06result\x18\x02 \x01(\fR\x06result\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05errorB\tZ\a./protob\x06proto3"
+	"subPatches\"\xc6\x01\n" +
+	"\x0eBrowserMessage\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x17\n" +
+	"\anode_id\x18\x02 \x01(\x05R\x06nodeId\x12\x14\n" +
+	"\x05value\x18\n" +
+	" \x01(\tR\x05value\x12\x16\n" +
+	"\x06method\x18\x14 \x01(\tR\x06method\x12\x12\n" +
+	"\x04args\x18\x15 \x03(\fR\x04args\x12\x17\n" +
+	"\acall_id\x18\x1e \x01(\x05R\x06callId\x12\x16\n" +
+	"\x06result\x18\x1f \x01(\fR\x06result\x12\x14\n" +
+	"\x05error\x18  \x01(\tR\x05errorB\tZ\a./protob\x06proto3"
 
 var (
 	file_protocol_proto_rawDescOnce sync.Once
@@ -845,32 +373,20 @@ func file_protocol_proto_rawDescGZIP() []byte {
 	return file_protocol_proto_rawDescData
 }
 
-var file_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_protocol_proto_goTypes = []any{
-	(*ServerMessage)(nil), // 0: godom.ServerMessage
-	(*Command)(nil),       // 1: godom.Command
-	(*ListItem)(nil),      // 2: godom.ListItem
-	(*EventCommand)(nil),  // 3: godom.EventCommand
-	(*VDomMessage)(nil),   // 4: godom.VDomMessage
-	(*DomPatch)(nil),      // 5: godom.DomPatch
-	(*JSCall)(nil),        // 6: godom.JSCall
-	(*NodeEvent)(nil),     // 7: godom.NodeEvent
-	(*MethodCall)(nil),    // 8: godom.MethodCall
-	(*JSResult)(nil),      // 9: godom.JSResult
+	(*ServerMessage)(nil),  // 0: godom.ServerMessage
+	(*DomPatch)(nil),       // 1: godom.DomPatch
+	(*BrowserMessage)(nil), // 2: godom.BrowserMessage
 }
 var file_protocol_proto_depIdxs = []int32{
-	1, // 0: godom.ServerMessage.commands:type_name -> godom.Command
-	3, // 1: godom.ServerMessage.events:type_name -> godom.EventCommand
-	2, // 2: godom.Command.items:type_name -> godom.ListItem
-	1, // 3: godom.ListItem.cmds:type_name -> godom.Command
-	3, // 4: godom.ListItem.evts:type_name -> godom.EventCommand
-	5, // 5: godom.VDomMessage.patches:type_name -> godom.DomPatch
-	5, // 6: godom.DomPatch.sub_patches:type_name -> godom.DomPatch
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	1, // 0: godom.ServerMessage.patches:type_name -> godom.DomPatch
+	1, // 1: godom.DomPatch.sub_patches:type_name -> godom.DomPatch
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_protocol_proto_init() }
@@ -878,19 +394,13 @@ func file_protocol_proto_init() {
 	if File_protocol_proto != nil {
 		return
 	}
-	file_protocol_proto_msgTypes[1].OneofWrappers = []any{
-		(*Command_StrVal)(nil),
-		(*Command_BoolVal)(nil),
-		(*Command_NumVal)(nil),
-		(*Command_RawVal)(nil),
-	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_protocol_proto_rawDesc), len(file_protocol_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

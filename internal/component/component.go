@@ -27,7 +27,7 @@ type Event struct {
 	Kind   EventKind
 	NodeID int32
 	Value  string
-	Call   *gproto.MethodCall
+	Msg    *gproto.BrowserMessage // for MethodCallKind — carries method + args
 }
 
 // Info holds reflection data about a mounted component.

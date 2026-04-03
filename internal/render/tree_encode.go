@@ -158,15 +158,15 @@ func EncodeTreeJSON(n vdom.Node) ([]byte, error) {
 	return json.Marshal(wn)
 }
 
-// EncodeInitTreeMessage builds a VDomMessage for init using a tree description
+// EncodeInitTreeMessage builds a ServerMessage for init using a tree description
 // instead of HTML. The bridge builds DOM directly from this.
-func EncodeInitTreeMessage(root vdom.Node) (*gproto.VDomMessage, error) {
+func EncodeInitTreeMessage(root vdom.Node) (*gproto.ServerMessage, error) {
 	treeJSON, err := EncodeTreeJSON(root)
 	if err != nil {
 		return nil, err
 	}
-	return &gproto.VDomMessage{
-		Type: "init",
+	return &gproto.ServerMessage{
+		Kind: "init",
 		Tree: treeJSON,
 	}, nil
 }

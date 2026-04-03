@@ -116,36 +116,15 @@
         ws.binaryType = "arraybuffer";
 
         ws.onmessage = function(evt) {
-            var raw = new Uint8Array(evt.data);
+            var msg = Proto.ServerMessage.decode(new Uint8Array(evt.data));
+            var kind = msg.kind || "";
 
-            // Tagged messages: first byte is the tag.
-            // Tag 1 = VDomMessage, Tag 2 = JSCall.
-            // Legacy untagged messages start with protobuf field bytes (>= 0x08).
-            var tag = raw[0];
-            var payload;
-            if (tag <= 2) {
-                payload = raw.subarray(1);
-            } else {
-                // Legacy: no tag byte, entire message is VDomMessage
-                tag = 1;
-                payload = raw;
-            }
-
-            if (tag === 2) {
-                var call = Proto.JSCall.decode(payload);
-                handleJSCall(call);
-                return;
-            }
-
-            // Tag 1: VDomMessage
-            var msg = Proto.VDomMessage.decode(payload);
-            var name = msg.targetName || "";
-
-            if (msg.type === "init") {
+            if (kind === "init") {
                 hideDisconnectOverlay();
                 reconnectDelay = 1000;
-                initTarget(name, msg);
-            } else if (msg.type === "patch") {
+                initTarget(msg.target || "", msg);
+            } else if (kind === "patch") {
+                var name = msg.target || "";
                 var ctxList = targets[name];
                 if (!ctxList || ctxList.length === 0) {
                     console.warn("[godom patch] no target context for name=" + name);
@@ -154,6 +133,8 @@
                 for (var i = 0; i < ctxList.length; i++) {
                     ctxList[i].applyPatches(msg.patches);
                 }
+            } else if (kind === "jscall") {
+                handleJSCall(msg);
             }
         };
 
@@ -530,11 +511,12 @@
         // --- Event handling ---
 
         function sendNodeEvent(nodeId, value) {
-            var msg = Proto.NodeEvent.encode({nodeId: nodeId, value: value}).finish();
-            var tagged = new Uint8Array(1 + msg.length);
-            tagged[0] = 1;
-            tagged.set(msg, 1);
-            ws.send(tagged);
+            var msg = Proto.BrowserMessage.encode({
+                kind: "input",
+                nodeId: nodeId,
+                value: value
+            }).finish();
+            ws.send(msg);
         }
 
         function autoRegisterInputSync(nodeId, el, tag) {
@@ -576,15 +558,13 @@
         }
 
         function sendMethodCall(nodeId, method, args) {
-            var msg = Proto.MethodCall.encode({
+            var msg = Proto.BrowserMessage.encode({
+                kind: "method",
                 nodeId: nodeId,
                 method: method,
                 args: args
             }).finish();
-            var tagged = new Uint8Array(1 + msg.length);
-            tagged[0] = 2;
-            tagged.set(msg, 1);
-            ws.send(tagged);
+            ws.send(msg);
         }
 
         function registerEvents(nodeId, el, events) {
@@ -792,9 +772,9 @@
     // ExecJS — Go → browser → Go request/response
     // =========================================================================
 
-    function handleJSCall(call) {
-        var id = call.id;
-        var expr = call.expr;
+    function handleJSCall(msg) {
+        var id = msg.callId;
+        var expr = msg.expr;
         var result = null;
         var error = "";
 
@@ -821,15 +801,13 @@
     }
 
     function sendJSResult(id, result, error) {
-        var msg = Proto.JSResult.encode({
-            id: id,
+        var msg = Proto.BrowserMessage.encode({
+            kind: "jsresult",
+            callId: id,
             result: result,
             error: error
         }).finish();
-        var tagged = new Uint8Array(1 + msg.length);
-        tagged[0] = 3; // tag 3: JSResult
-        tagged.set(msg, 1);
-        ws.send(tagged);
+        ws.send(msg);
     }
 
     // =========================================================================
@@ -847,16 +825,14 @@
                 args.push(textEncoder.encode(json));
             }
         }
-        var msg = Proto.MethodCall.encode({
+        var msg = Proto.BrowserMessage.encode({
+            kind: "method",
             nodeId: 0,
             method: method,
             args: args
         }).finish();
-        var tagged = new Uint8Array(1 + msg.length);
-        tagged[0] = 2;
-        tagged.set(msg, 1);
         if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(tagged);
+            ws.send(msg);
         }
     };
 

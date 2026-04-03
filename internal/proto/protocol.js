@@ -1,4 +1,4 @@
-// Protocol buffer type definitions for godom VDOM wire protocol.
+// Protocol buffer type definitions for godom wire protocol.
 // IMPORTANT: This file must stay in sync with protocol.proto.
 // Update this file whenever protocol.proto changes.
 var godomProto = (function() {
@@ -9,28 +9,6 @@ var godomProto = (function() {
         Field = protobuf.Field;
 
     var root = new Root();
-
-    // NodeEvent — browser → Go, Layer 1: just node ID + value (tag byte 0x01)
-    var NodeEvent = new Type("NodeEvent")
-        .add(new Field("nodeId", 1, "int32"))
-        .add(new Field("value", 2, "string"));
-
-    // MethodCall — browser → Go, Layer 2: method dispatch (tag byte 0x02)
-    var MethodCall = new Type("MethodCall")
-        .add(new Field("nodeId", 1, "int32"))
-        .add(new Field("method", 2, "string"))
-        .add(new Field("args", 3, "bytes", "repeated"));
-
-    // JSResult — browser → Go: response to JSCall (tag byte 0x03)
-    var JSResult = new Type("JSResult")
-        .add(new Field("id", 1, "int32"))
-        .add(new Field("result", 2, "bytes"))
-        .add(new Field("error", 3, "string"));
-
-    // JSCall — Go → browser: execute JS expression (tag byte 0x02 in Go→browser direction)
-    var JSCall = new Type("JSCall")
-        .add(new Field("id", 1, "int32"))
-        .add(new Field("expr", 2, "string"));
 
     // DomPatch — single DOM mutation from diff
     var DomPatch = new Type("DomPatch")
@@ -44,26 +22,33 @@ var godomProto = (function() {
         .add(new Field("pluginData", 15, "bytes"))
         .add(new Field("subPatches", 16, "DomPatch", "repeated"));
 
-    // VDomMessage — top-level Go → browser message
-    var VDomMessage = new Type("VDomMessage")
-        .add(new Field("type", 1, "string"))
-        .add(new Field("patches", 3, "DomPatch", "repeated"))
-        .add(new Field("tree", 5, "bytes"))
-        .add(new Field("targetName", 6, "string"));
+    // ServerMessage — Go → browser (all message types)
+    var ServerMessage = new Type("ServerMessage")
+        .add(new Field("kind", 1, "string"))
+        .add(new Field("target", 2, "string"))
+        .add(new Field("tree", 10, "bytes"))
+        .add(new Field("patches", 11, "DomPatch", "repeated"))
+        .add(new Field("callId", 20, "int32"))
+        .add(new Field("expr", 21, "string"));
 
-    root.add(VDomMessage);
+    // BrowserMessage — browser → Go (all message types)
+    var BrowserMessage = new Type("BrowserMessage")
+        .add(new Field("kind", 1, "string"))
+        .add(new Field("nodeId", 2, "int32"))
+        .add(new Field("value", 10, "string"))
+        .add(new Field("method", 20, "string"))
+        .add(new Field("args", 21, "bytes", "repeated"))
+        .add(new Field("callId", 30, "int32"))
+        .add(new Field("result", 31, "bytes"))
+        .add(new Field("error", 32, "string"));
+
+    root.add(ServerMessage);
     root.add(DomPatch);
-    root.add(NodeEvent);
-    root.add(MethodCall);
-    root.add(JSResult);
-    root.add(JSCall);
+    root.add(BrowserMessage);
 
     return {
-        VDomMessage: VDomMessage,
+        ServerMessage: ServerMessage,
         DomPatch: DomPatch,
-        NodeEvent: NodeEvent,
-        MethodCall: MethodCall,
-        JSResult: JSResult,
-        JSCall: JSCall
+        BrowserMessage: BrowserMessage
     };
 })();

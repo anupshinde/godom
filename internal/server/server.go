@@ -89,17 +89,13 @@ func Run(cfg Config) error {
 			if env.Debug {
 				log.Printf("godom: ExecJS id=%d expr=%q", id, expr)
 			}
-			call := &gproto.JSCall{Id: id, Expr: expr}
-			data, err := proto.Marshal(call)
+			msg := &gproto.ServerMessage{Kind: "jscall", CallId: id, Expr: expr}
+			data, err := proto.Marshal(msg)
 			if err != nil {
 				log.Printf("godom: ExecJS marshal error: %v", err)
 				return
 			}
-			// Tag 2: JSCall (Go → browser)
-			tagged := make([]byte, 1+len(data))
-			tagged[0] = 2
-			copy(tagged[1:], data)
-			pool.broadcast(tagged)
+			pool.broadcast(data)
 		}
 	}
 
@@ -188,38 +184,31 @@ func Run(cfg Config) error {
 			if err != nil {
 				return
 			}
-			if msgType != websocket.BinaryMessage || len(data) < 2 {
+			if msgType != websocket.BinaryMessage || len(data) == 0 {
 				continue
 			}
 
-			tag := data[0]
-			payload := data[1:]
+			msg := &gproto.BrowserMessage{}
+			if err := proto.Unmarshal(data, msg); err != nil {
+				log.Printf("godom: browser message unmarshal error: %v", err)
+				continue
+			}
 
-			switch tag {
-			case 1: // NodeEvent (Layer 1)
-				evt := &gproto.NodeEvent{}
-				if err := proto.Unmarshal(payload, evt); err != nil {
-					log.Printf("godom: node event unmarshal error: %v", err)
-					continue
-				}
-				if ci := findComponent(int(evt.NodeId), ctx.comps, ctx.lookup); ci != nil {
-					e := component.Event{Kind: component.NodeEventKind, NodeID: evt.NodeId, Value: evt.Value}
+			switch msg.Kind {
+			case "input":
+				if ci := findComponent(int(msg.NodeId), ctx.comps, ctx.lookup); ci != nil {
+					e := component.Event{Kind: component.NodeEventKind, NodeID: msg.NodeId, Value: msg.Value}
 					if shouldEnqueue(e) {
 						ci.EventCh <- e
 					}
 				}
 
-			case 2: // MethodCall (Layer 2)
-				call := &gproto.MethodCall{}
-				if err := proto.Unmarshal(payload, call); err != nil {
-					log.Printf("godom: method call unmarshal error: %v", err)
-					continue
-				}
-				if call.NodeId == 0 {
+			case "method":
+				if msg.NodeId == 0 {
 					// nodeId=0 means godom.call() from JS — find the component that has this method.
 					for _, ci := range ctx.comps {
-						if ci.HasMethod(call.Method) {
-							e := component.Event{Kind: component.MethodCallKind, Call: call}
+						if ci.HasMethod(msg.Method) {
+							e := component.Event{Kind: component.MethodCallKind, Msg: msg}
 							if shouldEnqueue(e) {
 								ci.EventCh <- e
 							}
@@ -227,27 +216,21 @@ func Run(cfg Config) error {
 						}
 					}
 				} else {
-					ci := findComponent(int(call.NodeId), ctx.comps, ctx.lookup)
+					ci := findComponent(int(msg.NodeId), ctx.comps, ctx.lookup)
 					if ci != nil {
-						e := component.Event{Kind: component.MethodCallKind, Call: call}
+						e := component.Event{Kind: component.MethodCallKind, Msg: msg}
 						if shouldEnqueue(e) {
 							ci.EventCh <- e
 						}
 					}
 				}
 
-			case 3: // JSResult (response to ExecJS)
-				result := &gproto.JSResult{}
-				if err := proto.Unmarshal(payload, result); err != nil {
-					log.Printf("godom: js result unmarshal error: %v", err)
-					continue
-				}
+			case "jsresult":
 				if env.Debug {
-					log.Printf("godom: JSResult id=%d result=%d bytes err=%q", result.Id, len(result.Result), result.Error)
+					log.Printf("godom: JSResult id=%d result=%d bytes err=%q", msg.CallId, len(msg.Result), msg.Error)
 				}
-				// Dispatch to all components — only the one with a matching callback will handle it.
 				for _, ci := range ctx.comps {
-					ci.HandleJSResult(result.Id, result.Result, result.Error)
+					ci.HandleJSResult(msg.CallId, msg.Result, msg.Error)
 				}
 			}
 		}
@@ -290,7 +273,7 @@ func (s *serverCtx) executeRefresh(ci *component.Info) {
 		patches := s.buildSurgicalPatches(ci, fields)
 		if len(patches) > 0 {
 			msg := render.EncodePatchMessage(patches)
-			msg.TargetName = ci.SlotName
+			msg.Target = ci.SlotName
 			data, _ := proto.Marshal(msg)
 			s.pool.broadcast(data)
 			return
@@ -300,7 +283,7 @@ func (s *serverCtx) executeRefresh(ci *component.Info) {
 	s.lookup.evictRemoved()
 	ci.LastChangedFields = changedFields
 	if msg != nil {
-		msg.TargetName = ci.SlotName
+		msg.Target = ci.SlotName
 		data, _ := proto.Marshal(msg)
 		s.pool.broadcast(data)
 	}
@@ -331,7 +314,7 @@ func (s *serverCtx) processEvents(ci *component.Info, compIdx int) {
 		case component.NodeEventKind:
 			s.handleNodeEvent(ci, compIdx, evt.NodeID, evt.Value)
 		case component.MethodCallKind:
-			s.handleMethodCall(ci, compIdx, evt.Call)
+			s.handleMethodCall(ci, compIdx, evt.Msg)
 		case component.RefreshKind:
 			s.executeRefresh(ci)
 		}
@@ -344,7 +327,7 @@ func (s *serverCtx) processEvents(ci *component.Info, compIdx int) {
 // On first call (no tree yet), it builds from scratch.
 // On subsequent calls (reconnect), it re-resolves from the live struct and
 // merges into the existing tree to preserve node IDs for other connections.
-func BuildInit(ci *component.Info) *gproto.VDomMessage {
+func BuildInit(ci *component.Info) *gproto.ServerMessage {
 	if ci.Tree == nil {
 		// First connection: build from scratch. We must not rebuild ci.Tree
 		// from scratch after this point — node IDs are baked into the bridge's
@@ -369,7 +352,7 @@ func BuildInit(ci *component.Info) *gproto.VDomMessage {
 
 // BuildUpdate rebuilds the tree from templates, diffs against Tree, and
 // returns a patch message. Returns nil if no changes.
-func BuildUpdate(ci *component.Info) (*gproto.VDomMessage, []string) {
+func BuildUpdate(ci *component.Info) (*gproto.ServerMessage, []string) {
 	// Keep the IDCounter alive across renders so IDs only increase.
 	// Resetting to zero would cause new subtrees (from g-if transitions)
 	// to get IDs that collide with existing nodes elsewhere in the tree,
@@ -661,7 +644,7 @@ func (s *serverCtx) buildSurgicalPatches(ci *component.Info, fields []string) []
 func handleInit(wc *wsConn, ci *component.Info, targetName string) error {
 	ci.Mu.Lock()
 	msg := BuildInit(ci)
-	msg.TargetName = targetName
+	msg.Target = targetName
 	ci.Mu.Unlock()
 	data, err := proto.Marshal(msg)
 	if err != nil {
@@ -739,7 +722,7 @@ func (s *serverCtx) handleNodeEvent(ci *component.Info, compIdx int, nodeID int3
 		Data:   vdom.PatchFactsData{Diff: vdom.FactsDiff{Props: map[string]any{propKey: propVal}}},
 	}
 	msg := render.EncodePatchMessage([]vdom.Patch{patch})
-	msg.TargetName = ci.SlotName
+	msg.Target = ci.SlotName
 
 	data, _ := proto.Marshal(msg)
 	s.pool.broadcast(data)
@@ -749,7 +732,7 @@ func (s *serverCtx) handleNodeEvent(ci *component.Info, compIdx int, nodeID int3
 // component, then rebuild the tree and broadcast to all clients.
 // If the component shares embedded pointers with siblings, their changed
 // fields are surgically refreshed via MarkRefresh.
-func (s *serverCtx) handleMethodCall(ci *component.Info, compIdx int, call *gproto.MethodCall) {
+func (s *serverCtx) handleMethodCall(ci *component.Info, compIdx int, call *gproto.BrowserMessage) {
 	// No lock needed — called only from processEvents (serialized).
 
 	// Convert protobuf [][]byte to []json.RawMessage

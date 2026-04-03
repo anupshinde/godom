@@ -4,52 +4,29 @@ package godom;
 
 option go_package = "./proto";
 
-// --- Go → Browser messages ---
+// --- Server → Browser ---
 
-// ServerMessage is the top-level message sent from Go to the browser.
+// ServerMessage is the single message type sent from Go to the browser.
+// The `kind` field determines which payload fields are relevant.
 message ServerMessage {
-  string type = 1;                    // "init" or "update"
-  repeated Command commands = 2;
-  repeated EventCommand events = 3;
-}
+  string kind = 1;                    // "init", "patch", "jscall", "stream" (future), "broadcast" (future)
+  string target = 2;                  // component instance name (for init, patch, stream)
 
-// Command is a single DOM operation.
-message Command {
-  string op = 1;                      // "text","value","checked","display","class","attr","style","plugin","list","list-append","list-truncate","re-event"
-  string id = 2;                      // data-gid of target element
-  string name = 3;                    // class name (for "class" op), attr name, style property name, plugin name
-  oneof val {
-    string str_val = 4;
-    bool bool_val = 5;
-    double num_val = 6;
-    bytes raw_val = 7;                // JSON bytes for plugin data, re-event, etc.
-  }
-  repeated ListItem items = 8;       // for "list" and "list-append" ops
-}
+  // VDOM fields (kind: "init", "patch")
+  bytes tree = 10;                    // JSON-encoded tree description (init only)
+  repeated DomPatch patches = 11;     // incremental patches (patch only)
 
-// ListItem is a single item in a g-for list render.
-message ListItem {
-  string html = 1;
-  repeated Command cmds = 2;
-  repeated EventCommand evts = 3;
-}
+  // ExecJS fields (kind: "jscall")
+  int32 call_id = 20;                 // unique request ID for correlating responses
+  string expr = 21;                   // JavaScript expression to evaluate
 
-// EventCommand describes an event listener the bridge should register.
-message EventCommand {
-  string id = 1;                      // data-gid
-  string on = 2;                      // "click","keydown","mousedown","mousemove","mouseup","wheel","input"
-  string key = 3;                     // key filter for keydown
-  bytes msg = 4;                      // pre-built message bytes — bridge sends back untouched
-}
+  // Stream fields (kind: "stream") — future
+  // bytes data = 30;
+  // bool append = 31;
 
-// --- VDOM: Go → Browser patch messages ---
-
-// VDomMessage is the top-level message for the VDOM pipeline.
-message VDomMessage {
-  string type = 1;                    // "init" or "patch"
-  repeated DomPatch patches = 3;      // incremental patches (patch only)
-  bytes tree = 5;                     // JSON-encoded tree description (init only)
-  string target_name = 6;              // registered component instance name (empty = root, renders into body)
+  // Broadcast fields (kind: "broadcast") — future
+  // string channel = 40;
+  // bytes payload = 41;
 }
 
 // DomPatch describes a single DOM mutation produced by the diff algorithm.
@@ -67,36 +44,33 @@ message DomPatch {
   repeated DomPatch sub_patches = 16; // patchLazy: patches inside lazy node
 }
 
-// --- Go → Browser messages (tagged) ---
+// --- Browser → Server ---
 
-// JSCall is sent from Go to the browser to execute arbitrary JavaScript.
-// Tag byte: 0x02 (Go → browser).
-message JSCall {
-  int32 id = 1;                       // unique request ID for correlating responses
-  string expr = 2;                    // JavaScript expression to evaluate
-}
+// BrowserMessage is the single message type sent from the browser to Go.
+// The `kind` field determines which payload fields are relevant.
+message BrowserMessage {
+  string kind = 1;                    // "input", "method", "jsresult", "init_request" (future), "page_info" (future), "broadcast" (future)
+  int32 node_id = 2;                  // source node (0 = none, e.g. godom.call)
 
-// --- Browser → Go messages (tagged) ---
+  // Input sync fields (kind: "input")
+  string value = 10;                  // current DOM value (e.g. input.value)
 
-// NodeEvent is sent from the browser when a node's value changes (Layer 1).
-// Tag byte: 0x01.
-message NodeEvent {
-  int32 node_id = 1;                  // stable node ID (matches nodeMap on bridge)
-  string value = 2;                   // current DOM value (e.g. input.value)
-}
+  // Method call fields (kind: "method")
+  string method = 20;                 // Go method name (e.g. "AddTodo", "Toggle")
+  repeated bytes args = 21;           // JSON-encoded arguments
 
-// MethodCall is sent from the browser when a user event triggers a Go method (Layer 2).
-// Tag byte: 0x02.
-message MethodCall {
-  int32 node_id = 1;                  // stable node ID of the element that fired
-  string method = 2;                  // Go method name (e.g. "AddTodo", "Toggle")
-  repeated bytes args = 3;            // JSON-encoded arguments
-}
+  // JSResult fields (kind: "jsresult")
+  int32 call_id = 30;                 // matches the ServerMessage.call_id
+  bytes result = 31;                  // JSON-encoded result value
+  string error = 32;                  // error message if eval failed
 
-// JSResult is sent from the browser as a response to a JSCall.
-// Tag byte: 0x03.
-message JSResult {
-  int32 id = 1;                       // matches the JSCall.id
-  bytes result = 2;                   // JSON-encoded result value
-  string error = 3;                   // error message if eval failed
+  // Init request fields (kind: "init_request") — future
+  // string component = 40;
+
+  // Page info fields (kind: "page_info") — future
+  // string page_path = 50;
+
+  // Broadcast fields (kind: "broadcast") — future
+  // string channel = 60;
+  // bytes payload = 61;
 }

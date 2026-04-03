@@ -23,8 +23,8 @@ func TestEncodePatchMessage_Text(t *testing.T) {
 		{Type: vdom.PatchText, NodeID: 3, Data: vdom.PatchTextData{Text: "hello"}},
 	}
 	msg := EncodePatchMessage(patches)
-	if msg.Type != "patch" {
-		t.Errorf("expected type 'patch', got %q", msg.Type)
+	if msg.Kind != "patch" {
+		t.Errorf("expected type 'patch', got %q", msg.Kind)
 	}
 	if len(msg.Patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d", len(msg.Patches))
@@ -273,8 +273,8 @@ func TestEncodePatchMessage_UnknownType(t *testing.T) {
 
 func TestEncodePatchMessage_Empty(t *testing.T) {
 	msg := EncodePatchMessage(nil)
-	if msg.Type != "patch" {
-		t.Errorf("expected type 'patch', got %q", msg.Type)
+	if msg.Kind != "patch" {
+		t.Errorf("expected type 'patch', got %q", msg.Kind)
 	}
 	if len(msg.Patches) != 0 {
 		t.Errorf("expected 0 patches, got %d", len(msg.Patches))
@@ -319,7 +319,7 @@ func TestEncodePatchMessage_Serializable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msg2 := &gproto.VDomMessage{}
+	msg2 := &gproto.ServerMessage{}
 	if err := proto.Unmarshal(data, msg2); err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +353,7 @@ func TestEncodePatchMessage_ReorderSerializable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msg2 := &gproto.VDomMessage{}
+	msg2 := &gproto.ServerMessage{}
 	if err := proto.Unmarshal(data, msg2); err != nil {
 		t.Fatal(err)
 	}
@@ -1226,8 +1226,8 @@ func TestEncodeInitTreeMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg.Type != "init" {
-		t.Errorf("expected type 'init', got %q", msg.Type)
+	if msg.Kind != "init" {
+		t.Errorf("expected type 'init', got %q", msg.Kind)
 	}
 	if len(msg.Tree) == 0 {
 		t.Error("expected non-empty tree JSON")
@@ -1238,12 +1238,12 @@ func TestEncodeInitTreeMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msg2 := &gproto.VDomMessage{}
+	msg2 := &gproto.ServerMessage{}
 	if err := proto.Unmarshal(data, msg2); err != nil {
 		t.Fatal(err)
 	}
-	if msg2.Type != "init" {
-		t.Errorf("expected 'init' after round-trip, got %q", msg2.Type)
+	if msg2.Kind != "init" {
+		t.Errorf("expected 'init' after round-trip, got %q", msg2.Kind)
 	}
 }
 
@@ -1252,8 +1252,8 @@ func TestEncodeInitTreeMessage_NilRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg.Type != "init" {
-		t.Errorf("expected type 'init', got %q", msg.Type)
+	if msg.Kind != "init" {
+		t.Errorf("expected type 'init', got %q", msg.Kind)
 	}
 	// Tree should be "null" JSON
 	if string(msg.Tree) != "null" {
@@ -1314,7 +1314,7 @@ func TestEncodeInitTreeMessage_ComplexTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msg2 := &gproto.VDomMessage{}
+	msg2 := &gproto.ServerMessage{}
 	if err := proto.Unmarshal(data, msg2); err != nil {
 		t.Fatal(err)
 	}
@@ -1433,8 +1433,8 @@ func TestEndToEnd_ParseResolveDiffEncode(t *testing.T) {
 
 	// Encode
 	msg := EncodePatchMessage(patches)
-	if msg.Type != "patch" {
-		t.Errorf("expected 'patch', got %q", msg.Type)
+	if msg.Kind != "patch" {
+		t.Errorf("expected 'patch', got %q", msg.Kind)
 	}
 
 	// Should be serializable
@@ -1947,8 +1947,8 @@ func TestEncodeInitTreeMessage_UnknownNodeType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if msg.Type != "init" {
-		t.Errorf("expected type 'init', got %q", msg.Type)
+	if msg.Kind != "init" {
+		t.Errorf("expected type 'init', got %q", msg.Kind)
 	}
 	if string(msg.Tree) != "null" {
 		t.Errorf("expected tree 'null', got %q", string(msg.Tree))
