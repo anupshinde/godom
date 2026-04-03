@@ -166,8 +166,8 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts
 }
 
-// mountInternal is the shared mount logic used by Register.
-func (a *Engine) mountInternal(comp interface{}, fsys fs.FS, entryPath string) {
+// registerInternal is the shared registration logic used by Register.
+func (a *Engine) registerInternal(comp interface{}, fsys fs.FS, entryPath string) {
 	v := reflect.ValueOf(comp)
 	t := v.Elem().Type()
 
@@ -257,7 +257,7 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 	}
 
 	// Register the component internally
-	a.mountInternal(comp, a.componentFS, entryPath)
+	a.registerInternal(comp, a.componentFS, entryPath)
 }
 
 // Run initializes the component lifecycle, registers /ws and /godom.js handlers
