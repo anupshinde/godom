@@ -208,6 +208,23 @@ func (a *Engine) Register(name string, comp interface{}, entryPath string) {
 		log.Fatalf("godom: component %q already registered", name)
 	}
 
+	// Each component instance can only be registered once because it holds
+	// a single VDOM tree, bindings, and event channel. Registering the same
+	// pointer twice would create two component.Info entries sharing one struct,
+	// causing tree/binding conflicts. Use shared state via embedded pointers
+	// instead (see examples/shared-state).
+	if _, exists := a.compIndex[comp]; exists {
+		// Find the existing registration name for this pointer
+		var existingName string
+		for regName, reg := range a.registered {
+			if reg.comp == comp {
+				existingName = regName
+				break
+			}
+		}
+		log.Fatalf("godom: Register %q failed — same instance already registered as %q", name, existingName)
+	}
+
 	v := reflect.ValueOf(comp)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
 		log.Fatal("godom: Register requires a pointer to a struct")
