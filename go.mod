@@ -9,4 +9,8 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
-require github.com/expr-lang/expr v1.17.8 // indirect
+require (
+	github.com/expr-lang/expr v1.17.8 // indirect
+	github.com/tdewolff/minify/v2 v2.24.11 // indirect
+	github.com/tdewolff/parse/v2 v2.8.11 // indirect
+)

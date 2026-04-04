@@ -19,6 +19,8 @@ import (
 	"github.com/anupshinde/godom/internal/template"
 	"github.com/anupshinde/godom/internal/vdom"
 	"github.com/gorilla/websocket"
+	"github.com/tdewolff/minify/v2"
+	"github.com/tdewolff/minify/v2/js"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -153,6 +155,19 @@ func Run(cfg EngineConfig) error {
 		go ctx.processEvents(ci, idx)
 	}
 
+	// Minify godom-owned JS (protocol, bridge) unless debug mode is enabled.
+	bridge := strings.Replace(bridgeJS, "__GODOM_WS_PATH__", wsPath, 1)
+	if !env.Debug {
+		m := minify.New()
+		m.AddFunc("application/javascript", js.Minify)
+		if minified, err := m.String("application/javascript", protocolJS); err == nil {
+			protocolJS = minified
+		}
+		if minified, err := m.String("application/javascript", bridge); err == nil {
+			bridge = minified
+		}
+	}
+
 	// Build the JS bundle once: protobuf, protocol, plugins, bridge.
 	var bundleJS string
 	bundleJS += protobufMinJS + "\n" + protocolJS + "\n"
@@ -180,7 +195,7 @@ func Run(cfg EngineConfig) error {
 	if hasRoot {
 		bundleJS += "window.GODOM_ROOT=true;\n"
 	}
-	bundleJS += strings.Replace(bridgeJS, "__GODOM_WS_PATH__", wsPath, 1)
+	bundleJS += bridge
 
 	// Serve as external script.
 	mux.HandleFunc(scriptPath, func(w http.ResponseWriter, r *http.Request) {
