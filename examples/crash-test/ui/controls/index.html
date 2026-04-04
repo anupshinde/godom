@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+    <button class="btn btn-exit" g-click="Exit" style="padding:10px 20px;font-size:1rem;border:none;border-radius:6px;cursor:pointer;margin:8px 8px 8px 0;background:#444;color:#fff">Exit the application</button>
+    <button class="btn btn-crash" g-click="Crash" style="padding:10px 20px;font-size:1rem;border:none;border-radius:6px;cursor:pointer;margin:8px 8px 8px 0;background:#cc3333;color:#fff">Crash the application</button>
+    <div g-if="Countdown > 0" style="margin-top:16px;font-size:1.1rem;color:#cc3333;font-weight:600">
+        <span g-text="Action"></span> in <span g-text="Countdown"></span>s...
+    </div>
+</body>
+</html>
