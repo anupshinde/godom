@@ -32,6 +32,9 @@ var protocolJS string
 //go:embed internal/bridge/disconnect.html
 var defaultDisconnectHTML string
 
+//go:embed internal/bridge/disconnect-badge.html
+var defaultDisconnectBadgeHTML string
+
 // Engine is the godom runtime. It registers components and plugins,
 // mounts the root component, and starts the server.
 type Engine struct {
@@ -42,7 +45,8 @@ type Engine struct {
 	NoBrowser      bool   // don't open browser on start
 	Quiet          bool   // suppress startup output
 	DisableExecJS  bool   // disable ExecJS — server won't send, bridge won't execute
-	DisconnectHTML string // custom disconnect overlay HTML; empty = default
+	DisconnectHTML      string // custom disconnect overlay HTML (root mode); empty = default
+	DisconnectBadgeHTML string // custom disconnect badge HTML (embedded mode); empty = default
 
 	comps      []*component.Info        // mounted components
 	plugins    map[string][]string      // plugin name → JS scripts
@@ -163,6 +167,12 @@ func (a *Engine) GetDisconnectHTML() string {
 		return a.DisconnectHTML
 	}
 	return defaultDisconnectHTML
+}
+func (a *Engine) GetDisconnectBadgeHTML() string {
+	if a.DisconnectBadgeHTML != "" {
+		return a.DisconnectBadgeHTML
+	}
+	return defaultDisconnectBadgeHTML
 }
 
 // RegisterPlugin registers a named plugin with one or more JS scripts.

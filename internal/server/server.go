@@ -37,6 +37,7 @@ type EngineConfig interface {
 	Auth() middleware.AuthFunc
 	ExecJSDisabled() bool
 	GetDisconnectHTML() string
+	GetDisconnectBadgeHTML() string
 }
 
 // BuildComponentInfo reads a template, expands nested components, validates
@@ -110,6 +111,7 @@ func Run(cfg EngineConfig) error {
 	authFn := cfg.Auth()
 	disableExecJS := cfg.ExecJSDisabled()
 	disconnectHTML := cfg.GetDisconnectHTML()
+	disconnectBadgeHTML := cfg.GetDisconnectBadgeHTML()
 
 	pool := &connPool{}
 
@@ -212,6 +214,8 @@ func Run(cfg EngineConfig) error {
 	// Inject disconnect overlay HTML as a JSON-encoded string.
 	htmlJSON, _ := json.Marshal(disconnectHTML)
 	parts = append(parts, fmt.Sprintf("window.GODOM_DISCONNECT_HTML=%s;", htmlJSON))
+	badgeJSON, _ := json.Marshal(disconnectBadgeHTML)
+	parts = append(parts, fmt.Sprintf("window.GODOM_DISCONNECT_BADGE=%s;", badgeJSON))
 	parts = append(parts, bridge)
 	// Separate each part with \r\n and a semicolon to prevent
 	// minified scripts from being parsed as continuations.

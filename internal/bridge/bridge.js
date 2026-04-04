@@ -74,11 +74,10 @@
                     el.style.opacity = "0.4";
                     el.style.pointerEvents = "none";
                     // Badge as sibling so parent opacity doesn't affect it.
-                    const badge = document.createElement("div");
-                    badge.className = "godom-disconnect-badge";
-                    badge.style.cssText = "position:relative;display:inline-block;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#ff6b6b;font-family:system-ui,sans-serif;font-size:11px;padding:2px 8px;border-radius:4px;z-index:2147483647;pointer-events:none;margin-left:4px";
-                    badge.textContent = errorMsg ? "Error" : "Disconnected";
-                    el.parentNode.insertBefore(badge, el.nextSibling);
+                    const wrapper = document.createElement("div");
+                    wrapper.className = "godom-disconnect-badge";
+                    wrapper.innerHTML = window.GODOM_DISCONNECT_BADGE || "";
+                    if (el.parentNode) el.parentNode.insertBefore(wrapper, el.nextSibling);
                 }
             }
         }
