@@ -8,8 +8,7 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 
 | # | Issue | Type |
 |---|-------|------|
-| 1 | COR-78: Customizable disconnect overlay and badge | Improvement |
-| 2 | COR-45: Inactive component pausing — skip patches when no DOM targets | Improvement |
+| 1 | COR-45: Inactive component pausing — skip patches when no DOM targets | Improvement |
 
 ### Medium priority
 
@@ -27,15 +26,16 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 | 10 | COR-48: Shadow DOM isolation (optional per-component) | Feature |
 | 11 | COR-52: Virtual scrolling for large lists | Feature |
 | 12 | COR-56: Tree version guard for stale patch detection | Improvement |
-| 13 | COR-69: Alternative transport implementations (SSE+POST, REST API, WebTransport) | Feature |
-| 14 | COR-60: Cross-app broadcast messaging (racing game demo) | Feature |
-| 15 | COR-58: Developer experience: debug logging and element inspector | Feature |
+| 13 | COR-82: Stale browser tabs reconnect to wrong server on same port | Improvement |
+| 14 | COR-69: Alternative transport implementations (SSE+POST, REST API, WebTransport) | Feature |
+| 15 | COR-60: Cross-app broadcast messaging (racing game demo) | Feature |
+| 16 | COR-58: Developer experience: debug logging and element inspector | Feature |
 
 ### Ideas / Future
 
 | # | Issue | Type |
 |---|-------|------|
-| 16 | COR-62: TradingView Lightweight Charts plugin + trading game | Plugin/Example |
-| 17 | COR-61: Plotly / ECharts plugins | Plugin |
-| 18 | COR-63: Full-scale application (accounting/CRM/spreadsheet) | Example |
-| 19 | Template compiler (compile HTML + directives to Go render functions) | Feature |
+| 17 | COR-62: TradingView Lightweight Charts plugin + trading game | Plugin/Example |
+| 18 | COR-61: Plotly / ECharts plugins | Plugin |
+| 19 | COR-63: Full-scale application (accounting/CRM/spreadsheet) | Example |
+| 20 | Template compiler (compile HTML + directives to Go render functions) | Feature |
