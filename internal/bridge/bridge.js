@@ -230,7 +230,7 @@
             // Named component: find all elements with g-component="name".
             var els = document.querySelectorAll('[g-component="' + name + '"]');
             if (els.length === 0) {
-                console.warn('godom: no target found for component "' + name + '" — check that the parent is mounted first and the g-component attribute matches');
+                if (window.GODOM_DEBUG) console.warn('godom: no target found for component "' + name + '" — check that the parent is mounted first and the g-component attribute matches');
                 return;
             }
             // Clean up existing contexts for this name.
@@ -256,6 +256,7 @@
         var nodeMap = {};
         var pluginState = {};
         var pendingPluginInits = [];
+        var hasNewComponents = false;
 
         // --- DOM construction ---
 
@@ -285,6 +286,9 @@
 
             applyProps(el, tree.p);
             applyAttrs(el, tree.a);
+            if (tree.a && tree.a["g-component"]) {
+                hasNewComponents = true;
+            }
             applyAttrsNS(el, tree.an);
             applyStyles(el, tree.s);
 
@@ -755,7 +759,13 @@
                 pendingPluginInits = [];
             },
 
-            applyPatches: applyPatches,
+            applyPatches: function(patches) {
+                hasNewComponents = false;
+                applyPatches(patches);
+                if (hasNewComponents) {
+                    scanAndRequestComponents();
+                }
+            },
 
             targetEl: targetEl,
 

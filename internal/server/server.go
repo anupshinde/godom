@@ -167,6 +167,9 @@ func Run(cfg EngineConfig) error {
 	if disableExecJS {
 		bundleJS += "window.GODOM_DISABLE_EXEC=true;\n"
 	}
+	if env.Debug {
+		bundleJS += "window.GODOM_DEBUG=true;\n"
+	}
 	hasRoot := false
 	for _, ci := range comps {
 		if ci.SlotName == "document.body" {
