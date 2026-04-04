@@ -346,9 +346,11 @@ type BrowserMessage struct {
 	Method string   `protobuf:"bytes,20,opt,name=method,proto3" json:"method,omitempty"` // Go method name (e.g. "AddTodo", "Toggle")
 	Args   [][]byte `protobuf:"bytes,21,rep,name=args,proto3" json:"args,omitempty"`     // JSON-encoded arguments
 	// JSResult fields (kind: JSRESULT)
-	CallId        int32  `protobuf:"varint,30,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"` // matches the ServerMessage.call_id
-	Result        []byte `protobuf:"bytes,31,opt,name=result,proto3" json:"result,omitempty"`                // JSON-encoded result value
-	Error         string `protobuf:"bytes,32,opt,name=error,proto3" json:"error,omitempty"`                  // error message if eval failed
+	CallId int32  `protobuf:"varint,30,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"` // matches the ServerMessage.call_id
+	Result []byte `protobuf:"bytes,31,opt,name=result,proto3" json:"result,omitempty"`                // JSON-encoded result value
+	Error  string `protobuf:"bytes,32,opt,name=error,proto3" json:"error,omitempty"`                  // error message if eval failed
+	// Init request fields (kind: INIT_REQUEST)
+	Component     string `protobuf:"bytes,40,opt,name=component,proto3" json:"component,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -439,6 +441,13 @@ func (x *BrowserMessage) GetError() string {
 	return ""
 }
 
+func (x *BrowserMessage) GetComponent() string {
+	if x != nil {
+		return x.Component
+	}
+	return ""
+}
+
 var File_protocol_proto protoreflect.FileDescriptor
 
 const file_protocol_proto_rawDesc = "" +
@@ -464,7 +473,7 @@ const file_protocol_proto_rawDesc = "" +
 	"\vplugin_data\x18\x0f \x01(\fR\n" +
 	"pluginData\x120\n" +
 	"\vsub_patches\x18\x10 \x03(\v2\x0f.godom.DomPatchR\n" +
-	"subPatches\"\xda\x01\n" +
+	"subPatches\"\xf8\x01\n" +
 	"\x0eBrowserMessage\x12&\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x12.godom.BrowserKindR\x04kind\x12\x17\n" +
 	"\anode_id\x18\x02 \x01(\x05R\x06nodeId\x12\x14\n" +
@@ -474,7 +483,8 @@ const file_protocol_proto_rawDesc = "" +
 	"\x04args\x18\x15 \x03(\fR\x04args\x12\x17\n" +
 	"\acall_id\x18\x1e \x01(\x05R\x06callId\x12\x16\n" +
 	"\x06result\x18\x1f \x01(\fR\x06result\x12\x14\n" +
-	"\x05error\x18  \x01(\tR\x05error*k\n" +
+	"\x05error\x18  \x01(\tR\x05error\x12\x1c\n" +
+	"\tcomponent\x18( \x01(\tR\tcomponent*k\n" +
 	"\n" +
 	"ServerKind\x12\x0f\n" +
 	"\vSERVER_INIT\x10\x00\x12\x10\n" +

@@ -31,7 +31,8 @@
     if (!ns._plugins) ns._plugins = {};
 
     var ws;
-    var targets = {};   // targetName (string) → [target context, ...]
+    var targets = {};      // targetName (string) → [target context, ...]
+    var readyEls = new WeakSet(); // DOM elements that have been initialized
 
     var Proto = godomProto;
     var SK = Proto.ServerKind;   // cached enum constants for fast dispatch
@@ -118,18 +119,30 @@
         ws = new WebSocket(wsUrl);
         ws.binaryType = "arraybuffer";
 
+        ws.onopen = function() {
+            hideDisconnectOverlay();
+            reconnectDelay = 1000;
+            if (!firedOnConnect && ns.onconnect) {
+                firedOnConnect = true;
+                ns.onconnect();
+            }
+            // In embedded mode, scan for g-component targets immediately —
+            // no SERVER_INIT will arrive to trigger it. In root mode, the
+            // static HTML may contain unresolved template expressions
+            // (e.g. {{slot.Name}}) so we wait for SERVER_INIT to render
+            // the real DOM first.
+            if (!window.GODOM_ROOT) {
+                scanAndRequestComponents();
+            }
+        };
+
         ws.onmessage = function(evt) {
             var msg = Proto.ServerMessage.decode(new Uint8Array(evt.data));
 
             switch (msg.kind) {
             case SK.SERVER_INIT:
-                hideDisconnectOverlay();
-                reconnectDelay = 1000;
                 initTarget(msg.target || "", msg);
-                if (!firedOnConnect && ns.onconnect) {
-                    firedOnConnect = true;
-                    ns.onconnect();
-                }
+                scanAndRequestComponents();
                 break;
             case SK.SERVER_PATCH:
                 var name = msg.target || "";
@@ -169,6 +182,31 @@
     // 3. Target management — per-target encapsulated contexts
     // =========================================================================
 
+    // sendInitRequest sends a BROWSER_INIT_REQUEST for the given component name.
+    function sendInitRequest(name) {
+        var msg = Proto.BrowserMessage.encode({
+            kind: BK.BROWSER_INIT_REQUEST,
+            component: name
+        }).finish();
+        ws.send(msg);
+    }
+
+    // scanAndRequestComponents finds all [g-component] elements not yet
+    // initialized and sends init requests to the server for each unique
+    // component name.
+    function scanAndRequestComponents() {
+        var els = document.querySelectorAll("[g-component]");
+        var requested = {};
+        for (var i = 0; i < els.length; i++) {
+            if (readyEls.has(els[i])) continue;
+            var name = els[i].getAttribute("g-component");
+            if (name && !requested[name]) {
+                requested[name] = true;
+                sendInitRequest(name);
+            }
+        }
+    }
+
     // initTarget creates encapsulated contexts for a named component and
     // builds the initial DOM tree inside each target element.
     function initTarget(name, msg) {
@@ -192,7 +230,7 @@
             // Named component: find all elements with g-component="name".
             var els = document.querySelectorAll('[g-component="' + name + '"]');
             if (els.length === 0) {
-                console.warn('godom: no target found for component "' + name + '" — check that the parent is mounted first and the g-component attribute matches');
+                if (window.GODOM_DEBUG) console.warn('godom: no target found for component "' + name + '" — check that the parent is mounted first and the g-component attribute matches');
                 return;
             }
             // Clean up existing contexts for this name.
@@ -206,6 +244,7 @@
                 var ctx = createTargetContext(name, els[i]);
                 ctxList.push(ctx);
                 ctx.init(msg);
+                readyEls.add(els[i]);
             }
             targets[name] = ctxList;
         }
@@ -217,6 +256,7 @@
         var nodeMap = {};
         var pluginState = {};
         var pendingPluginInits = [];
+        var hasNewComponents = false;
 
         // --- DOM construction ---
 
@@ -246,6 +286,9 @@
 
             applyProps(el, tree.p);
             applyAttrs(el, tree.a);
+            if (tree.a && tree.a["g-component"]) {
+                hasNewComponents = true;
+            }
             applyAttrsNS(el, tree.an);
             applyStyles(el, tree.s);
 
@@ -716,11 +759,18 @@
                 pendingPluginInits = [];
             },
 
-            applyPatches: applyPatches,
+            applyPatches: function(patches) {
+                hasNewComponents = false;
+                applyPatches(patches);
+                if (hasNewComponents) {
+                    scanAndRequestComponents();
+                }
+            },
 
             targetEl: targetEl,
 
             cleanup: function() {
+                readyEls.delete(targetEl);
                 nodeMap = {};
                 pluginState = {};
                 pendingPluginInits = [];
@@ -779,6 +829,21 @@
 
     ns.register = function(name, handler) {
         ns._plugins[name] = handler;
+    };
+
+    // =========================================================================
+    // Dynamic mount API — mount a component into an arbitrary DOM element
+    // =========================================================================
+
+    // ns.mount(name, element) mounts the named component into the given element.
+    // Sets g-component attribute if not already present and sends a
+    // BROWSER_INIT_REQUEST to the server.
+    ns.mount = function(name, element) {
+        if (!name || !element) return;
+        if (!element.getAttribute("g-component")) {
+            element.setAttribute("g-component", name);
+        }
+        sendInitRequest(name);
     };
 
     // =========================================================================

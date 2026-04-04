@@ -123,13 +123,17 @@ Change the global namespace the bridge registers on. Default is `"godom"` (`wind
 <script src="http://localhost:9091/godom.js"></script>
 ```
 
+### GODOM_DEBUG
+
+Automatically injected by the server when `GODOM_DEBUG=1` is set. Enables debug-level warnings in the bridge console (e.g. missing component targets during init). Not set manually — controlled via the server-side env var.
+
 ### Lifecycle hooks
 
 The bridge exposes callbacks for WebSocket lifecycle events:
 
 | Hook | When it fires |
 |------|---------------|
-| `godom.onconnect` | After first init message — WS open, godom.call works. Fires on reconnect too. |
+| `godom.onconnect` | On WebSocket open — godom.call works. Fires on reconnect too. |
 | `godom.ondisconnect(errorMsg)` | When WS closes. `null` = clean close (will reconnect). Non-null = fatal. |
 | `godom.onerror(evt)` | On WS error, before close. |
 

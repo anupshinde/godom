@@ -85,8 +85,8 @@ message BrowserMessage {
   bytes result = 31;                  // JSON-encoded result value
   string error = 32;                  // error message if eval failed
 
-  // Init request fields (kind: INIT_REQUEST) — future
-  // string component = 40;
+  // Init request fields (kind: INIT_REQUEST)
+  string component = 40;
 
   // Page info fields (kind: PAGE_INFO) — future
   // string page_path = 50;

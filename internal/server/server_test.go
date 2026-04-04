@@ -3919,3 +3919,387 @@ func TestInputBindings_RemappedAfterBuildUpdate(t *testing.T) {
 		}
 	}
 }
+
+// --- BROWSER_INIT_REQUEST tests ---
+
+// clockApp is a simple component used as a named (non-root) component.
+type clockApp struct {
+	Component struct{}
+	Time      string
+}
+
+const clockHTML = `<!DOCTYPE html><html><head></head><body>
+	<span g-text="Time">00:00</span>
+</body></html>`
+
+func makeClockCI(app *clockApp) *component.Info {
+	v := reflect.ValueOf(app)
+	t := v.Elem().Type()
+
+	templates, err := vdom.ParseTemplate(clockHTML)
+	if err != nil {
+		panic(err)
+	}
+
+	return &component.Info{
+		Value:         v,
+		Typ:           t,
+		VDOMTemplates: templates,
+		SlotName:      "clock",
+	}
+}
+
+// startMultiCompTestServer starts a test server with multiple components
+// and BROWSER_INIT_REQUEST handling, mirroring the Run() logic.
+func startMultiCompTestServer(t *testing.T, comps []*component.Info) (string, error) {
+	t.Helper()
+
+	pool := &connPool{}
+	sharedIDCounter := &vdom.IDCounter{}
+	for _, ci := range comps {
+		ci.IDCounter = sharedIDCounter
+	}
+
+	sm := buildSharedPtrMaps(comps)
+	sm.pool = pool
+
+	ctx := &serverCtx{
+		pool:   pool,
+		sm:     sm,
+		lookup: newNodeLookup(),
+		comps:  comps,
+	}
+
+	for idx, ci := range comps {
+		ci.EventCh = make(chan component.Event, 64)
+		idx, ci := idx, ci
+		go ctx.processEvents(ci, idx)
+	}
+
+	for _, ci := range comps {
+		ci := ci
+		wireRefresh(ci)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		wc := pool.add(conn)
+
+		// Send init only for document.body (mirrors Run).
+		for _, ci := range comps {
+			if ci.SlotName == "document.body" {
+				if err := handleInit(wc, ci, ci.SlotName); err != nil {
+					pool.remove(wc)
+					conn.Close()
+					return
+				}
+				break
+			}
+		}
+
+		defer func() {
+			pool.remove(wc)
+			conn.Close()
+		}()
+		for {
+			msgType, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			if msgType != websocket.BinaryMessage || len(data) == 0 {
+				continue
+			}
+			msg := &gproto.BrowserMessage{}
+			if err := proto.Unmarshal(data, msg); err != nil {
+				continue
+			}
+			switch msg.Kind {
+			case gproto.BrowserKind_BROWSER_INPUT:
+				if ci := findComponent(int(msg.NodeId), ctx.comps, ctx.lookup); ci != nil {
+					ctx.handleNodeEvent(ci, 0, msg.NodeId, msg.Value)
+				}
+			case gproto.BrowserKind_BROWSER_METHOD:
+				for _, ci := range ctx.comps {
+					if ci.HasMethod(msg.Method) {
+						ctx.handleMethodCall(ci, 0, msg)
+						break
+					}
+				}
+			case gproto.BrowserKind_BROWSER_INIT_REQUEST:
+				name := msg.Component
+				if name == "" {
+					continue
+				}
+				var target *component.Info
+				for _, ci := range ctx.comps {
+					if ci.SlotName == name {
+						target = ci
+						break
+					}
+				}
+				if target == nil {
+					continue
+				}
+				handleInit(wc, target, name)
+			}
+		}
+	})
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		srv.Close()
+		for _, ci := range comps {
+			if ci.EventCh != nil {
+				close(ci.EventCh)
+			}
+		}
+	})
+	return strings.TrimPrefix(srv.URL, "http://"), nil
+}
+
+// TestRun_InitRequestReturnsComponentTree verifies that sending a
+// BROWSER_INIT_REQUEST for a known component returns a SERVER_INIT
+// with the correct target name and tree.
+func TestRun_InitRequestReturnsComponentTree(t *testing.T) {
+	root := &counterApp{Step: 1, Count: 5}
+	rootCI := makeCounterCI(root)
+	rootCI.SlotName = "document.body"
+	rootCI.HTMLBody = counterHTML
+
+	clock := &clockApp{Time: "12:34:56"}
+	clockCI := makeClockCI(clock)
+
+	ln, err := startMultiCompTestServer(t, []*component.Info{rootCI, clockCI})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wsURL := fmt.Sprintf("ws://%s/ws", ln)
+	client, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	// Read the document.body init that the server sends automatically.
+	client.SetReadDeadline(time.Now().Add(time.Second))
+	_, data, err := client.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bodyInit gproto.ServerMessage
+	if err := proto.Unmarshal(data, &bodyInit); err != nil {
+		t.Fatal(err)
+	}
+	if bodyInit.Kind != gproto.ServerKind_SERVER_INIT {
+		t.Fatalf("expected SERVER_INIT for body, got %v", bodyInit.Kind)
+	}
+	if bodyInit.Target != "document.body" {
+		t.Fatalf("expected target 'document.body', got %q", bodyInit.Target)
+	}
+
+	// Send BROWSER_INIT_REQUEST for "clock".
+	req := &gproto.BrowserMessage{
+		Kind:      gproto.BrowserKind_BROWSER_INIT_REQUEST,
+		Component: "clock",
+	}
+	payload, _ := proto.Marshal(req)
+	if err := client.WriteMessage(websocket.BinaryMessage, payload); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the init response.
+	client.SetReadDeadline(time.Now().Add(time.Second))
+	_, data, err = client.ReadMessage()
+	if err != nil {
+		t.Fatalf("read init response: %v", err)
+	}
+	var resp gproto.ServerMessage
+	if err := proto.Unmarshal(data, &resp); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.Kind != gproto.ServerKind_SERVER_INIT {
+		t.Errorf("expected SERVER_INIT, got %v", resp.Kind)
+	}
+	if resp.Target != "clock" {
+		t.Errorf("expected target 'clock', got %q", resp.Target)
+	}
+	if len(resp.Tree) == 0 {
+		t.Error("expected non-empty tree in init response")
+	}
+
+	// Verify the tree contains the clock's time value.
+	var tree render.WireNode
+	if err := json.Unmarshal(resp.Tree, &tree); err != nil {
+		t.Fatalf("unmarshal tree: %v", err)
+	}
+	if !findTextInTree(&tree, "12:34:56") {
+		t.Error("expected tree to contain '12:34:56'")
+	}
+}
+
+// TestRun_InitRequestUnknownComponent verifies that sending a
+// BROWSER_INIT_REQUEST for an unregistered component name does not
+// crash and produces no response.
+func TestRun_InitRequestUnknownComponent(t *testing.T) {
+	root := &counterApp{Step: 1, Count: 0}
+	rootCI := makeCounterCI(root)
+	rootCI.SlotName = "document.body"
+	rootCI.HTMLBody = counterHTML
+
+	ln, err := startMultiCompTestServer(t, []*component.Info{rootCI})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wsURL := fmt.Sprintf("ws://%s/ws", ln)
+	client, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	// Read document.body init.
+	client.SetReadDeadline(time.Now().Add(time.Second))
+	_, _, err = client.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Send BROWSER_INIT_REQUEST for a component that doesn't exist.
+	req := &gproto.BrowserMessage{
+		Kind:      gproto.BrowserKind_BROWSER_INIT_REQUEST,
+		Component: "nonexistent",
+	}
+	payload, _ := proto.Marshal(req)
+	if err := client.WriteMessage(websocket.BinaryMessage, payload); err != nil {
+		t.Fatal(err)
+	}
+
+	// No response should arrive — verify with a short deadline.
+	client.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	_, _, err = client.ReadMessage()
+	if err == nil {
+		t.Error("expected no response for unknown component, but got one")
+	}
+}
+
+// TestRun_InitRequestEmptyName verifies that sending a
+// BROWSER_INIT_REQUEST with an empty component name is ignored.
+func TestRun_InitRequestEmptyName(t *testing.T) {
+	root := &counterApp{Step: 1, Count: 0}
+	rootCI := makeCounterCI(root)
+	rootCI.SlotName = "document.body"
+	rootCI.HTMLBody = counterHTML
+
+	ln, err := startMultiCompTestServer(t, []*component.Info{rootCI})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wsURL := fmt.Sprintf("ws://%s/ws", ln)
+	client, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	// Read document.body init.
+	client.SetReadDeadline(time.Now().Add(time.Second))
+	_, _, err = client.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Send BROWSER_INIT_REQUEST with empty name.
+	req := &gproto.BrowserMessage{
+		Kind:      gproto.BrowserKind_BROWSER_INIT_REQUEST,
+		Component: "",
+	}
+	payload, _ := proto.Marshal(req)
+	if err := client.WriteMessage(websocket.BinaryMessage, payload); err != nil {
+		t.Fatal(err)
+	}
+
+	// No response should arrive.
+	client.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	_, _, err = client.ReadMessage()
+	if err == nil {
+		t.Error("expected no response for empty component name, but got one")
+	}
+}
+
+// TestRun_EmbeddedMode_NoDocumentBody verifies that when no component
+// has SlotName "document.body", the server sends no init on connect.
+// The bridge must use BROWSER_INIT_REQUEST to get component trees.
+func TestRun_EmbeddedMode_NoDocumentBody(t *testing.T) {
+	clock := &clockApp{Time: "09:00:00"}
+	clockCI := makeClockCI(clock)
+
+	ln, err := startMultiCompTestServer(t, []*component.Info{clockCI})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Use two separate connections:
+	// 1) First connection verifies no automatic init arrives.
+	// 2) Second connection sends INIT_REQUEST and verifies the response.
+
+	// --- Connection 1: no automatic init ---
+	wsURL := fmt.Sprintf("ws://%s/ws", ln)
+	c1, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c1.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	_, _, err = c1.ReadMessage()
+	if err == nil {
+		t.Fatal("expected no automatic init in embedded mode, but got a message")
+	}
+	c1.Close()
+
+	// --- Connection 2: explicit INIT_REQUEST ---
+	c2, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c2.Close()
+
+	req := &gproto.BrowserMessage{
+		Kind:      gproto.BrowserKind_BROWSER_INIT_REQUEST,
+		Component: "clock",
+	}
+	payload, _ := proto.Marshal(req)
+	if err := c2.WriteMessage(websocket.BinaryMessage, payload); err != nil {
+		t.Fatal(err)
+	}
+
+	c2.SetReadDeadline(time.Now().Add(time.Second))
+	_, data, err := c2.ReadMessage()
+	if err != nil {
+		t.Fatalf("read init response: %v", err)
+	}
+	var resp gproto.ServerMessage
+	if err := proto.Unmarshal(data, &resp); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.Kind != gproto.ServerKind_SERVER_INIT {
+		t.Errorf("expected SERVER_INIT, got %v", resp.Kind)
+	}
+	if resp.Target != "clock" {
+		t.Errorf("expected target 'clock', got %q", resp.Target)
+	}
+	var tree render.WireNode
+	if err := json.Unmarshal(resp.Tree, &tree); err != nil {
+		t.Fatalf("unmarshal tree: %v", err)
+	}
+	if !findTextInTree(&tree, "09:00:00") {
+		t.Error("expected tree to contain '09:00:00'")
+	}
+}

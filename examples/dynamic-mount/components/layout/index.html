@@ -1,0 +1,9 @@
+<div style="display:flex;flex-direction:column;gap:12px">
+    <div g-for="w, i in Widgets" g-key="w.ID"
+         style="border:1px solid #ddd;border-radius:8px;padding:16px;background:#fafafa">
+        <div style="font-size:0.75rem;color:#999;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">
+            #{{w.ID}} — {{w.Name}}
+        </div>
+        <div g-component="{{w.Name}}"></div>
+    </div>
+</div>

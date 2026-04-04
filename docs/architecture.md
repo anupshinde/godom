@@ -96,11 +96,20 @@ log.Fatal(eng.ListenAndServe())                             // bind port, open b
 
 When a browser tab connects via WebSocket:
 
-1. Go resolves the template tree against the component struct's current state, producing a concrete VDOM node tree. Each node gets a unique stable ID from a monotonic counter
+**Root mode** (app has a `document.body` component):
+1. The server pushes a `SERVER_INIT` for `document.body` — Go resolves the template tree against the component struct's current state, producing a concrete VDOM node tree where each node gets a unique stable ID from a monotonic counter
 2. The tree is encoded as a JSON description — element tags, facts (properties, attributes, styles, events), and children
-3. Go sends a `ServerMessage` with `kind: SERVER_INIT` containing the full tree as JSON bytes
-4. The bridge builds the entire DOM from the tree description, registering each node's ID in `nodeMap` for O(1) lookup on subsequent patches
-5. Event handlers in the tree are wired up as DOM listeners that send `MethodCall` messages back to Go
+3. The bridge builds the entire DOM from the tree description, registering each node's ID in `nodeMap` for O(1) lookup on subsequent patches
+4. Event handlers in the tree are wired up as DOM listeners that send `MethodCall` messages back to Go
+5. After rendering, the bridge scans for `[g-component]` elements in the new DOM and sends a `BROWSER_INIT_REQUEST` for each — the server responds with their init trees (pull-based init)
+6. After each child init renders, the bridge scans again to handle nested components
+
+**Embedded mode** (no `document.body` — e.g. multi-page apps):
+1. The server sends nothing on connect — the page is already rendered by a traditional HTTP handler
+2. On `ws.onopen`, the bridge scans for `[g-component]` elements and sends `BROWSER_INIT_REQUEST` for each
+3. The server responds with init trees for each requested component
+
+**Dynamic mounting:** When a patch adds a new `[g-component]` element to the DOM (e.g. a `g-for` loop appending a widget), the bridge detects it during `buildDOM` and scans after the patch completes. This also supports `godom.mount(name, element)` for mounting components from JavaScript into arbitrary DOM elements.
 
 ### User interaction
 
@@ -170,7 +179,7 @@ This uses the same `ServerMessage` patch format as user-triggered changes — th
 
 Each component instance has a buffered event channel (`EventCh`) and a single processor goroutine. All browser input changes (`NodeEventKind`), method calls (`MethodCallKind`), background refreshes (`RefreshKind`), and ExecJS results are sent to this channel and processed sequentially.
 
-This eliminates race conditions between concurrent sources (multiple browser tabs, background goroutines) without requiring locks on the component's state. Node-to-component routing uses a lazily-populated `nodeLookup` index (O(1) on hit, tree traversal on first miss). One exception uses `ci.Mu` directly: `handleInit` (writes the tree on new connection — must be synchronous to preserve mount order).
+This eliminates race conditions between concurrent sources (multiple browser tabs, background goroutines) without requiring locks on the component's state. Node-to-component routing uses a lazily-populated `nodeLookup` index (O(1) on hit, tree traversal on first miss). One exception uses `ci.Mu` directly: `handleInit` (writes the tree on new connection — must be synchronous so the browser receives the tree before subsequent patches).
 
 Two filter hooks control event flow:
 - `shouldEnqueue(event)` — called before sending to the channel (for future deduplication)
@@ -271,7 +280,7 @@ eng.Register("counter", counter, "ui/counter/index.html")  // child component
 // Then serve via QuickServe (root) or SetMux (multi-page)
 ```
 
-Components compose via `g-component` — the parent declares named insertion points using the `g-component` attribute, children render into them. With `QuickServe`, the root component provides the full HTML page (rendered into `document.body`). Child components provide HTML fragments. On init, each component is sent to the browser with an instance name. The bridge finds target elements via `querySelectorAll('[g-component="name"]')`.
+Components compose via `g-component` — the parent declares named insertion points using the `g-component` attribute, children render into them. With `QuickServe`, the root component provides the full HTML page (rendered into `document.body`). Child components provide HTML fragments. Init is pull-based: after the root renders, the bridge discovers `[g-component]` elements in the DOM and requests their trees via `BROWSER_INIT_REQUEST`. Components can also be mounted dynamically from JavaScript via `godom.mount(name, element)`.
 
 ```
 ┌─────────────────── Go process ───────────────────┐
@@ -309,7 +318,7 @@ Components compose via `g-component` — the parent declares named insertion poi
 └───────────────────────────────────────────────────┘
 ```
 
-The bridge doesn't know there are multiple components. It sees one `nodeMap`, one WebSocket, and a sequence of init and patch messages — some targeting the body (root), others targeting elements with a matching `g-component` attribute via `targetName`. All components share a single `IDCounter` so node IDs are globally unique. When a browser event arrives, the server searches each component's tree to find which one owns the target node ID, and dispatches the event to that component.
+The bridge doesn't know there are multiple components. It sees one WebSocket and a sequence of init and patch messages — some targeting the body (root), others targeting elements with a matching `g-component` attribute via `targetName`. Each target gets its own encapsulated context (own `nodeMap`, own `pluginState`). All components share a single `IDCounter` so node IDs are globally unique. When a browser event arrives, the server searches each component's tree to find which one owns the target node ID, and dispatches the event to that component.
 
 Cross-component communication uses Go callbacks wired in `main.go`:
 

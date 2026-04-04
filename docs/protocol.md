@@ -61,7 +61,9 @@ When `node_id` is 0 (from `godom.call`), the server searches all components for 
 
 **BROWSER_JSRESULT** — response to a `SERVER_JSCALL`. Contains `call_id` (matching the request), `result` (JSON-encoded), and `error`. The server dispatches to the component that made the ExecJS call.
 
-**Future kinds:** `BROWSER_INIT_REQUEST` (pull-based init), `BROWSER_PAGE_INFO` (page path), `BROWSER_BROADCAST` (cross-app messaging).
+**BROWSER_INIT_REQUEST** — pull-based init. The bridge sends this with a `component` name to request the init tree for a named component. The server responds with a `SERVER_INIT` targeting that component. Used after `document.body` renders (root mode) or on `ws.onopen` (embedded mode) to initialize child components discovered via `[g-component]` attributes. Also used by `godom.mount()` for dynamic mounting.
+
+**Future kinds:** `BROWSER_PAGE_INFO` (page path), `BROWSER_BROADCAST` (cross-app messaging).
 
 ### Wire format
 

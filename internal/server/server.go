@@ -98,16 +98,6 @@ func Run(cfg EngineConfig) error {
 
 	pool := &connPool{}
 
-	// Ensure document.body component is first — the bridge needs the root
-	// DOM before children can find their g-component targets.
-	for i, ci := range comps {
-		if ci.SlotName == "document.body" && i > 0 {
-			copy(comps[1:i+1], comps[:i])
-			comps[0] = ci
-			break
-		}
-	}
-
 	// All components share a single IDCounter so node IDs are globally
 	// unique across the bridge's nodeMap.
 	sharedIDCounter := &vdom.IDCounter{}
@@ -177,6 +167,19 @@ func Run(cfg EngineConfig) error {
 	if disableExecJS {
 		bundleJS += "window.GODOM_DISABLE_EXEC=true;\n"
 	}
+	if env.Debug {
+		bundleJS += "window.GODOM_DEBUG=true;\n"
+	}
+	hasRoot := false
+	for _, ci := range comps {
+		if ci.SlotName == "document.body" {
+			hasRoot = true
+			break
+		}
+	}
+	if hasRoot {
+		bundleJS += "window.GODOM_ROOT=true;\n"
+	}
 	bundleJS += strings.Replace(bridgeJS, "__GODOM_WS_PATH__", wsPath, 1)
 
 	// Serve as external script.
@@ -198,13 +201,18 @@ func Run(cfg EngineConfig) error {
 
 		wc := pool.add(conn)
 
-		// Send init for each component in mount order (root first, children after).
+		// Send init only for document.body — the bridge will request
+		// child components via BROWSER_INIT_REQUEST after scanning for
+		// g-component targets in the rendered DOM.
 		for _, ci := range comps {
-			if err := handleInit(wc, ci, ci.SlotName); err != nil {
-				log.Printf("godom: failed to compute init for slot %q: %v", ci.SlotName, err)
-				pool.remove(wc)
-				conn.Close()
-				return
+			if ci.SlotName == "document.body" {
+				if err := handleInit(wc, ci, ci.SlotName); err != nil {
+					log.Printf("godom: failed to compute init for document.body: %v", err)
+					pool.remove(wc)
+					conn.Close()
+					return
+				}
+				break
 			}
 		}
 
@@ -267,6 +275,27 @@ func Run(cfg EngineConfig) error {
 							ci.EventCh <- e
 						}
 					}
+				}
+
+			case gproto.BrowserKind_BROWSER_INIT_REQUEST:
+				name := msg.Component
+				if name == "" {
+					log.Printf("godom: INIT_REQUEST with empty component name")
+					continue
+				}
+				var target *component.Info
+				for _, ci := range ctx.comps {
+					if ci.SlotName == name {
+						target = ci
+						break
+					}
+				}
+				if target == nil {
+					log.Printf("godom: INIT_REQUEST for unknown component %q", name)
+					continue
+				}
+				if err := handleInit(wc, target, name); err != nil {
+					log.Printf("godom: failed to compute init for %q: %v", name, err)
 				}
 
 			case gproto.BrowserKind_BROWSER_JSRESULT:

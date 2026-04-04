@@ -65,7 +65,8 @@ var godomProto = (function() {
         .add(new Field("args", 21, "bytes", "repeated"))
         .add(new Field("callId", 30, "int32"))
         .add(new Field("result", 31, "bytes"))
-        .add(new Field("error", 32, "string"));
+        .add(new Field("error", 32, "string"))
+        .add(new Field("component", 40, "string"));
 
     root.add(ServerMessage);
     root.add(DomPatch);
