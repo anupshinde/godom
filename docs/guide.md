@@ -342,6 +342,27 @@ func (a *App) onMouseMove(x, y float64) {
 
 ---
 
+## Hiding Raw Templates (`.g-ready`)
+
+When a page loads, there's a brief moment before godom initializes where raw template content (`{{Count}}`, placeholder text) is visible. The bridge adds a `.g-ready` CSS class to signal when a component is initialized:
+
+- **Root mode** (`QuickServe`): added to `document.body` after the init tree renders
+- **Embedded mode** (`g-component`): added to each `[g-component]` element after its init tree renders
+
+Use this in your CSS to hide content until it's ready:
+
+```css
+/* Root mode */
+body:not(.g-ready) { visibility: hidden; }
+
+/* Embedded mode */
+[g-component]:not(.g-ready) { visibility: hidden; }
+```
+
+The class is removed on cleanup (e.g. when a component is re-initialized after reconnect).
+
+---
+
 ## Custom Elements
 
 Split large templates by creating HTML files for sub-components:

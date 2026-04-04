@@ -105,13 +105,14 @@ When a browser tab connects via WebSocket:
 2. The tree is encoded as a JSON description — element tags, facts (properties, attributes, styles, events), and children
 3. The bridge builds the entire DOM from the tree description, registering each node's ID in `nodeMap` for O(1) lookup on subsequent patches
 4. Event handlers in the tree are wired up as DOM listeners that send `MethodCall` messages back to Go
-5. After rendering, the bridge scans for `[g-component]` elements in the new DOM and sends a `BROWSER_INIT_REQUEST` for each — the server responds with their init trees (pull-based init)
-6. After each child init renders, the bridge scans again to handle nested components
+5. The bridge adds `.g-ready` to `document.body`, signaling that the root component is initialized
+6. The bridge scans for `[g-component]` elements in the new DOM and sends a `BROWSER_INIT_REQUEST` for each — the server responds with their init trees (pull-based init)
+7. After each child init renders, the bridge adds `.g-ready` to the target element and scans again to handle nested components
 
 **Embedded mode** (no `document.body` — e.g. multi-page apps):
 1. The server sends nothing on connect — the page is already rendered by a traditional HTTP handler
 2. On `ws.onopen`, the bridge scans for `[g-component]` elements and sends `BROWSER_INIT_REQUEST` for each
-3. The server responds with init trees for each requested component
+3. The server responds with init trees for each requested component. The bridge adds `.g-ready` to each element after its init tree renders
 
 **Dynamic mounting:** When a patch adds a new `[g-component]` element to the DOM (e.g. a `g-for` loop appending a widget), the bridge detects it during `buildDOM` and scans after the patch completes. This also supports `godom.mount(name, element)` for mounting components from JavaScript into arbitrary DOM elements.
 
@@ -391,6 +392,7 @@ The bridge is vanilla JS with no dependencies. It:
 - ExecJS: evaluates JavaScript expressions sent by Go (`SERVER_JSCALL`), returns results via `BROWSER_JSRESULT`
 - `godom.call()`: allows JavaScript to invoke Go methods on components via `BROWSER_METHOD` with `node_id: 0`
 - Manages HTML5 drag-and-drop: `draggable` sets up `dragstart`/`dragend` with group-specific MIME types; drop handlers filter by group, apply CSS feedback classes (`.g-dragging`, `.g-drag-over`, `.g-drag-over-above`/`.g-drag-over-below`), and send drop data via `MethodCall`
+- Adds `.g-ready` CSS class to `document.body` (root mode) or `[g-component]` elements (embedded mode) after init, removes on cleanup — consumers use this to hide raw template content with CSS
 - Defers plugin `init` calls until the element is actually in the DOM (for libraries that need to measure dimensions)
 - Preserves focus and selection across patch application
 

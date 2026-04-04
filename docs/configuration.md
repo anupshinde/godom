@@ -163,6 +163,22 @@ godom.ondisconnect = function(err) { /* disconnected */ };
 </script>
 ```
 
+### Component readiness (`.g-ready` class)
+
+The bridge adds a `.g-ready` CSS class to elements after their component tree is initialized:
+
+- **Root mode**: added to `document.body`
+- **Embedded mode**: added to each `[g-component]` element
+
+This lets you hide raw template content (e.g. `{{Count}}`) until the component is live:
+
+```css
+body:not(.g-ready) { visibility: hidden; }
+[g-component]:not(.g-ready) { visibility: hidden; }
+```
+
+The class is removed on cleanup (re-init after reconnect). This is purely a CSS hook — no configuration needed.
+
 ## Environment variables
 
 godom reads `GODOM_*` environment variables when `NewEngine()` is called:
