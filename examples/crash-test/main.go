@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"flag"
 	"io/fs"
 	"log"
 	"os"
@@ -53,12 +54,17 @@ func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
 
-	// Custom disconnect overlay — load from a partial HTML file.
-	disconnectHTML, err := fs.ReadFile(ui, "ui/partials/disconnect.html")
-	if err != nil {
-		log.Fatal(err)
+	// Use -default flag to see the built-in disconnect overlay.
+	useDefault := flag.Bool("default", false, "use default disconnect overlay")
+	flag.Parse()
+
+	if !*useDefault {
+		disconnectHTML, err := fs.ReadFile(ui, "ui/partials/disconnect.html")
+		if err != nil {
+			log.Fatal(err)
+		}
+		eng.DisconnectHTML = string(disconnectHTML)
 	}
-	eng.DisconnectHTML = string(disconnectHTML)
 
 	app := &App{BGCountdown: 30}
 	app.Template = "ui/index.html"
