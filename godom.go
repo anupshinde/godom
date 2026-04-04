@@ -73,7 +73,7 @@ type Component struct {
 // MarkRefresh marks fields for surgical refresh. The actual refresh happens
 // when Refresh() is called (either by the user or automatically by the
 // framework after a method call). Multiple calls accumulate.
-func (c Component) MarkRefresh(fields ...string) {
+func (c *Component) MarkRefresh(fields ...string) {
 	if c.ci == nil {
 		return
 	}
@@ -90,7 +90,7 @@ func (c Component) MarkRefresh(fields ...string) {
 //	    var path string
 //	    json.Unmarshal(result, &path)
 //	})
-func (c Component) ExecJS(expr string, cb func(result []byte, err string)) {
+func (c *Component) ExecJS(expr string, cb func(result []byte, err string)) {
 	if c.ci == nil {
 		return
 	}
@@ -105,7 +105,7 @@ func (c Component) ExecJS(expr string, cb func(result []byte, err string)) {
 // The framework automatically refreshes after every method call, so calling
 // Refresh there would result in a redundant double invocation.
 // Use Refresh only from background goroutines (timers, tickers, async work).
-func (c Component) Refresh() {
+func (c *Component) Refresh() {
 	if c.ci == nil {
 		return
 	}
