@@ -223,6 +223,7 @@
             const ctx = createTargetContext(name, document.body);
             targets[name] = [ctx];
             ctx.init(msg);
+            document.body.classList.add("g-ready");
         } else {
             // Named component: find all elements with g-component="name".
             const els = document.querySelectorAll(`[g-component="${name}"]`);
@@ -241,6 +242,7 @@
                 const ctx = createTargetContext(name, els[i]);
                 ctxList.push(ctx);
                 ctx.init(msg);
+                els[i].classList.add("g-ready");
                 readyEls.add(els[i]);
             }
             targets[name] = ctxList;
@@ -768,6 +770,7 @@
 
             cleanup: function() {
                 readyEls.delete(targetEl);
+                targetEl.classList.remove("g-ready");
                 nodeMap = {};
                 pluginState = {};
                 pendingPluginInits = [];
