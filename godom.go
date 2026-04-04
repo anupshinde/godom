@@ -35,6 +35,9 @@ var defaultDisconnectHTML string
 //go:embed internal/bridge/disconnect-badge.html
 var defaultDisconnectBadgeHTML string
 
+//go:embed internal/bridge/favicon.svg
+var defaultFaviconSVG string
+
 // Engine is the godom runtime. It registers components and plugins,
 // mounts the root component, and starts the server.
 type Engine struct {
@@ -174,6 +177,7 @@ func (a *Engine) GetDisconnectBadgeHTML() string {
 	}
 	return defaultDisconnectBadgeHTML
 }
+func (a *Engine) GetFaviconSVG() string { return defaultFaviconSVG }
 
 // RegisterPlugin registers a named plugin with one or more JS scripts.
 func (a *Engine) RegisterPlugin(name string, scripts ...string) {

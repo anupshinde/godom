@@ -38,6 +38,7 @@ type EngineConfig interface {
 	ExecJSDisabled() bool
 	GetDisconnectHTML() string
 	GetDisconnectBadgeHTML() string
+	GetFaviconSVG() string
 }
 
 // BuildComponentInfo reads a template, expands nested components, validates
@@ -220,6 +221,19 @@ func Run(cfg EngineConfig) error {
 	// Separate each part with \r\n and a semicolon to prevent
 	// minified scripts from being parsed as continuations.
 	bundleJS := strings.Join(parts, ";\r\n\n")
+
+	// Serve default favicon unless the user already registered /favicon.ico.
+	faviconSVG := cfg.GetFaviconSVG()
+	if faviconSVG != "" {
+		func() {
+			defer func() { recover() }() // skip if pattern already registered
+			mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "image/svg+xml")
+				w.Header().Set("Cache-Control", "public, max-age=86400")
+				fmt.Fprint(w, faviconSVG)
+			})
+		}()
+	}
 
 	// Serve as external script.
 	mux.HandleFunc(scriptPath, func(w http.ResponseWriter, r *http.Request) {
