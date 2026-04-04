@@ -194,7 +194,9 @@ func Run(cfg EngineConfig) error {
 		parts = append(parts, "window.GODOM_ROOT=true;")
 	}
 	parts = append(parts, bridge)
-	bundleJS := strings.Join(parts, "\n")
+	// Separate each part with \r\n and a semicolon to prevent
+	// minified scripts from being parsed as continuations.
+	bundleJS := strings.Join(parts, ";\r\n\n")
 
 	// Serve as external script.
 	mux.HandleFunc(scriptPath, func(w http.ResponseWriter, r *http.Request) {
