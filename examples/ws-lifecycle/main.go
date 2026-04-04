@@ -23,7 +23,9 @@ func main() {
 	// Background component — registered but not rendered on the page.
 	// Proves godom is alive even with no g-component target in the DOM.
 	ticker := NewTicker()
-	eng.Register("ticker", ticker, "components/ticker/index.html")
+	ticker.TargetName = "ticker"
+	ticker.Template = "components/ticker/index.html"
+	eng.Register(ticker)
 
 	go ticker.Run()
 

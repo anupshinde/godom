@@ -118,8 +118,9 @@ func main() {
 	eng.RegisterPlugin("apexcharts", apexBridgeJS)
 
 	root := &App{}
+	root.Template = "ui/index.html"
 	go root.startUpdates()
 
 	fmt.Println("ApexCharts demo — no plugin package, just inline bridge")
-	log.Fatal(eng.QuickServe(root, "ui/index.html"))
+	log.Fatal(eng.QuickServe(root))
 }

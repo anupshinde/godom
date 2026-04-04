@@ -142,8 +142,9 @@ func main() {
 	eng.RegisterPlugin("canvas3d", canvasBridgeJS)
 
 	root := &App{}
+	root.Template = "ui/index.html"
 	go root.run()
 
 	fmt.Println("Solar system — 3D engine in Go, Canvas 2D rendering")
-	log.Fatal(eng.QuickServe(root, "ui/index.html"))
+	log.Fatal(eng.QuickServe(root))
 }

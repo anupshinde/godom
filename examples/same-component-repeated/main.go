@@ -34,7 +34,11 @@ func main() {
 	eng.SetFS(ui)
 
 	counter := &Counter{Step: 1}
-	eng.Register("counter_single", counter, "ui/counter/index.html")
+	counter.TargetName = "counter_single"
+	counter.Template = "ui/counter/index.html"
+	eng.Register(counter)
 
-	log.Fatal(eng.QuickServe(&Layout{Title: "Same Component Test"}, "ui/layout/index.html"))
+	layout := &Layout{Title: "Same Component Test"}
+	layout.Template = "ui/layout/index.html"
+	log.Fatal(eng.QuickServe(layout))
 }

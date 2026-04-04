@@ -296,8 +296,9 @@ func main() {
 	chartjs.Register(eng)
 
 	root := &App{}
+	root.Template = "ui/index.html"
 	go root.startMonitor()
 
 	fmt.Println("System monitor — CPU, memory, disk, swap, load with Chart.js")
-	log.Fatal(eng.QuickServe(root, "ui/index.html"))
+	log.Fatal(eng.QuickServe(root))
 }

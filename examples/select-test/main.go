@@ -41,9 +41,11 @@ func (a *App) Summary() string {
 func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
-	log.Fatal(eng.QuickServe(&App{
+	app := &App{
 		Color:  "blue",
 		Colors: []string{"red", "green", "blue", "yellow"},
 		Agree:  true,
-	}, "ui/index.html"))
+	}
+	app.Template = "ui/index.html"
+	log.Fatal(eng.QuickServe(app))
 }

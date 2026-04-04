@@ -49,6 +49,7 @@ func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
 	root := &App{}
+	root.Template = "ui/index.html"
 	go root.startClock()
-	log.Fatal(eng.QuickServe(root, "ui/index.html"))
+	log.Fatal(eng.QuickServe(root))
 }

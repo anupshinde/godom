@@ -27,5 +27,7 @@ func (a *App) Decrement() {
 func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
-	log.Fatal(eng.QuickServe(&App{Step: 1}, "ui/index.html"))
+	app := &App{Step: 1}
+	app.Template = "ui/index.html"
+	log.Fatal(eng.QuickServe(app))
 }

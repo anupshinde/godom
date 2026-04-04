@@ -51,7 +51,8 @@ func main() {
 	eng.RegisterPlugin("sfx", sfxJS)
 
 	scores := NewScores()
-	eng.Register("scores", scores, "components/scores/index.html")
+	scores.TargetName = "scores"
+	scores.Template = "components/scores/index.html"
 
 	// Shared game state — both views embed the same *GameState pointer.
 	// Changes from either view are visible to both, and godom's shared
@@ -64,13 +65,18 @@ func main() {
 	}
 
 	playView := &PlayView{GameState: state}
-	eng.Register("game", playView, "components/game/play.html")
+	playView.TargetName = "game"
+	playView.Template = "components/game/play.html"
 
 	controllerView := &ControllerView{GameState: state}
-	eng.Register("controller", controllerView, "components/game/controller.html")
+	controllerView.TargetName = "controller"
+	controllerView.Template = "components/game/controller.html"
 
 	statusView := &StatusView{GameState: state}
-	eng.Register("status", statusView, "components/status/index.html")
+	statusView.TargetName = "status"
+	statusView.Template = "components/status/index.html"
+
+	eng.Register(scores, playView, controllerView, statusView)
 
 	go playView.Run()
 	go statusView.RunStatusRefresh()

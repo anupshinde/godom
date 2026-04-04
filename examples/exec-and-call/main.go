@@ -36,7 +36,8 @@ func main() {
 
 	// Browser info component — uses ExecJS
 	info := &BrowserInfo{}
-	eng.Register("browserinfo", info, "components/browser-info/index.html")
+	info.TargetName = "browserinfo"
+	info.Template = "components/browser-info/index.html"
 
 	// Catalog component — uses godom.call from Shoelace tree plugin
 	cats := SampleCategories()
@@ -45,7 +46,10 @@ func main() {
 		Tree:         categoriesToTreeData(cats),
 		SelectedDesc: "Select a category from the tree.",
 	}
-	eng.Register("catalog", catalog, "components/catalog/index.html")
+	catalog.TargetName = "catalog"
+	catalog.Template = "components/catalog/index.html"
+
+	eng.Register(info, catalog)
 
 	// User owns the mux and routes.
 	mux := http.NewServeMux()

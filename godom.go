@@ -67,7 +67,9 @@ type registration struct {
 
 // Component is embedded in user structs to make them godom components.
 type Component struct {
-	ci *component.Info
+	TargetName string // matches g-component="name" attributes in parent templates
+	Template   string // template path relative to the filesystem set via SetFS
+	ci       *component.Info
 }
 
 // MarkRefresh marks fields for surgical refresh. The actual refresh happens
@@ -165,62 +167,71 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts
 }
 
-// Register registers a named component with a template. The name is used in
-// g-component="name" attributes on elements in parent templates.
+// Register registers one or more components. Each component must have Name
+// and Template set on its embedded godom.Component before calling Register.
 //
 // Register uses the filesystem set via SetFS().
-// The entryPath is relative to that filesystem (e.g. "ui/counter/index.html").
-func (a *Engine) Register(name string, comp interface{}, entryPath string) {
-	if name == "" {
-		log.Fatal("godom: Register requires a non-empty name")
-	}
-	if name != "document.body" && !vdom.IsValidIdentifier(name) {
-		log.Fatalf("godom: Register name %q must be a valid identifier (letters, digits, underscores; cannot start with a digit)", name)
-	}
-
-	if _, exists := a.registered[name]; exists {
-		log.Fatalf("godom: component %q already registered", name)
-	}
-
-	// Each component instance can only be registered once because it holds
-	// a single VDOM tree, bindings, and event channel. Registering the same
-	// pointer twice would create two component.Info entries sharing one struct,
-	// causing tree/binding conflicts. Use shared state via embedded pointers
-	// instead (see examples/shared-state).
-	if _, exists := a.compIndex[comp]; exists {
-		// Find the existing registration name for this pointer
-		var existingName string
-		for regName, reg := range a.registered {
-			if reg.comp == comp {
-				existingName = regName
-				break
-			}
+// The Template path is relative to that filesystem (e.g. "ui/counter/index.html").
+func (a *Engine) Register(comps ...interface{}) {
+	for _, comp := range comps {
+		v := reflect.ValueOf(comp)
+		if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+			log.Fatal("godom: Register requires a pointer to a struct")
 		}
-		log.Fatalf("godom: Register %q failed — same instance already registered as %q", name, existingName)
-	}
+		if !embedsComponent(v.Elem().Type()) {
+			log.Fatal("godom: registered struct must embed godom.Component")
+		}
 
-	v := reflect.ValueOf(comp)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		log.Fatal("godom: Register requires a pointer to a struct")
-	}
-	if !embedsComponent(v.Elem().Type()) {
-		log.Fatal("godom: registered struct must embed godom.Component")
-	}
+		// Read Name and Template from the embedded Component.
+		compField := v.Elem().FieldByName("Component")
+		name := compField.FieldByName("TargetName").String()
+		entryPath := compField.FieldByName("Template").String()
 
-	if a.componentFS == nil {
-		log.Fatal("godom: call SetFS() before Register()")
-	}
+		if name == "" {
+			log.Fatal("godom: Register requires Component.TargetName to be set")
+		}
+		if name != "document.body" && !vdom.IsValidIdentifier(name) {
+			log.Fatalf("godom: Component.TargetName %q must be a valid identifier (letters, digits, underscores; cannot start with a digit)", name)
+		}
+		if entryPath == "" {
+			log.Fatalf("godom: Register %q requires Component.Template to be set", name)
+		}
 
-	a.registered[name] = &registration{
-		name:      name,
-		comp:      comp,
-		entryPath: entryPath,
-	}
+		if _, exists := a.registered[name]; exists {
+			log.Fatalf("godom: component %q already registered", name)
+		}
 
-	ci := server.BuildComponentInfo(comp, a.componentFS, entryPath)
-	ci.Value.Elem().FieldByName("Component").Set(reflect.ValueOf(Component{ci: ci}))
-	a.comps = append(a.comps, ci)
-	a.compIndex[comp] = len(a.comps) - 1
+		// Each component instance can only be registered once because it holds
+		// a single VDOM tree, bindings, and event channel. Registering the same
+		// pointer twice would create two component.Info entries sharing one struct,
+		// causing tree/binding conflicts. Use shared state via embedded pointers
+		// instead (see examples/shared-state).
+		if _, exists := a.compIndex[comp]; exists {
+			var existingName string
+			for regName, reg := range a.registered {
+				if reg.comp == comp {
+					existingName = regName
+					break
+				}
+			}
+			log.Fatalf("godom: Register %q failed — same instance already registered as %q", name, existingName)
+		}
+
+		if a.componentFS == nil {
+			log.Fatal("godom: call SetFS() before Register()")
+		}
+
+		a.registered[name] = &registration{
+			name:      name,
+			comp:      comp,
+			entryPath: entryPath,
+		}
+
+		ci := server.BuildComponentInfo(comp, a.componentFS, entryPath)
+		compField.Set(reflect.ValueOf(Component{TargetName: name, Template: entryPath, ci: ci}))
+		a.comps = append(a.comps, ci)
+		a.compIndex[comp] = len(a.comps) - 1
+	}
 }
 
 // Run initializes the component lifecycle, registers /ws and /godom.js handlers
@@ -292,17 +303,28 @@ func (a *Engine) ListenAndServe() error {
 }
 
 // QuickServe is the convenience path for single-component apps. It registers
-// the component, creates a minimal page, sets up the mux, and serves.
+// the component as the root (document.body), creates a minimal page, sets up
+// the mux, and serves. The component must have Template set before calling.
 //
 // Example:
 //
+//	app := &App{Step: 1}
+//	app.Template = "ui/index.html"
 //	eng := godom.NewEngine()
 //	eng.SetFS(ui)
-//	log.Fatal(eng.QuickServe(&App{Step: 1}, "ui/index.html"))
-func (a *Engine) QuickServe(comp interface{}, templateFile string) error {
-	// Register as "document.body" — a special name that tells the bridge to render
+//	log.Fatal(eng.QuickServe(app))
+func (a *Engine) QuickServe(comp interface{}) error {
+	// Set Name to "document.body" — a special name that tells the bridge to render
 	// directly into document.body instead of a g-component element.
-	a.Register("document.body", comp, templateFile)
+	v := reflect.ValueOf(comp)
+	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+		log.Fatal("godom: QuickServe requires a pointer to a struct")
+	}
+	v.Elem().FieldByName("Component").FieldByName("TargetName").SetString("document.body")
+
+	a.Register(comp)
+
+	templateFile := v.Elem().FieldByName("Component").FieldByName("Template").String()
 
 	// Use the component's HTML as the full page, inject godom.js before </body>.
 	idx := a.compIndex[comp]

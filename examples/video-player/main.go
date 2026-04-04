@@ -247,10 +247,11 @@ func main() {
 		Status:   fmt.Sprintf("Loading: %s (%.0fs)", videoPath, dur),
 	}
 	root.Player = FrameData{Width: canvasWidth, Height: canvasHeight}
+	root.Template = "ui/index.html"
 	go root.run()
 
 	fmt.Printf("Video Player — %s\n", videoPath)
-	log.Fatal(eng.QuickServe(root, "ui/index.html"))
+	log.Fatal(eng.QuickServe(root))
 }
 
 func probeSeconds(path string) float64 {
