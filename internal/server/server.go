@@ -36,6 +36,7 @@ type EngineConfig interface {
 	GodomScriptPath() string
 	Auth() middleware.AuthFunc
 	ExecJSDisabled() bool
+	GetDisconnectHTML() string
 }
 
 // BuildComponentInfo reads a template, expands nested components, validates
@@ -108,6 +109,7 @@ func Run(cfg EngineConfig) error {
 	scriptPath := cfg.GodomScriptPath()
 	authFn := cfg.Auth()
 	disableExecJS := cfg.ExecJSDisabled()
+	disconnectHTML := cfg.GetDisconnectHTML()
 
 	pool := &connPool{}
 
@@ -207,6 +209,9 @@ func Run(cfg EngineConfig) error {
 	if hasRoot {
 		parts = append(parts, "window.GODOM_ROOT=true;")
 	}
+	// Inject disconnect overlay HTML as a JSON-encoded string.
+	htmlJSON, _ := json.Marshal(disconnectHTML)
+	parts = append(parts, fmt.Sprintf("window.GODOM_DISCONNECT_HTML=%s;", htmlJSON))
 	parts = append(parts, bridge)
 	// Separate each part with \r\n and a semicolon to prevent
 	// minified scripts from being parsed as continuations.
@@ -409,6 +414,19 @@ func shouldProcess(_ component.Event) bool {
 // conditions between concurrent event sources (multiple WS connections,
 // background goroutines).
 func (s *serverCtx) processEvents(ci *component.Info, compIdx int) {
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("panic: %v", r)
+			log.Printf("godom: %s", msg)
+			reason := msg
+			if len(reason) > 123 {
+				reason = reason[:120] + "..."
+			}
+			closeMsg := websocket.FormatCloseMessage(websocket.CloseInternalServerErr, reason)
+			s.pool.broadcastClose(closeMsg)
+			os.Exit(1)
+		}
+	}()
 	for evt := range ci.EventCh {
 		if !shouldProcess(evt) {
 			continue

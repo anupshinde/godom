@@ -29,6 +29,9 @@ var protobufMinJS string
 //go:embed internal/proto/protocol.js
 var protocolJS string
 
+//go:embed internal/bridge/disconnect.html
+var defaultDisconnectHTML string
+
 // Engine is the godom runtime. It registers components and plugins,
 // mounts the root component, and starts the server.
 type Engine struct {
@@ -39,6 +42,7 @@ type Engine struct {
 	NoBrowser      bool   // don't open browser on start
 	Quiet          bool   // suppress startup output
 	DisableExecJS  bool   // disable ExecJS — server won't send, bridge won't execute
+	DisconnectHTML string // custom disconnect overlay HTML; empty = default
 
 	comps      []*component.Info        // mounted components
 	plugins    map[string][]string      // plugin name → JS scripts
@@ -154,6 +158,12 @@ func (a *Engine) WebSocketPath() string                  { return a.wsPath }
 func (a *Engine) GodomScriptPath() string                { return a.scriptPath }
 func (a *Engine) Auth() middleware.AuthFunc              { return a.authFn }
 func (a *Engine) ExecJSDisabled() bool                   { return a.DisableExecJS }
+func (a *Engine) GetDisconnectHTML() string {
+	if a.DisconnectHTML != "" {
+		return a.DisconnectHTML
+	}
+	return defaultDisconnectHTML
+}
 
 // RegisterPlugin registers a named plugin with one or more JS scripts.
 func (a *Engine) RegisterPlugin(name string, scripts ...string) {
