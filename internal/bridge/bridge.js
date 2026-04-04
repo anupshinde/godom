@@ -117,6 +117,10 @@
         ws.onopen = () => {
             hideDisconnectOverlay();
             reconnectDelay = 1000;
+            // Clean up all existing target contexts so scanAndRequestComponents
+            // treats every [g-component] as fresh. This handles reconnect after
+            // server restart (state lost) or long disconnect (state diverged).
+            cleanupAllTargets();
             if (!firedOnConnect && ns.onconnect) {
                 firedOnConnect = true;
                 ns.onconnect();
@@ -204,22 +208,27 @@
         }
     }
 
+    // cleanupAllTargets destroys all existing target contexts, clearing
+    // readyEls and removing .g-ready so components can be re-initialized.
+    function cleanupAllTargets() {
+        for (const n in targets) {
+            if (targets.hasOwnProperty(n)) {
+                const list = targets[n];
+                for (let i = 0; i < list.length; i++) {
+                    list[i].cleanup();
+                }
+            }
+        }
+        targets = {};
+    }
+
     // initTarget creates encapsulated contexts for a named component and
     // builds the initial DOM tree inside each target element.
     function initTarget(name, msg) {
         if (name === "document.body") {
             // Root component: render into document.body.
             hasRoot = true;
-            // Destroy all existing target contexts first.
-            for (const n in targets) {
-                if (targets.hasOwnProperty(n)) {
-                    const list = targets[n];
-                    for (let i = 0; i < list.length; i++) {
-                        list[i].cleanup();
-                    }
-                }
-            }
-            targets = {};
+            cleanupAllTargets();
             const ctx = createTargetContext(name, document.body);
             targets[name] = [ctx];
             ctx.init(msg);
