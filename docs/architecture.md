@@ -109,6 +109,8 @@ When a browser tab connects via WebSocket:
 2. On `ws.onopen`, the bridge scans for `[g-component]` elements and sends `BROWSER_INIT_REQUEST` for each
 3. The server responds with init trees for each requested component
 
+**Dynamic mounting:** When a patch adds a new `[g-component]` element to the DOM (e.g. a `g-for` loop appending a widget), the bridge detects it during `buildDOM` and scans after the patch completes. This also supports `godom.mount(name, element)` for mounting components from JavaScript into arbitrary DOM elements.
+
 ### User interaction
 
 When the user clicks a button with `g-click="AddTodo"`:
