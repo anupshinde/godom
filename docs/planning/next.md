@@ -8,10 +8,8 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 
 | # | Issue | Type |
 |---|-------|------|
-| 1 | ~~COR-76: Pull-based component init (bridge requests inits instead of push order)~~ | Done |
-| 2 | ~~COR-73: Reduce internal config duplication between public and server packages~~ | Done |
-| 3 | ~~COR-47: Dynamic mount from JS: `window.godom.mount()`~~ | Done |
-| 4 | COR-45: Inactive component pausing — skip patches when no DOM targets | Improvement |
+| 1 | COR-78: Customizable disconnect overlay and badge | Improvement |
+| 2 | COR-45: Inactive component pausing — skip patches when no DOM targets | Improvement |
 
 ### Medium priority
 
@@ -26,7 +24,6 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 | # | Issue | Type |
 |---|-------|------|
 | 8 | COR-75: Allow CSS selectors as component targets (RegisterAt) | Feature |
-| 9 | COR-78: Customizable disconnect overlay and badge | Improvement |
 | 10 | COR-48: Shadow DOM isolation (optional per-component) | Feature |
 | 11 | COR-52: Virtual scrolling for large lists | Feature |
 | 12 | COR-56: Tree version guard for stale patch detection | Improvement |
