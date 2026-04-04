@@ -8,9 +8,9 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 
 | # | Issue | Type |
 |---|-------|------|
-| 1 | COR-76: Pull-based component init (bridge requests inits instead of push order) | Improvement |
-| 2 | COR-73: Reduce internal config duplication between public and server packages | Improvement |
-| 3 | COR-47: Dynamic mount from JS: `window.godom.mount()` | Feature |
+| 1 | ~~COR-76: Pull-based component init (bridge requests inits instead of push order)~~ | Done |
+| 2 | ~~COR-73: Reduce internal config duplication between public and server packages~~ | Done |
+| 3 | ~~COR-47: Dynamic mount from JS: `window.godom.mount()`~~ | Done |
 | 4 | COR-45: Inactive component pausing — skip patches when no DOM targets | Improvement |
 
 ### Medium priority
