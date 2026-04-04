@@ -43,7 +43,7 @@ type Engine struct {
 	comps      []*component.Info        // mounted components
 	plugins    map[string][]string      // plugin name → JS scripts
 	compIndex  map[interface{}]int      // comp pointer → index in comps slice
-	registered map[string]*registration // instance name → registration (from Register)
+	names      map[string]bool          // registered target names (for duplicate check)
 	componentFS fs.FS                   // filesystem for component templates, set via SetFS
 	userMux    *http.ServeMux           // custom mux from SetMux()
 	muxOpts    *MuxOptions              // custom paths for /ws and /godom.js
@@ -56,13 +56,6 @@ type Engine struct {
 type MuxOptions struct {
 	WSPath     string // WebSocket endpoint path (default "/ws")
 	ScriptPath string // godom.js script path (default "/godom.js")
-}
-
-// registration holds metadata for a component registered via Register().
-type registration struct {
-	name      string // instance name (e.g. "counter1")
-	comp      interface{}
-	entryPath string
 }
 
 // Component is embedded in user structs to make them godom components.
@@ -127,7 +120,7 @@ func NewEngine() *Engine {
 		Quiet:          env.Quiet(),
 		plugins:        make(map[string][]string),
 		compIndex:      make(map[interface{}]int),
-		registered:     make(map[string]*registration),
+		names:          make(map[string]bool),
 	}
 }
 
@@ -197,7 +190,7 @@ func (a *Engine) Register(comps ...interface{}) {
 			log.Fatalf("godom: Register %q requires Component.Template to be set", name)
 		}
 
-		if _, exists := a.registered[name]; exists {
+		if a.names[name] {
 			log.Fatalf("godom: component %q already registered", name)
 		}
 
@@ -206,31 +199,20 @@ func (a *Engine) Register(comps ...interface{}) {
 		// pointer twice would create two component.Info entries sharing one struct,
 		// causing tree/binding conflicts. Use shared state via embedded pointers
 		// instead (see examples/shared-state).
-		if _, exists := a.compIndex[comp]; exists {
-			var existingName string
-			for regName, reg := range a.registered {
-				if reg.comp == comp {
-					existingName = regName
-					break
-				}
-			}
-			log.Fatalf("godom: Register %q failed — same instance already registered as %q", name, existingName)
+		if idx, exists := a.compIndex[comp]; exists {
+			log.Fatalf("godom: Register %q failed — same instance already registered as %q", name, a.comps[idx].SlotName)
 		}
 
 		if a.componentFS == nil {
 			log.Fatal("godom: call SetFS() before Register()")
 		}
 
-		a.registered[name] = &registration{
-			name:      name,
-			comp:      comp,
-			entryPath: entryPath,
-		}
-
 		ci := server.BuildComponentInfo(comp, a.componentFS, entryPath)
+		ci.SlotName = name
 		compField.Set(reflect.ValueOf(Component{TargetName: name, Template: entryPath, ci: ci}))
 		a.comps = append(a.comps, ci)
 		a.compIndex[comp] = len(a.comps) - 1
+		a.names[name] = true
 	}
 }
 
@@ -241,11 +223,6 @@ func (a *Engine) Register(comps ...interface{}) {
 func (a *Engine) Run() error {
 	if len(a.comps) == 0 {
 		return fmt.Errorf("godom: no components registered — call Register() before Run()")
-	}
-
-	// Auto-wire registered components to their g-component targets.
-	if len(a.registered) > 0 {
-		a.autoWireComponents()
 	}
 
 	// Validate: every component must have a SlotName.
@@ -373,18 +350,6 @@ func (a *Engine) AuthMiddleware(next http.Handler) http.Handler {
 // Call this when your server is shutting down.
 func (a *Engine) Cleanup() {
 	server.Cleanup(a.comps)
-}
-
-// autoWireComponents sets SlotName on each registered component's Info.
-// The bridge uses it to find target elements with matching g-component attributes.
-func (a *Engine) autoWireComponents() {
-	for name, reg := range a.registered {
-		idx, ok := a.compIndex[reg.comp]
-		if !ok {
-			log.Fatalf("godom: registered component %q not found in mounted components", name)
-		}
-		a.comps[idx].SlotName = name
-	}
 }
 
 // embedsComponent checks if a struct type embeds godom.Component.

@@ -62,8 +62,8 @@ func TestNewEngine(t *testing.T) {
 	if e.compIndex == nil {
 		t.Error("expected non-nil compIndex map")
 	}
-	if e.registered == nil {
-		t.Error("expected non-nil registered map")
+	if e.names == nil {
+		t.Error("expected non-nil names map")
 	}
 	if len(e.comps) != 0 {
 		t.Error("expected empty comps before Register")
@@ -430,9 +430,7 @@ func TestRegister_DocumentBody(t *testing.T) {
 		t.Fatal("expected one component")
 	}
 
-	// SlotName is set by autoWireComponents (called during Run), not Register.
-	e.autoWireComponents()
-
+	// SlotName is set directly by Register.
 	if e.comps[0].SlotName != "document.body" {
 		t.Errorf("expected SlotName 'document.body', got %q", e.comps[0].SlotName)
 	}
@@ -603,9 +601,9 @@ func TestRegister_DuplicateInstanceFatals(t *testing.T) {
 	}
 }
 
-// --- Auto-wiring ---
+// --- Register: SlotName ---
 
-func TestAutoWire_SetsSlotName(t *testing.T) {
+func TestRegister_SetsSlotName(t *testing.T) {
 	e := NewEngine()
 	e.SetFS(makeTestFS())
 
@@ -614,14 +612,12 @@ func TestAutoWire_SetsSlotName(t *testing.T) {
 	child.Template = "child/index.html"
 	e.Register(child)
 
-	e.autoWireComponents()
-
 	if e.comps[0].SlotName != "sidebar" {
 		t.Errorf("expected SlotName='sidebar', got %q", e.comps[0].SlotName)
 	}
 }
 
-func TestAutoWire_MultipleChildren(t *testing.T) {
+func TestRegister_SetsSlotNameMultiple(t *testing.T) {
 	e := NewEngine()
 	e.SetFS(makeTestFS())
 
@@ -634,8 +630,6 @@ func TestAutoWire_MultipleChildren(t *testing.T) {
 	child2.Template = "child/index.html"
 
 	e.Register(child1, child2)
-
-	e.autoWireComponents()
 
 	if e.comps[0].SlotName != "sidebar" {
 		t.Errorf("sidebar: expected SlotName='sidebar', got %q", e.comps[0].SlotName)
@@ -794,14 +788,13 @@ func TestAuthMiddleware_NoAuth(t *testing.T) {
 func TestQuickServe_RegistersDocumentBody(t *testing.T) {
 	// QuickServe calls Register with TargetName="document.body" and sets up mux.
 	// We can't fully test QuickServe (it blocks on ListenAndServe), but we can
-	// verify the register + auto-wire path works for document.body.
+	// verify the register path works for document.body.
 	e := NewEngine()
 	e.SetFS(makeTestFS())
 	app := &testApp{Name: "root"}
 	app.TargetName = "document.body"
 	app.Template = "index.html"
 	e.Register(app)
-	e.autoWireComponents()
 
 	if len(e.comps) != 1 {
 		t.Fatal("expected one component")
