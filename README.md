@@ -51,9 +51,12 @@ func (a *App) Decrement() {
 }
 
 func main() {
+    app := &App{Step: 1}
+    app.Template = "ui/index.html"
+
     eng := godom.NewEngine()
     eng.SetFS(ui)
-    log.Fatal(eng.QuickServe(&App{Step: 1}, "ui/index.html"))
+    log.Fatal(eng.QuickServe(app))
 }
 ```
 
@@ -231,13 +234,16 @@ For apps with multiple independent pieces of state, each component gets its own 
 ```go
 eng.SetFS(ui)
 
-// Child components — registered by name, render into matching g-component targets
+// Child components — set TargetName and Template, then register
 counter := &Counter{Step: 1}
-eng.Register("counter", counter, "ui/counter/index.html")
+counter.TargetName = "counter"
+counter.Template = "ui/counter/index.html"
+eng.Register(counter)
 
-// Root component owns the page layout
+// Root component owns the page layout (QuickServe auto-sets TargetName to "document.body")
 layout := &Layout{}
-log.Fatal(eng.QuickServe(layout, "ui/layout/index.html"))
+layout.Template = "ui/layout/index.html"
+log.Fatal(eng.QuickServe(layout))
 ```
 
 The parent template declares targets with the `g-component` attribute:
@@ -261,7 +267,13 @@ Child templates are HTML fragments (no `<html>`/`<head>`/`<body>`) — they rend
 </div>
 ```
 
-Each component has its own state, methods, and refresh cycle. Cross-component communication uses Go callbacks:
+Each component has its own state, methods, and refresh cycle. Register is variadic, so you can register all children in one call:
+
+```go
+eng.Register(navbar, toast, sidebar, counter, clock, monitor, ticker, tips)
+```
+
+Cross-component communication uses Go callbacks:
 
 ```go
 sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
@@ -283,15 +295,24 @@ eng.NoBrowser = true                            // Don't auto-open browser
 eng.Quiet = true                                // Suppress startup output
 eng.RegisterPlugin("chartjs", libJS, bridgeJS)  // Register a plugin with one or more JS scripts
 eng.SetFS(fsys)                                 // Set the shared UI filesystem for templates
-eng.Register("name", child, "ui/child.html")    // Register a named child component with a template
-log.Fatal(eng.QuickServe(&MyApp{}, "ui/index.html"))  // Register, serve, block
+eng.DisconnectHTML = "<div>Custom overlay</div>"        // Custom disconnect overlay (root mode)
+eng.DisconnectBadgeHTML = "<span>Offline</span>"        // Custom disconnect badge (embedded mode)
+
+child.TargetName = "name"                               // Matches g-component="name" in parent template
+child.Template = "ui/child.html"                        // Template path relative to SetFS filesystem
+eng.Register(child)                                     // Register one or more components (variadic)
+
+app.Template = "ui/index.html"
+log.Fatal(eng.QuickServe(app))                          // Auto-sets TargetName to "document.body", registers, serves, blocks
 ```
 
 Settings can also be overridden at runtime via environment variables:
 
 ```
-GODOM_PORT=8081 GODOM_HOST=0.0.0.0 ./myapp
+GODOM_PORT=8081 GODOM_HOST=0.0.0.0 GODOM_DEBUG=true ./myapp
 ```
+
+Boolean env vars (`GODOM_DEBUG`, `GODOM_NO_AUTH`, `GODOM_NO_BROWSER`, `GODOM_QUIET`) accept any value recognized by Go's `strconv.ParseBool`: `1`, `t`, `true`, `TRUE`, `0`, `f`, `false`, `FALSE`, etc.
 
 Env vars are only read for fields not already set in code. godom does not parse CLI flags — your binary owns its flags entirely.
 
@@ -309,11 +330,11 @@ See [docs/configuration.md](docs/configuration.md) for the full reference on set
 
 ### Component
 
-Embed `godom.Component` in your struct:
+Embed `godom.Component` in your struct. The `TargetName` field matches `g-component="name"` attributes in parent templates. The `Template` field is the path to the HTML template relative to the filesystem set via `SetFS`.
 
 ```go
 type MyApp struct {
-    godom.Component
+    godom.Component            // TargetName, Template fields come from here
     Name string        // exported fields = state
     Items []Item       // slices work with g-for
 }

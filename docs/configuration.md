@@ -125,7 +125,25 @@ Change the global namespace the bridge registers on. Default is `"godom"` (`wind
 
 ### GODOM_DEBUG
 
-Automatically injected by the server when `GODOM_DEBUG=1` is set. Enables debug-level warnings in the bridge console (e.g. missing component targets during init). Not set manually — controlled via the server-side env var.
+Automatically injected by the server when `GODOM_DEBUG` is set. Accepts `1`, `true`, `0`, or `false`. Enables debug-level warnings in the bridge console (e.g. missing component targets during init). Not set manually — controlled via the server-side env var.
+
+### DisconnectHTML
+
+Custom HTML to display when the WebSocket connection is lost. Replaces the default disconnect overlay.
+
+| | Value |
+|---|---|
+| Default | built-in disconnect overlay |
+| Code | `eng.DisconnectHTML = "<div>Connection lost</div>"` |
+
+### DisconnectBadgeHTML
+
+Custom HTML for a small disconnect badge indicator, shown instead of the full overlay. Useful for a subtle notification.
+
+| | Value |
+|---|---|
+| Default | not set (full overlay used) |
+| Code | `eng.DisconnectBadgeHTML = "<span>offline</span>"` |
 
 ### Lifecycle hooks
 

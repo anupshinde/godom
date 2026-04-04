@@ -31,7 +31,9 @@ The bridge never evaluates expressions, resolves data, or makes decisions. It re
 ```go
 eng := godom.NewEngine()
 eng.SetFS(ui)                                              // set component filesystem
-log.Fatal(eng.QuickServe(&TodoApp{}, "ui/index.html"))     // register, serve, block
+todo := &TodoApp{}
+todo.Template = "ui/index.html"                            // set template path
+log.Fatal(eng.QuickServe(todo))                            // register, serve, block
 ```
 
 **Multi-page app (user owns the server):**
@@ -39,7 +41,9 @@ log.Fatal(eng.QuickServe(&TodoApp{}, "ui/index.html"))     // register, serve, b
 ```go
 eng := godom.NewEngine()
 eng.SetFS(components)
-eng.Register("counter", counter, "components/counter/index.html")
+counter.TargetName = "counter"                              // name used in g-component attribute
+counter.Template = "components/counter/index.html"          // template path
+eng.Register(counter)                                       // variadic: eng.Register(counter, clock, monitor)
 
 mux := http.NewServeMux()
 mux.HandleFunc("/", serveDashboard)
@@ -50,7 +54,7 @@ log.Fatal(eng.ListenAndServe())                             // bind port, open b
 
 `Register()` does the heavy lifting before any HTTP traffic:
 
-1. **Read the entry HTML** from the embedded filesystem at the given path (e.g., `"ui/index.html"`)
+1. **Read the entry HTML** from the embedded filesystem at the component's `Template` path (e.g., `"ui/index.html"`)
 2. **Expand components** — custom element tags like `<todo-item>` are replaced with the contents of `todo-item.html`. `g-*` attributes from the custom tag are transferred to the component's root element
 3. **Validate directives** — every `g-*` attribute is checked against the component struct via reflection. Unknown fields or methods cause `log.Fatal`. This happens at startup, not at runtime
 4. **Parse templates** — the expanded HTML is parsed into a reusable `[]*vdom.TemplateNode` tree. Directives, text interpolations (`{{expr}}`), `g-for` loops, and plugin bindings are all extracted into structured template nodes. This tree is parsed once and reused on every render
@@ -276,7 +280,9 @@ Each component is a self-contained unit: own Go struct, own HTML template, own V
 
 ```
 eng.SetFS(ui)
-eng.Register("counter", counter, "ui/counter/index.html")  // child component
+counter.TargetName = "counter"
+counter.Template = "ui/counter/index.html"
+eng.Register(counter)                                       // child component
 // Then serve via QuickServe (root) or SetMux (multi-page)
 ```
 
@@ -333,8 +339,11 @@ Components don't know about each other's types — they communicate through func
 Components can render into pages **not served by godom**. The host page includes godom's JS bundle via a script tag and declares `g-component` targets. Only `Register()` is needed — no root component.
 
 ```go
-eng.Register("stock", stock, "ui/stock/index.html")
-eng.Register("marquee", marquee, "ui/stock/marquee.html")
+stock.TargetName = "stock"
+stock.Template = "ui/stock/index.html"
+marquee.TargetName = "marquee"
+marquee.Template = "ui/stock/marquee.html"
+eng.Register(stock, marquee)
 
 mux := http.NewServeMux()
 eng.SetMux(mux, nil)
