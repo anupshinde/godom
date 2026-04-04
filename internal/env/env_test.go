@@ -32,10 +32,17 @@ func TestDebug_WhenEmpty(t *testing.T) {
 	}
 }
 
+func TestDebug_WhenZero(t *testing.T) {
+	out := runSelf(t, "0")
+	if out != "false" {
+		t.Errorf("Debug = %q, want false when GODOM_DEBUG=0", out)
+	}
+}
+
 func TestDebug_WhenArbitrary(t *testing.T) {
 	out := runSelf(t, "anything")
-	if out != "true" {
-		t.Errorf("Debug = %q, want true when GODOM_DEBUG=anything", out)
+	if out != "false" {
+		t.Errorf("Debug = %q, want false when GODOM_DEBUG=anything (invalid bool)", out)
 	}
 }
 

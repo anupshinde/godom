@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-var Debug = os.Getenv("GODOM_DEBUG") != ""
+var Debug = Bool("GODOM_DEBUG")
 
 // Bool reads a boolean environment variable using strconv.ParseBool.
 // Returns false if unset. Logs a warning if the value is not a valid bool.
