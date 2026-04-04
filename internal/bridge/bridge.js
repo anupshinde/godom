@@ -26,26 +26,26 @@
     // 1. State & globals
     // =========================================================================
 
-    var nsName = window.GODOM_NS || "godom";
-    var ns = window[nsName] = window[nsName] || {};
+    const nsName = window.GODOM_NS || "godom";
+    const ns = window[nsName] = window[nsName] || {};
     if (!ns._plugins) ns._plugins = {};
 
-    var ws;
-    var targets = {};      // targetName (string) → [target context, ...]
-    var readyEls = new WeakSet(); // DOM elements that have been initialized
+    let ws;
+    let targets = {};      // targetName (string) → [target context, ...]
+    const readyEls = new WeakSet(); // DOM elements that have been initialized
 
-    var Proto = godomProto;
-    var SK = Proto.ServerKind;   // cached enum constants for fast dispatch
-    var BK = Proto.BrowserKind;
-    var textDecoder = new TextDecoder();
-    var textEncoder = new TextEncoder();
+    const Proto = godomProto;
+    const SK = Proto.ServerKind;   // cached enum constants for fast dispatch
+    const BK = Proto.BrowserKind;
+    const textDecoder = new TextDecoder();
+    const textEncoder = new TextEncoder();
 
     // =========================================================================
     // 2. Connection — WebSocket with auto-reconnect and disconnect overlay
     // =========================================================================
 
-    var overlay = null;
-    var hasRoot = false; // true when document.body is a godom root
+    let overlay = null;
+    let hasRoot = false; // true when document.body is a godom root
 
     function showDisconnectOverlay(errorMsg) {
         if (hasRoot) {
@@ -53,32 +53,32 @@
             if (overlay) return;
             overlay = document.createElement("div");
             overlay.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;transition:opacity 0.3s";
-            var title = errorMsg ? "Application Crashed" : "Disconnected";
-            var subtitle = errorMsg ? "Restart the application to continue" : "Waiting for server\u2026";
-            var html = '<div style="color:#fff;font-family:system-ui,sans-serif;text-align:center">'
-                + '<div style="font-size:1.5rem;margin-bottom:0.5rem;color:#ff4d4d;font-weight:600">' + title + '</div>'
-                + '<div style="font-size:1.05rem;color:#ccc">' + subtitle + '</div>';
+            const title = errorMsg ? "Application Crashed" : "Disconnected";
+            const subtitle = errorMsg ? "Restart the application to continue" : "Waiting for server\u2026";
+            let html = '<div style="color:#fff;font-family:system-ui,sans-serif;text-align:center">'
+                + `<div style="font-size:1.5rem;margin-bottom:0.5rem;color:#ff4d4d;font-weight:600">${title}</div>`
+                + `<div style="font-size:1.05rem;color:#ccc">${subtitle}</div>`;
             if (errorMsg) {
-                var safe = errorMsg.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+                const safe = errorMsg.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
                 html += '<div style="margin-top:1.2rem;background:rgba(0,0,0,0.5);border:1px solid #444;border-radius:8px;padding:0.8rem 1.2rem;text-align:left;max-width:80vw;overflow-x:auto">'
-                    + '<pre style="margin:0;font-size:0.85rem;color:#ffaaaa;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word">' + safe + '</pre></div>';
+                    + `<pre style="margin:0;font-size:0.85rem;color:#ffaaaa;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word">${safe}</pre></div>`;
             }
             html += '</div>';
             overlay.innerHTML = html;
             document.body.appendChild(overlay);
         } else {
             // Embedded — dim each component target and show a small badge.
-            for (var n in targets) {
+            for (const n in targets) {
                 if (!targets.hasOwnProperty(n)) continue;
-                var list = targets[n];
-                for (var i = 0; i < list.length; i++) {
-                    var el = list[i].targetEl;
+                const list = targets[n];
+                for (let i = 0; i < list.length; i++) {
+                    const el = list[i].targetEl;
                     if (!el || el._godomDisconnected) continue;
                     el._godomDisconnected = true;
                     el.style.opacity = "0.4";
                     el.style.pointerEvents = "none";
                     // Badge as sibling so parent opacity doesn't affect it.
-                    var badge = document.createElement("div");
+                    const badge = document.createElement("div");
                     badge.className = "godom-disconnect-badge";
                     badge.style.cssText = "position:relative;display:inline-block;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#ff6b6b;font-family:system-ui,sans-serif;font-size:11px;padding:2px 8px;border-radius:4px;z-index:2147483647;pointer-events:none;margin-left:4px";
                     badge.textContent = errorMsg ? "Error" : "Disconnected";
@@ -94,15 +94,15 @@
             overlay = null;
         }
         // Clean up per-target disconnect badges and restore target styles.
-        var badges = document.querySelectorAll(".godom-disconnect-badge");
-        for (var i = 0; i < badges.length; i++) {
+        const badges = document.querySelectorAll(".godom-disconnect-badge");
+        for (let i = 0; i < badges.length; i++) {
             badges[i].remove();
         }
-        for (var n in targets) {
+        for (const n in targets) {
             if (!targets.hasOwnProperty(n)) continue;
-            var list = targets[n];
-            for (var i = 0; i < list.length; i++) {
-                var el = list[i].targetEl;
+            const list = targets[n];
+            for (let i = 0; i < list.length; i++) {
+                const el = list[i].targetEl;
                 if (!el) continue;
                 el.style.opacity = "";
                 el.style.pointerEvents = "";
@@ -111,15 +111,15 @@
         }
     }
 
-    var reconnectDelay = 1000;
+    let reconnectDelay = 1000;
 
     function connect() {
-        var wsUrl = window.GODOM_WS_URL || (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "__GODOM_WS_PATH__";
-        var firedOnConnect = false;
+        const wsUrl = window.GODOM_WS_URL || (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "__GODOM_WS_PATH__";
+        let firedOnConnect = false;
         ws = new WebSocket(wsUrl);
         ws.binaryType = "arraybuffer";
 
-        ws.onopen = function() {
+        ws.onopen = () => {
             hideDisconnectOverlay();
             reconnectDelay = 1000;
             if (!firedOnConnect && ns.onconnect) {
@@ -136,34 +136,35 @@
             }
         };
 
-        ws.onmessage = function(evt) {
-            var msg = Proto.ServerMessage.decode(new Uint8Array(evt.data));
+        ws.onmessage = (evt) => {
+            const msg = Proto.ServerMessage.decode(new Uint8Array(evt.data));
 
             switch (msg.kind) {
             case SK.SERVER_INIT:
                 initTarget(msg.target || "", msg);
                 scanAndRequestComponents();
                 break;
-            case SK.SERVER_PATCH:
-                var name = msg.target || "";
-                var ctxList = targets[name];
+            case SK.SERVER_PATCH: {
+                const name = msg.target || "";
+                const ctxList = targets[name];
                 if (!ctxList || ctxList.length === 0) {
-                    console.warn("[godom patch] no target context for name=" + name);
+                    console.warn(`[godom patch] no target context for name=${name}`);
                     return;
                 }
-                for (var i = 0; i < ctxList.length; i++) {
+                for (let i = 0; i < ctxList.length; i++) {
                     ctxList[i].applyPatches(msg.patches);
                 }
                 break;
+            }
             case SK.SERVER_JSCALL:
                 handleJSCall(msg);
                 break;
             }
         };
 
-        ws.onclose = function(evt) {
+        ws.onclose = (evt) => {
             firedOnConnect = false;
-            var errorMsg = evt.reason || null;
+            const errorMsg = evt.reason || null;
             showDisconnectOverlay(errorMsg);
             if (ns.ondisconnect) ns.ondisconnect(errorMsg);
             if (!errorMsg) {
@@ -172,7 +173,7 @@
             }
         };
 
-        ws.onerror = function(evt) {
+        ws.onerror = (evt) => {
             if (ns.onerror) ns.onerror(evt);
             ws.close();
         };
@@ -184,7 +185,7 @@
 
     // sendInitRequest sends a BROWSER_INIT_REQUEST for the given component name.
     function sendInitRequest(name) {
-        var msg = Proto.BrowserMessage.encode({
+        const msg = Proto.BrowserMessage.encode({
             kind: BK.BROWSER_INIT_REQUEST,
             component: name
         }).finish();
@@ -195,11 +196,11 @@
     // initialized and sends init requests to the server for each unique
     // component name.
     function scanAndRequestComponents() {
-        var els = document.querySelectorAll("[g-component]");
-        var requested = {};
-        for (var i = 0; i < els.length; i++) {
+        const els = document.querySelectorAll("[g-component]");
+        const requested = {};
+        for (let i = 0; i < els.length; i++) {
             if (readyEls.has(els[i])) continue;
-            var name = els[i].getAttribute("g-component");
+            const name = els[i].getAttribute("g-component");
             if (name && !requested[name]) {
                 requested[name] = true;
                 sendInitRequest(name);
@@ -214,34 +215,34 @@
             // Root component: render into document.body.
             hasRoot = true;
             // Destroy all existing target contexts first.
-            for (var n in targets) {
+            for (const n in targets) {
                 if (targets.hasOwnProperty(n)) {
-                    var list = targets[n];
-                    for (var i = 0; i < list.length; i++) {
+                    const list = targets[n];
+                    for (let i = 0; i < list.length; i++) {
                         list[i].cleanup();
                     }
                 }
             }
             targets = {};
-            var ctx = createTargetContext(name, document.body);
+            const ctx = createTargetContext(name, document.body);
             targets[name] = [ctx];
             ctx.init(msg);
         } else {
             // Named component: find all elements with g-component="name".
-            var els = document.querySelectorAll('[g-component="' + name + '"]');
+            const els = document.querySelectorAll(`[g-component="${name}"]`);
             if (els.length === 0) {
-                if (window.GODOM_DEBUG) console.warn('godom: no target found for component "' + name + '" — check that the parent is mounted first and the g-component attribute matches');
+                if (window.GODOM_DEBUG) console.warn(`godom: no target found for component "${name}" — check that the parent is mounted first and the g-component attribute matches`);
                 return;
             }
             // Clean up existing contexts for this name.
             if (targets[name]) {
-                for (var i = 0; i < targets[name].length; i++) {
+                for (let i = 0; i < targets[name].length; i++) {
                     targets[name][i].cleanup();
                 }
             }
-            var ctxList = [];
-            for (var i = 0; i < els.length; i++) {
-                var ctx = createTargetContext(name, els[i]);
+            const ctxList = [];
+            for (let i = 0; i < els.length; i++) {
+                const ctx = createTargetContext(name, els[i]);
                 ctxList.push(ctx);
                 ctx.init(msg);
                 readyEls.add(els[i]);
@@ -253,10 +254,10 @@
     // createTargetContext builds an encapsulated closure for a render target.
     // All DOM state (nodeMap, pluginState) is private to this closure.
     function createTargetContext(name, targetEl) {
-        var nodeMap = {};
-        var pluginState = {};
-        var pendingPluginInits = [];
-        var hasNewComponents = false;
+        let nodeMap = {};
+        let pluginState = {};
+        let pendingPluginInits = [];
+        let hasNewComponents = false;
 
         // --- DOM construction ---
 
@@ -264,7 +265,7 @@
             if (!tree) return null;
 
             if (tree.t === "text") {
-                var textNode = document.createTextNode(tree.x || "");
+                const textNode = document.createTextNode(tree.x || "");
                 if (tree.id) {
                     nodeMap[tree.id] = textNode;
                     textNode._godomId = tree.id;
@@ -272,7 +273,7 @@
                 return textNode;
             }
 
-            var el;
+            let el;
             if (tree.ns) {
                 el = document.createElementNS(tree.ns, tree.tag);
             } else {
@@ -303,8 +304,8 @@
             autoRegisterDraggable(el);
 
             if (tree.c) {
-                for (var i = 0; i < tree.c.length; i++) {
-                    var child = buildDOM(tree.c[i]);
+                for (let i = 0; i < tree.c.length; i++) {
+                    const child = buildDOM(tree.c[i]);
                     if (child) el.appendChild(child);
                 }
             }
@@ -315,7 +316,7 @@
 
             if (tree.plug) {
                 el._godomPlugin = tree.plug;
-                var handler = ns._plugins[tree.plug];
+                const handler = ns._plugins[tree.plug];
                 if (handler && tree.pd !== undefined) {
                     pendingPluginInits.push({el: el, id: tree.id, handler: handler, data: tree.pd});
                 }
@@ -329,17 +330,17 @@
         function applyPatches(patches) {
             if (!patches) return;
 
-            var focusedEl = document.activeElement;
-            var selStart = null, selEnd = null;
+            const focusedEl = document.activeElement;
+            let selStart = null, selEnd = null;
             if (focusedEl && focusedEl.setSelectionRange) {
                 try { selStart = focusedEl.selectionStart; selEnd = focusedEl.selectionEnd; } catch(e) {}
             }
 
-            for (var i = 0; i < patches.length; i++) {
-                var patch = patches[i];
-                var node = nodeMap[patch.nodeId];
+            for (let i = 0; i < patches.length; i++) {
+                const patch = patches[i];
+                const node = nodeMap[patch.nodeId];
                 if (!node) {
-                    console.warn("[godom patch] skip: nodeMap[" + patch.nodeId + "] not found for op=" + patch.op + " in target " + name);
+                    console.warn(`[godom patch] skip: nodeMap[${patch.nodeId}] not found for op=${patch.op} in target ${name}`);
                     continue;
                 }
                 applyPatch(node, patch);
@@ -383,8 +384,8 @@
         }
 
         function execRedraw(node, patch) {
-            var tree = JSON.parse(textDecoder.decode(patch.treeContent));
-            var newNode = buildDOM(tree);
+            const tree = JSON.parse(textDecoder.decode(patch.treeContent));
+            const newNode = buildDOM(tree);
             cleanNodeMap(node);
             if (newNode && node.parentNode) {
                 node.parentNode.replaceChild(newNode, node);
@@ -401,23 +402,23 @@
 
         function execFacts(node, patch) {
             if (!patch.facts || !patch.facts.length) return;
-            var diff = JSON.parse(textDecoder.decode(patch.facts));
+            const diff = JSON.parse(textDecoder.decode(patch.facts));
             applyFactsDiff(node, diff, patch.nodeId);
         }
 
         function execAppend(node, patch) {
-            var trees = JSON.parse(textDecoder.decode(patch.treeContent));
-            for (var i = 0; i < trees.length; i++) {
-                var child = buildDOM(trees[i]);
+            const trees = JSON.parse(textDecoder.decode(patch.treeContent));
+            for (let i = 0; i < trees.length; i++) {
+                const child = buildDOM(trees[i]);
                 if (child) node.appendChild(child);
             }
         }
 
         function execRemoveLast(node, patch) {
-            var count = patch.count;
-            for (var i = 0; i < count; i++) {
+            const count = patch.count;
+            for (let i = 0; i < count; i++) {
                 if (node.lastChild) {
-                    var victim = node.lastChild;
+                    const victim = node.lastChild;
                     cleanNodeMap(victim);
                     node.removeChild(victim);
                 }
@@ -426,22 +427,22 @@
 
         function execReorder(node, patch) {
             if (!patch.reorder || !patch.reorder.length) return;
-            var data = JSON.parse(textDecoder.decode(patch.reorder));
+            const data = JSON.parse(textDecoder.decode(patch.reorder));
 
-            var moveKeys = {};
+            const moveKeys = {};
             if (data.ins) {
-                for (var m = 0; m < data.ins.length; m++) {
+                for (let m = 0; m < data.ins.length; m++) {
                     if (!data.ins[m].tree) {
                         moveKeys[data.ins[m].k] = true;
                     }
                 }
             }
 
-            var stashed = {};
+            const stashed = {};
             if (data.rem) {
-                for (var i = 0; i < data.rem.length; i++) {
-                    var rem = data.rem[i];
-                    var child = node.childNodes[rem.i];
+                for (let i = 0; i < data.rem.length; i++) {
+                    const rem = data.rem[i];
+                    const child = node.childNodes[rem.i];
                     if (child) {
                         if (moveKeys[rem.k]) {
                             stashed[rem.k] = child;
@@ -455,9 +456,9 @@
             }
 
             if (data.ins) {
-                for (var j = 0; j < data.ins.length; j++) {
-                    var ins = data.ins[j];
-                    var newChild;
+                for (let j = 0; j < data.ins.length; j++) {
+                    const ins = data.ins[j];
+                    let newChild;
                     if (ins.tree) {
                         newChild = buildDOM(ins.tree);
                     } else if (stashed[ins.k]) {
@@ -465,7 +466,7 @@
                         delete stashed[ins.k];
                     }
                     if (newChild) {
-                        var ref = node.childNodes[ins.i] || null;
+                        const ref = node.childNodes[ins.i] || null;
                         node.insertBefore(newChild, ref);
                     }
                 }
@@ -478,10 +479,10 @@
 
         function execPlugin(node, patch) {
             if (!patch.pluginData || !patch.pluginData.length) return;
-            var data = JSON.parse(textDecoder.decode(patch.pluginData));
-            var nid = patch.nodeId;
-            var pluginName = node._godomPlugin;
-            var handler = ns._plugins[pluginName];
+            const data = JSON.parse(textDecoder.decode(patch.pluginData));
+            const nid = patch.nodeId;
+            const pluginName = node._godomPlugin;
+            const handler = ns._plugins[pluginName];
             if (!handler) return;
 
             if (!pluginState[nid]) {
@@ -496,15 +497,15 @@
 
         function applyFactsDiff(el, diff, nodeId) {
             if (diff.p) {
-                for (var key in diff.p) {
-                    var val = diff.p[key];
+                for (const key in diff.p) {
+                    const val = diff.p[key];
                     if (val === null || val === undefined) {
                         el[key] = "";
                     } else if (key === "value" && el.tagName === "SELECT") {
                         deferSelectValue(el, val);
                     } else if (key === "_scrollratio") {
-                        (function(target, r) {
-                            requestAnimationFrame(function() {
+                        ((target, r) => {
+                            requestAnimationFrame(() => {
                                 target.scrollTop = r * (target.scrollHeight - target.clientHeight);
                             });
                         })(el, val);
@@ -515,8 +516,8 @@
             }
 
             if (diff.a) {
-                for (var key in diff.a) {
-                    var val = diff.a[key];
+                for (const key in diff.a) {
+                    const val = diff.a[key];
                     if (val === "") {
                         el.removeAttribute(key);
                     } else {
@@ -526,8 +527,8 @@
             }
 
             if (diff.an) {
-                for (var key in diff.an) {
-                    var nsAttr = diff.an[key];
+                for (const key in diff.an) {
+                    const nsAttr = diff.an[key];
                     if (!nsAttr || (!nsAttr.ns && !nsAttr.v)) {
                         el.removeAttributeNS(null, key);
                     } else {
@@ -537,8 +538,8 @@
             }
 
             if (diff.s) {
-                for (var key in diff.s) {
-                    var val = diff.s[key];
+                for (const key in diff.s) {
+                    const val = diff.s[key];
                     if (val === "") {
                         el.style.removeProperty(key);
                     } else {
@@ -548,8 +549,8 @@
             }
 
             if (diff.e) {
-                for (var key in diff.e) {
-                    var ev = diff.e[key];
+                for (const key in diff.e) {
+                    const ev = diff.e[key];
                     if (ev) {
                         registerSingleEvent(nodeId, el, ev);
                     }
@@ -557,7 +558,7 @@
             }
 
             if (el.tagName) {
-                var tag = el.tagName.toLowerCase();
+                const tag = el.tagName.toLowerCase();
                 autoRegisterInputSync(nodeId, el, tag);
             }
 
@@ -567,7 +568,7 @@
         // --- Event handling ---
 
         function sendNodeEvent(nodeId, value) {
-            var msg = Proto.BrowserMessage.encode({
+            const msg = Proto.BrowserMessage.encode({
                 kind: BK.BROWSER_INPUT,
                 nodeId: nodeId,
                 value: value
@@ -580,41 +581,41 @@
             el._godomSync = true;
 
             if (tag === "input" && el.type === "checkbox") {
-                el.addEventListener("change", function() {
+                el.addEventListener("change", () => {
                     sendNodeEvent(nodeId, el.checked ? "true" : "false");
                 });
             } else if (tag === "input" || tag === "textarea") {
-                el.addEventListener("input", function() {
+                el.addEventListener("input", () => {
                     sendNodeEvent(nodeId, el.value);
                 });
             } else if (tag === "select") {
-                el.addEventListener("change", function() {
+                el.addEventListener("change", () => {
                     sendNodeEvent(nodeId, el.value);
                 });
             }
         }
 
-        var _currentDragGroup = "";
+        let _currentDragGroup = "";
         function autoRegisterDraggable(el) {
             if (el._godomDrag) return;
             if (!el.draggable) return;
             el._godomDrag = true;
 
-            el.addEventListener("dragstart", function(domEvent) {
-                var value = el.getAttribute("data-drag-value") || "";
+            el.addEventListener("dragstart", (domEvent) => {
+                const value = el.getAttribute("data-drag-value") || "";
                 _currentDragGroup = el.getAttribute("data-drag-group") || "";
                 domEvent.dataTransfer.setData("text/plain", value);
                 domEvent.dataTransfer.effectAllowed = "move";
                 el.classList.add("g-dragging");
             });
-            el.addEventListener("dragend", function() {
+            el.addEventListener("dragend", () => {
                 el.classList.remove("g-dragging");
                 _currentDragGroup = "";
             });
         }
 
         function sendMethodCall(nodeId, method, args) {
-            var msg = Proto.BrowserMessage.encode({
+            const msg = Proto.BrowserMessage.encode({
                 kind: BK.BROWSER_METHOD,
                 nodeId: nodeId,
                 method: method,
@@ -624,40 +625,40 @@
         }
 
         function registerEvents(nodeId, el, events) {
-            for (var i = 0; i < events.length; i++) {
+            for (let i = 0; i < events.length; i++) {
                 registerSingleEvent(nodeId, el, events[i]);
             }
         }
 
         function registerSingleEvent(nodeId, el, ev) {
-            var eventType = ev.on;
-            var listenerKey = "_godom_ev_" + eventType + (ev.key ? "_" + ev.key : "");
+            const eventType = ev.on;
+            const listenerKey = `_godom_ev_${eventType}${ev.key ? `_${ev.key}` : ""}`;
 
             if (el[listenerKey]) return;
             el[listenerKey] = true;
 
             if (eventType === "drop") {
-                var dropGroup = el.getAttribute("data-drop-group") || "";
-                el.addEventListener("dragover", function(domEvent) {
+                const dropGroup = el.getAttribute("data-drop-group") || "";
+                el.addEventListener("dragover", (domEvent) => {
                     if (dropGroup && dropGroup !== _currentDragGroup) return;
                     domEvent.preventDefault();
                     el.classList.add("g-drag-over");
                 });
-                el.addEventListener("dragleave", function() {
+                el.addEventListener("dragleave", () => {
                     el.classList.remove("g-drag-over");
                 });
-                el.addEventListener("drop", function(domEvent) {
+                el.addEventListener("drop", (domEvent) => {
                     domEvent.preventDefault();
                     el.classList.remove("g-drag-over");
                     if (dropGroup && dropGroup !== _currentDragGroup) return;
                     domEvent.stopPropagation();
-                    var sourceValue = domEvent.dataTransfer.getData("text/plain") || "null";
-                    var targetValue = el.getAttribute("data-drag-value") || "null";
-                    var args = [
+                    const sourceValue = domEvent.dataTransfer.getData("text/plain") || "null";
+                    const targetValue = el.getAttribute("data-drag-value") || "null";
+                    const args = [
                         textEncoder.encode(sourceValue),
                         textEncoder.encode(targetValue)
                     ];
-                    for (var a = 0; a < (ev.args || []).length; a++) {
+                    for (let a = 0; a < (ev.args || []).length; a++) {
                         args.push(ev.args[a]);
                     }
                     sendMethodCall(nodeId, ev.method, args);
@@ -665,21 +666,21 @@
                 return;
             }
 
-            var isThrottled = (eventType === "mousemove" || eventType === "scroll");
-            var pendingFrame = 0;
-            var latestDomEvent = null;
+            const isThrottled = (eventType === "mousemove" || eventType === "scroll");
+            let pendingFrame = 0;
+            let latestDomEvent = null;
 
-            el.addEventListener(eventType, function(domEvent) {
+            el.addEventListener(eventType, (domEvent) => {
                 if (ev.key && domEvent.key !== ev.key && domEvent.code !== ev.key) return;
                 if (isThrottled) {
                     latestDomEvent = domEvent;
                     if (pendingFrame) return;
-                    pendingFrame = requestAnimationFrame(function() {
+                    pendingFrame = requestAnimationFrame(() => {
                         pendingFrame = 0;
-                        var de = latestDomEvent;
+                        const de = latestDomEvent;
                         if (ev.sp) de.stopPropagation();
                         if (ev.pd) de.preventDefault();
-                        var allArgs = ev.args ? ev.args.slice() : [];
+                        const allArgs = ev.args ? ev.args.slice() : [];
                         if (eventType === "mousemove") {
                             allArgs.unshift(
                                 textEncoder.encode(String(de.clientX)),
@@ -698,7 +699,7 @@
                 }
                 if (ev.sp) domEvent.stopPropagation();
                 if (ev.pd) domEvent.preventDefault();
-                var allArgs = ev.args ? ev.args.slice() : [];
+                const allArgs = ev.args ? ev.args.slice() : [];
                 if (eventType === "mousedown" || eventType === "mouseup") {
                     allArgs.unshift(
                         textEncoder.encode(String(domEvent.clientX)),
@@ -718,13 +719,13 @@
 
         function cleanNodeMap(node) {
             if (!node) return;
-            var id = node._godomId;
+            const id = node._godomId;
             if (id !== undefined) {
                 delete nodeMap[id];
                 delete pluginState[id];
             }
             if (node.childNodes) {
-                for (var i = 0; i < node.childNodes.length; i++) {
+                for (let i = 0; i < node.childNodes.length; i++) {
                     cleanNodeMap(node.childNodes[i]);
                 }
             }
@@ -736,9 +737,9 @@
             init: function(msg) {
                 targetEl.innerHTML = "";
 
-                var tree = JSON.parse(textDecoder.decode(msg.tree));
+                const tree = JSON.parse(textDecoder.decode(msg.tree));
                 if (tree) {
-                    var domNode = buildDOM(tree);
+                    const domNode = buildDOM(tree);
                     if (domNode) {
                         if (tree.tag === "body") {
                             while (domNode.firstChild) {
@@ -751,8 +752,8 @@
                     }
                 }
 
-                for (var pi = 0; pi < pendingPluginInits.length; pi++) {
-                    var p = pendingPluginInits[pi];
+                for (let pi = 0; pi < pendingPluginInits.length; pi++) {
+                    const p = pendingPluginInits[pi];
                     p.handler.init(p.el, p.data);
                     pluginState[p.id] = true;
                 }
@@ -784,11 +785,11 @@
 
     function applyProps(el, props) {
         if (!props) return;
-        for (var key in props) {
+        for (const key in props) {
             if (key === "_scrollratio") {
-                var ratio = props[key];
-                (function(target, r) {
-                    requestAnimationFrame(function() {
+                const ratio = props[key];
+                ((target, r) => {
+                    requestAnimationFrame(() => {
                         target.scrollTop = r * (target.scrollHeight - target.clientHeight);
                     });
                 })(el, ratio);
@@ -800,27 +801,27 @@
 
     function applyAttrs(el, attrs) {
         if (!attrs) return;
-        for (var key in attrs) {
+        for (const key in attrs) {
             el.setAttribute(key, attrs[key]);
         }
     }
 
     function applyAttrsNS(el, attrsNS) {
         if (!attrsNS) return;
-        for (var key in attrsNS) {
+        for (const key in attrsNS) {
             el.setAttributeNS(attrsNS[key].ns, key, attrsNS[key].v);
         }
     }
 
     function applyStyles(el, styles) {
         if (!styles) return;
-        for (var key in styles) {
+        for (const key in styles) {
             el.style.setProperty(key, styles[key]);
         }
     }
 
     function deferSelectValue(el, val) {
-        requestAnimationFrame(function() { el.value = val; });
+        requestAnimationFrame(() => { el.value = val; });
     }
 
     // =========================================================================
@@ -851,10 +852,10 @@
     // =========================================================================
 
     function handleJSCall(msg) {
-        var id = msg.callId;
-        var expr = msg.expr;
-        var result = null;
-        var error = "";
+        const id = msg.callId;
+        const expr = msg.expr;
+        let result = null;
+        let error = "";
 
         if (window.GODOM_DISABLE_EXEC) {
             sendJSResult(id, new Uint8Array(0), "ExecJS is disabled on this browser");
@@ -862,8 +863,8 @@
         }
 
         try {
-            var val = (0, eval)(expr); // indirect eval — global scope
-            var json = JSON.stringify(val);
+            const val = (0, eval)(expr); // indirect eval — global scope
+            const json = JSON.stringify(val);
             if (json === undefined) {
                 // Value is non-serializable (undefined, function, symbol)
                 result = new Uint8Array(0);
@@ -879,7 +880,7 @@
     }
 
     function sendJSResult(id, result, error) {
-        var msg = Proto.BrowserMessage.encode({
+        const msg = Proto.BrowserMessage.encode({
             kind: BK.BROWSER_JSRESULT,
             callId: id,
             result: result,
@@ -896,14 +897,14 @@
     // The method is dispatched to the component that owns the calling context.
     // For now, uses nodeId=0 (server resolves to the first component).
     ns.call = function(method) {
-        var args = [];
-        for (var i = 1; i < arguments.length; i++) {
-            var json = JSON.stringify(arguments[i]);
+        const args = [];
+        for (let i = 1; i < arguments.length; i++) {
+            const json = JSON.stringify(arguments[i]);
             if (json !== undefined) {
                 args.push(textEncoder.encode(json));
             }
         }
-        var msg = Proto.BrowserMessage.encode({
+        const msg = Proto.BrowserMessage.encode({
             kind: BK.BROWSER_METHOD,
             nodeId: 0,
             method: method,
