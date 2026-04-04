@@ -52,9 +52,12 @@ func (a *App) Increment() { a.Count++ }
 func (a *App) Decrement() { a.Count-- }
 
 func main() {
+    app := &App{}
+    app.Template = "ui/index.html"
+
     eng := godom.NewEngine()
     eng.SetFS(ui)
-    log.Fatal(eng.QuickServe(&App{}, "ui/index.html"))
+    log.Fatal(eng.QuickServe(app))
 }
 ```
 
@@ -318,11 +321,12 @@ func (a *App) startClock() {
 
 func main() {
     root := &App{}
+    root.Template = "ui/index.html"
     go root.startClock()
 
     eng := godom.NewEngine()
     eng.SetFS(ui)
-    log.Fatal(eng.QuickServe(root, "ui/index.html"))
+    log.Fatal(eng.QuickServe(root))
 }
 ```
 
@@ -335,6 +339,27 @@ func (a *App) onMouseMove(x, y float64) {
     a.MarkRefresh("Box") // only re-render nodes bound to Box
 }
 ```
+
+---
+
+## Hiding Raw Templates (`.g-ready`)
+
+When a page loads, there's a brief moment before godom initializes where raw template content (`{{Count}}`, placeholder text) is visible. The bridge adds a `.g-ready` CSS class to signal when a component is initialized:
+
+- **Root mode** (`QuickServe`): added to `document.body` after the init tree renders
+- **Embedded mode** (`g-component`): added to each `[g-component]` element after its init tree renders
+
+Use this in your CSS to hide content until it's ready:
+
+```css
+/* Root mode */
+body:not(.g-ready) { visibility: hidden; }
+
+/* Embedded mode */
+[g-component]:not(.g-ready) { visibility: hidden; }
+```
+
+The class is removed on cleanup (e.g. when a component is re-initialized after reconnect).
 
 ---
 
@@ -380,16 +405,23 @@ type Clock struct {
 }
 ```
 
-Register components by name and point them at their templates:
+Set each component's target name and template, then register them:
 
 ```go
+counter := &Counter{}
+counter.TargetName = "counter"
+counter.Template = "ui/counter/index.html"
+
+clock.TargetName = "clock"
+clock.Template = "ui/clock/index.html"
+
+layout.Template = "ui/layout/index.html"
+
 eng := godom.NewEngine()
 eng.SetFS(ui)
 
-eng.Register("counter", &Counter{}, "ui/counter/index.html")
-eng.Register("clock", clock, "ui/clock/index.html")
-
-log.Fatal(eng.QuickServe(layout, "ui/layout/index.html"))
+eng.Register(counter, clock)
+log.Fatal(eng.QuickServe(layout))
 ```
 
 The layout template declares where each component renders using the `g-component` attribute:
@@ -439,25 +471,35 @@ type CounterB struct {
 }
 
 shared := &SharedState{}
-eng.Register("a", &CounterA{SharedState: shared}, "ui/a/index.html")
-eng.Register("b", &CounterB{SharedState: shared}, "ui/b/index.html")
+a := &CounterA{SharedState: shared}
+a.TargetName = "a"
+a.Template = "ui/a/index.html"
+
+b := &CounterB{SharedState: shared}
+b.TargetName = "b"
+b.Template = "ui/b/index.html"
+
+eng.Register(a, b)
 ```
 
 When one component modifies the shared state and calls `Refresh()`, both components update. See `examples/shared-state/` and `examples/breakout-game/` for working examples.
 
-> **Note:** Each component instance can only be registered once. The same pointer cannot be used with `Register()` twice — each instance holds its own VDOM tree and bindings. To share state between components with different templates, use the embedded pointer pattern above.
+> **Note:** Each component instance can only be registered once. The same pointer cannot be passed to `Register()` twice — each instance holds its own VDOM tree and bindings. To share state between components with different templates, use the embedded pointer pattern above.
 
 ### Without a layout (external hosting)
 
 You can use only `Register()` without a root component. This is useful when the HTML page is served by something else (your own server, a CDN, a third-party site):
 
 ```go
+stock.TargetName = "stock"
+stock.Template = "ui/stock/index.html"
+
 eng := godom.NewEngine()
 eng.SetFS(ui)
 eng.Port = 9091
 eng.NoBrowser = true
 
-eng.Register("stock", stock, "ui/stock/index.html")
+eng.Register(stock)
 
 mux := http.NewServeMux()
 eng.SetMux(mux, nil)
@@ -522,10 +564,13 @@ Plugins bridge JavaScript libraries for things Go can't render (charts, maps, ri
 import "github.com/anupshinde/godom/plugins/chartjs"
 
 func main() {
+    app := &App{}
+    app.Template = "ui/index.html"
+
     eng := godom.NewEngine()
     eng.SetFS(ui)
     chartjs.Register(eng)
-    log.Fatal(eng.QuickServe(&App{}, "ui/index.html"))
+    log.Fatal(eng.QuickServe(app))
 }
 ```
 

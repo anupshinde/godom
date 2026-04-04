@@ -45,10 +45,14 @@ func main() {
 	}
 
 	stock := &Stock{Stocks: stocks, Symbol: "AAPL", Price: "189.50"}
-	eng.Register("stock", stock, "ui/stock/index.html")
+	stock.TargetName = "stock"
+	stock.Template = "ui/stock/index.html"
 
 	marquee := &Stock{Stocks: stocks, Symbol: "AAPL", Price: "189.50"}
-	eng.Register("marquee", marquee, "ui/stock/marquee.html")
+	marquee.TargetName = "marquee"
+	marquee.Template = "ui/stock/marquee.html"
+
+	eng.Register(stock, marquee)
 
 	go stock.startTicker()
 	go marquee.startTicker()

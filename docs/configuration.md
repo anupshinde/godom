@@ -125,7 +125,25 @@ Change the global namespace the bridge registers on. Default is `"godom"` (`wind
 
 ### GODOM_DEBUG
 
-Automatically injected by the server when `GODOM_DEBUG=1` is set. Enables debug-level warnings in the bridge console (e.g. missing component targets during init). Not set manually — controlled via the server-side env var.
+Automatically injected by the server when `GODOM_DEBUG` is set. Accepts `1`, `true`, `0`, or `false`. Enables debug-level warnings in the bridge console (e.g. missing component targets during init). Not set manually — controlled via the server-side env var.
+
+### DisconnectHTML
+
+Custom HTML to display when the WebSocket connection is lost. Replaces the default disconnect overlay.
+
+| | Value |
+|---|---|
+| Default | built-in disconnect overlay |
+| Code | `eng.DisconnectHTML = "<div>Connection lost</div>"` |
+
+### DisconnectBadgeHTML
+
+Custom HTML for a small disconnect badge indicator, shown instead of the full overlay. Useful for a subtle notification.
+
+| | Value |
+|---|---|
+| Default | not set (full overlay used) |
+| Code | `eng.DisconnectBadgeHTML = "<span>offline</span>"` |
 
 ### Lifecycle hooks
 
@@ -144,6 +162,22 @@ godom.onconnect = function() { /* connected */ };
 godom.ondisconnect = function(err) { /* disconnected */ };
 </script>
 ```
+
+### Component readiness (`.g-ready` class)
+
+The bridge adds a `.g-ready` CSS class to elements after their component tree is initialized:
+
+- **Root mode**: added to `document.body`
+- **Embedded mode**: added to each `[g-component]` element
+
+This lets you hide raw template content (e.g. `{{Count}}`) until the component is live:
+
+```css
+body:not(.g-ready) { visibility: hidden; }
+[g-component]:not(.g-ready) { visibility: hidden; }
+```
+
+The class is removed on cleanup (re-init after reconnect). This is purely a CSS hook — no configuration needed.
 
 ## Environment variables
 

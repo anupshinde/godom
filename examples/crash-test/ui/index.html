@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Crash Test</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 500px; margin: 60px auto; }
+        h1 { font-size: 1.4rem; }
+        .btn { padding: 10px 20px; font-size: 1rem; border: none; border-radius: 6px; cursor: pointer; margin: 8px 8px 8px 0; }
+        .btn-exit { background: #444; color: #fff; }
+        .btn-crash { background: #cc3333; color: #fff; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .countdown { margin-top: 16px; font-size: 1.1rem; color: #cc3333; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <h1>Crash Test</h1>
+    <p>Test the disconnect overlay by exiting or crashing the server.</p>
+    <button class="btn btn-exit" g-click="Exit">Exit the application</button>
+    <button class="btn btn-crash" g-click="Crash">Crash the application</button>
+    <div class="countdown" g-if="Countdown > 0">
+        <span g-text="Action"></span> in <span g-text="Countdown"></span>s...
+    </div>
+    <div style="margin-top:24px;padding:12px;background:#2a2a2a;border-radius:6px;color:#ccc;font-size:0.9rem">
+        Background goroutine crash in <span g-text="BGCountdown" style="color:#ff4d4d;font-weight:600"></span>s
+        <span style="font-size:0.8rem;color:#888">(unrecoverable &mdash; no error message)</span>
+    </div>
+</body>
+</html>

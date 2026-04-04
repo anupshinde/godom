@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Crash Test (Embedded)</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 500px; margin: 60px auto; }
+        h1 { font-size: 1.4rem; }
+        .btn { padding: 10px 20px; font-size: 1rem; border: none; border-radius: 6px; cursor: pointer; margin: 8px 8px 8px 0; }
+        .btn-exit { background: #444; color: #fff; }
+        .btn-crash { background: #cc3333; color: #fff; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .countdown { margin-top: 16px; font-size: 1.1rem; color: #cc3333; font-weight: 600; }
+        .component-box { margin-top: 20px; padding: 16px; border: 1px solid #ddd; border-radius: 8px; }
+        .component-box h3 { margin: 0 0 8px 0; font-size: 0.9rem; color: #666; }
+    </style>
+</head>
+<body>
+    <h1>Crash Test (Embedded Mode)</h1>
+    <p>Components below are godom-managed. Kill the server to see disconnect badges.</p>
+
+    <div class="component-box">
+        <h3>Clock</h3>
+        <div g-component="clock"></div>
+    </div>
+
+    <div class="component-box">
+        <h3>Controls</h3>
+        <div g-component="crashtest"></div>
+    </div>
+
+    <script src="/godom.js"></script>
+</body>
+</html>

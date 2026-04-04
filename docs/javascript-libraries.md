@@ -92,10 +92,13 @@ In `main.go`, embed the adapter file and register it with `eng.RegisterPlugin()`
 var apexBridgeJS string
 
 func main() {
+    app := &App{}
+    app.Template = "ui/index.html"
+
     eng := godom.NewEngine()
     eng.SetFS(ui)
     eng.RegisterPlugin("apexcharts", apexBridgeJS)
-    log.Fatal(eng.QuickServe(&App{}, "ui/index.html"))
+    log.Fatal(eng.QuickServe(app))
 }
 ```
 
@@ -238,10 +241,13 @@ type Chart struct {
 import "github.com/anupshinde/godom/plugins/mylib"
 
 func main() {
+    app := &App{}
+    app.Template = "ui/index.html"
+
     eng := godom.NewEngine()
     eng.SetFS(ui)
     mylib.Register(eng)
-    log.Fatal(eng.QuickServe(&App{}, "ui/index.html"))
+    log.Fatal(eng.QuickServe(app))
 }
 ```
 

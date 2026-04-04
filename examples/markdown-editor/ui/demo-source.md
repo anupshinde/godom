@@ -233,8 +233,11 @@ Each component is a self-contained unit: own Go struct, own HTML template, own V
 
 ```
 eng.SetFS(ui)
-eng.Register("counter", counter, "ui/counter/index.html")  // child component
-eng.Mount(layout, "ui/layout/index.html")                  // root component
+counter.TargetName = "counter"
+counter.Template = "ui/counter/index.html"
+eng.Register(counter)                                      // child component
+layout.Template = "ui/layout/index.html"
+eng.QuickServe(layout)                                     // root component
 ```
 
 Components compose via `g-component` — the parent declares named insertion points using the `g-component` attribute, children render into them. The root component provides the full HTML page (with `<body>`). Child components provide HTML fragments. On init, each component is sent to the browser with an instance name. The bridge finds target elements via `querySelectorAll('[g-component="name"]')`.
@@ -290,9 +293,12 @@ Components don't know about each other's types — they communicate through func
 Components can render into pages **not served by godom**. The host page includes godom's JS bundle via a script tag and declares `g-component` targets. No `Mount()` or layout component is needed — only `Register()` + `Start()`.
 
 ```go
-// No Mount() — the external page provides the HTML shell
-eng.Register("stock", stock, "ui/stock/index.html")
-eng.Register("marquee", marquee, "ui/stock/marquee.html")
+// No QuickServe() — the external page provides the HTML shell
+stock.TargetName = "stock"
+stock.Template = "ui/stock/index.html"
+marquee.TargetName = "marquee"
+marquee.Template = "ui/stock/marquee.html"
+eng.Register(stock, marquee)
 eng.NoBrowser = true
 log.Fatal(eng.Start())
 ```

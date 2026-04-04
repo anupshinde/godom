@@ -306,7 +306,7 @@ func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
 	eng.Port = 8084
-	log.Fatal(eng.QuickServe(&FormBuilder{
+	app := &FormBuilder{
 		Title: "My Form",
 		Palette: []PaletteItem{
 			{Type: "text", Label: "Text Input", Icon: "T", Color: "#4a90d9"},
@@ -319,5 +319,7 @@ func main() {
 		},
 		Selected:       -1,
 		PreviewBtnText: "Preview",
-	}, "ui/index.html"))
+	}
+	app.Template = "ui/index.html"
+	log.Fatal(eng.QuickServe(app))
 }

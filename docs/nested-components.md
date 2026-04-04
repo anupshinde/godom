@@ -15,10 +15,21 @@ eng := godom.NewEngine()
 eng.SetFS(ui)
 
 // Layout is registered, not a root — it renders into the external page
-eng.Register("layout", layout, "ui/layout/index.html")
-eng.Register("counter", counter, "ui/counter/index.html")
-eng.Register("clock", clock, "ui/clock/index.html")
-eng.Register("sidebar", sidebar, "ui/sidebar/index.html")
+layout.TargetName = "layout"
+layout.Template = "ui/layout/index.html"
+eng.Register(layout)
+
+counter.TargetName = "counter"
+counter.Template = "ui/counter/index.html"
+eng.Register(counter)
+
+clock.TargetName = "clock"
+clock.Template = "ui/clock/index.html"
+eng.Register(clock)
+
+sidebar.TargetName = "sidebar"
+sidebar.Template = "ui/sidebar/index.html"
+eng.Register(sidebar)
 
 mux := http.NewServeMux()
 eng.SetMux(mux, nil)

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="55%" r="45%">
+      <stop offset="0%" stop-color="#3BA8D4" stop-opacity="0.6"/>
+      <stop offset="35%" stop-color="#00ADD8" stop-opacity="0.45"/>
+      <stop offset="70%" stop-color="#0D47A1" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#0A1628" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="sun" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFD54F"/>
+      <stop offset="40%" stop-color="#FFB300"/>
+      <stop offset="75%" stop-color="#F57C00"/>
+      <stop offset="100%" stop-color="#F57C00" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#0B1120"/>
+  <circle cx="16" cy="17" r="13" fill="url(#glow)"/>
+  <text x="16" y="26" font-family="system-ui,-apple-system,sans-serif" font-size="28" font-weight="800" fill="#E8F4FD" text-anchor="middle">G</text>
+  <circle cx="22" cy="25" r="4" fill="url(#sun)"/>
+</svg>

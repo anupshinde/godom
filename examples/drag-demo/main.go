@@ -61,7 +61,7 @@ func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
 	eng.Port = 8083
-	log.Fatal(eng.QuickServe(&Demo{
+	demo := &Demo{
 		Palette: []PaletteColor{
 			{Name: "Red", Hex: "#e74c3c"},
 			{Name: "Green", Hex: "#27ae60"},
@@ -70,5 +70,7 @@ func main() {
 			{Name: "Purple", Hex: "#8e44ad"},
 			{Name: "Pink", Hex: "#e91e8b"},
 		},
-	}, "ui/index.html"))
+	}
+	demo.Template = "ui/index.html"
+	log.Fatal(eng.QuickServe(demo))
 }

@@ -24,7 +24,9 @@ eng.Mount(layout, "ui/layout/index.html")
 
 // Child components — registered by name, auto-wired via g-component attributes
 counter := &Counter{Step: 1}
-eng.Register("counter", counter, "ui/counter/index.html")
+counter.TargetName = "counter"
+counter.Template = "ui/counter/index.html"
+eng.Register(counter)
 ```
 
 `SetFS` sets the shared filesystem for templates. `Mount` mounts the root component which provides the full page HTML. `Register` registers a named child component — it renders into elements with a matching `g-component` attribute in the parent's template.

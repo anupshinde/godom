@@ -19,17 +19,25 @@ func main() {
 
 	// Three Counter instances — same Go type, different templates.
 	counterA := &Counter{CounterState: shared}
-	eng.Register("counter_full", counterA, "ui/counter/full.html")
+	counterA.TargetName = "counter_full"
+	counterA.Template = "ui/counter/full.html"
 
 	counterB := &Counter{CounterState: shared}
-	eng.Register("counter_compact", counterB, "ui/counter/compact.html")
+	counterB.TargetName = "counter_compact"
+	counterB.Template = "ui/counter/compact.html"
 
 	counterC := &Counter{CounterState: shared}
-	eng.Register("counter_mini", counterC, "ui/counter/mini.html")
+	counterC.TargetName = "counter_mini"
+	counterC.Template = "ui/counter/mini.html"
 
 	// One CounterDisplay — different type, read-only template.
 	display := &CounterDisplay{CounterState: shared}
-	eng.Register("counter_display", display, "ui/counter-display/index.html")
+	display.TargetName = "counter_display"
+	display.Template = "ui/counter-display/index.html"
 
-	log.Fatal(eng.QuickServe(&Layout{}, "ui/layout/index.html"))
+	eng.Register(counterA, counterB, counterC, display)
+
+	layout := &Layout{}
+	layout.Template = "ui/layout/index.html"
+	log.Fatal(eng.QuickServe(layout))
 }

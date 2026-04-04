@@ -23,13 +23,18 @@ func main() {
 	eng.SetFS(components)
 
 	counter := &Counter{Count: 0, Step: 1}
-	eng.Register("counter", counter, "components/counter/index.html")
+	counter.TargetName = "counter"
+	counter.Template = "components/counter/index.html"
 
 	clock := &Clock{}
-	eng.Register("clock", clock, "components/clock/index.html")
+	clock.TargetName = "clock"
+	clock.Template = "components/clock/index.html"
 
 	layout := &Layout{}
-	eng.Register("layout", layout, "components/layout/index.html")
+	layout.TargetName = "layout"
+	layout.Template = "components/layout/index.html"
+
+	eng.Register(counter, clock, layout)
 
 	go clock.startClock()
 

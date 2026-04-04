@@ -27,10 +27,14 @@ func main() {
 
 	// Live components — godom templates live in components/
 	counter := &Counter{Count: 0, Step: 1}
-	eng.Register("counter", counter, "components/counter/index.html")
+	counter.TargetName ="counter"
+	counter.Template = "components/counter/index.html"
 
 	clock := &Clock{}
-	eng.Register("clock", clock, "components/clock/index.html")
+	clock.TargetName ="clock"
+	clock.Template = "components/clock/index.html"
+
+	eng.Register(counter, clock)
 
 	go clock.startClock()
 
