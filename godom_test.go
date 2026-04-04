@@ -307,7 +307,10 @@ func TestSetAuth(t *testing.T) {
 func TestSetAuth_OverridesTokenAuth(t *testing.T) {
 	e := NewEngine()
 	e.SetFS(makeTestFS())
-	e.Register("main", &testApp{}, "index.html")
+	app := &testApp{Name: "test"}
+	app.TargetName = "main"
+	app.Template = "index.html"
+	e.Register(app)
 
 	// Set custom auth before Run
 	customCalled := false
@@ -336,8 +339,10 @@ func TestSetAuth_OverridesTokenAuth(t *testing.T) {
 func TestRegister_Valid(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
+	app.TargetName = "main"
+	app.Template = "index.html"
 	e.SetFS(makeTestFS())
-	e.Register("main", app, "index.html")
+	e.Register(app)
 
 	if len(e.comps) != 1 {
 		t.Fatal("expected one component after Register")
@@ -354,8 +359,10 @@ func TestRegister_Valid(t *testing.T) {
 func TestRegister_WiresComponentField(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
+	app.TargetName = "main"
+	app.Template = "index.html"
 	e.SetFS(makeTestFS())
-	e.Register("main", app, "index.html")
+	e.Register(app)
 
 	if app.Component.ci == nil {
 		t.Fatal("expected Component.ci to be wired after Register")
@@ -368,8 +375,10 @@ func TestRegister_WiresComponentField(t *testing.T) {
 func TestRegister_SetsHTMLBodyFromTemplate(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
+	app.TargetName = "main"
+	app.Template = "index.html"
 	e.SetFS(makeTestFS())
-	e.Register("main", app, "index.html")
+	e.Register(app)
 
 	ci := e.comps[0]
 	if !strings.Contains(ci.HTMLBody, "g-text") {
@@ -383,8 +392,10 @@ func TestRegister_SetsHTMLBodyFromTemplate(t *testing.T) {
 func TestRegister_SetsValueAndType(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Bob", Count: 42}
+	app.TargetName = "main"
+	app.Template = "index.html"
 	e.SetFS(makeTestFS())
-	e.Register("main", app, "index.html")
+	e.Register(app)
 
 	ci := e.comps[0]
 	if ci.Value.Pointer() != reflect.ValueOf(app).Pointer() {
@@ -398,8 +409,10 @@ func TestRegister_SetsValueAndType(t *testing.T) {
 func TestRegister_RefreshDoesNotPanic(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "Alice"}
+	app.TargetName = "main"
+	app.Template = "index.html"
 	e.SetFS(makeTestFS())
-	e.Register("main", app, "index.html")
+	e.Register(app)
 
 	// After Register, Refresh should not panic (ci is wired, but RefreshFn is nil until Run)
 	app.Refresh()
@@ -408,8 +421,10 @@ func TestRegister_RefreshDoesNotPanic(t *testing.T) {
 func TestRegister_DocumentBody(t *testing.T) {
 	e := NewEngine()
 	app := &testApp{Name: "root"}
+	app.TargetName = "document.body"
+	app.Template = "index.html"
 	e.SetFS(makeTestFS())
-	e.Register("document.body", app, "index.html")
+	e.Register(app)
 
 	if len(e.comps) != 1 {
 		t.Fatal("expected one component")
@@ -427,7 +442,7 @@ func TestRegister_NonPointer(t *testing.T) {
 	if os.Getenv("TEST_FATAL_REGISTER_NONPTR") == "1" {
 		e := NewEngine()
 		e.SetFS(makeTestFS())
-		e.Register("main", testApp{}, "index.html")
+		e.Register(testApp{})
 		return
 	}
 	out := runSubprocess(t, "TestRegister_NonPointer", "TEST_FATAL_REGISTER_NONPTR")
@@ -441,7 +456,7 @@ func TestRegister_PointerToNonStruct(t *testing.T) {
 		e := NewEngine()
 		n := 42
 		e.SetFS(makeTestFS())
-		e.Register("main", &n, "index.html")
+		e.Register(&n)
 		return
 	}
 	out := runSubprocess(t, "TestRegister_PointerToNonStruct", "TEST_FATAL_REGISTER_NONSTRUCT")
@@ -454,7 +469,7 @@ func TestRegister_NoEmbed(t *testing.T) {
 	if os.Getenv("TEST_FATAL_REGISTER_NOEMBED") == "1" {
 		e := NewEngine()
 		e.SetFS(makeTestFS())
-		e.Register("main", &noComponentApp{}, "index.html")
+		e.Register(&noComponentApp{})
 		return
 	}
 	out := runSubprocess(t, "TestRegister_NoEmbed", "TEST_FATAL_REGISTER_NOEMBED")
@@ -467,12 +482,14 @@ func TestRegister_EmptyName(t *testing.T) {
 	if os.Getenv("TEST_FATAL_REGISTER_EMPTY") == "1" {
 		e := NewEngine()
 		e.SetFS(makeTestFS())
-		e.Register("", &testApp{}, "index.html")
+		app := &testApp{}
+		app.Template = "index.html"
+		e.Register(app)
 		return
 	}
 	out := runSubprocess(t, "TestRegister_EmptyName", "TEST_FATAL_REGISTER_EMPTY")
-	if !strings.Contains(out, "non-empty name") {
-		t.Errorf("expected non-empty name error, got: %s", out)
+	if !strings.Contains(out, "Component.TargetName to be set") {
+		t.Errorf("expected TargetName error, got: %s", out)
 	}
 }
 
@@ -480,7 +497,10 @@ func TestRegister_InvalidIdentifier(t *testing.T) {
 	if os.Getenv("TEST_FATAL_REGISTER_BADID") == "1" {
 		e := NewEngine()
 		e.SetFS(makeTestFS())
-		e.Register("123invalid", &testApp{}, "index.html")
+		app := &testApp{}
+		app.TargetName = "123invalid"
+		app.Template = "index.html"
+		e.Register(app)
 		return
 	}
 	out := runSubprocess(t, "TestRegister_InvalidIdentifier", "TEST_FATAL_REGISTER_BADID")
@@ -492,7 +512,10 @@ func TestRegister_InvalidIdentifier(t *testing.T) {
 func TestRegister_NoFS(t *testing.T) {
 	if os.Getenv("TEST_FATAL_REGISTER_NOFS") == "1" {
 		e := NewEngine()
-		e.Register("main", &testApp{}, "index.html")
+		app := &testApp{}
+		app.TargetName = "main"
+		app.Template = "index.html"
+		e.Register(app)
 		return
 	}
 	out := runSubprocess(t, "TestRegister_NoFS", "TEST_FATAL_REGISTER_NOFS")
@@ -505,7 +528,10 @@ func TestRegister_BadEntryPath(t *testing.T) {
 	if os.Getenv("TEST_FATAL_REGISTER_BADPATH") == "1" {
 		e := NewEngine()
 		e.SetFS(makeTestFS())
-		e.Register("main", &testApp{}, "nonexistent.html")
+		app := &testApp{}
+		app.TargetName = "main"
+		app.Template = "nonexistent.html"
+		e.Register(app)
 		return
 	}
 	out := runSubprocess(t, "TestRegister_BadEntryPath", "TEST_FATAL_REGISTER_BADPATH")
@@ -518,8 +544,14 @@ func TestRegister_DuplicateNameFatals(t *testing.T) {
 	if os.Getenv("TEST_FATAL_REGISTER_DUP") == "1" {
 		e := NewEngine()
 		e.SetFS(makeTestFS())
-		e.Register("main", &testApp{}, "index.html")
-		e.Register("main", &testApp{}, "index.html")
+		app1 := &testApp{}
+		app1.TargetName = "main"
+		app1.Template = "index.html"
+		app2 := &testApp{}
+		app2.TargetName = "main"
+		app2.Template = "index.html"
+		e.Register(app1)
+		e.Register(app2)
 		return
 	}
 	out := runSubprocess(t, "TestRegister_DuplicateNameFatals", "TEST_FATAL_REGISTER_DUP")
@@ -538,7 +570,10 @@ func TestRegister_InvalidDirective(t *testing.T) {
 			"index.html": &fstest.MapFile{Data: []byte(badHTML)},
 		}
 		e.SetFS(badFS)
-		e.Register("main", &testApp{}, "index.html")
+		app := &testApp{}
+		app.TargetName = "main"
+		app.Template = "index.html"
+		e.Register(app)
 		return
 	}
 	out := runSubprocess(t, "TestRegister_InvalidDirective", "TEST_FATAL_REGISTER_BADDIR")
@@ -552,8 +587,11 @@ func TestRegister_DuplicateInstanceFatals(t *testing.T) {
 		e := NewEngine()
 		e.SetFS(makeTestFS())
 		app := &testApp{}
-		e.Register("first", app, "index.html")
-		e.Register("second", app, "index.html") // same pointer
+		app.TargetName = "first"
+		app.Template = "index.html"
+		e.Register(app)
+		app.TargetName = "second"
+		e.Register(app) // same pointer
 		return
 	}
 	out := runSubprocess(t, "TestRegister_DuplicateInstanceFatals", "TEST_FATAL_REGISTER_DUPINST")
@@ -572,7 +610,9 @@ func TestAutoWire_SetsSlotName(t *testing.T) {
 	e.SetFS(makeTestFS())
 
 	child := &childApp{Value: "child"}
-	e.Register("sidebar", child, "child/index.html")
+	child.TargetName = "sidebar"
+	child.Template = "child/index.html"
+	e.Register(child)
 
 	e.autoWireComponents()
 
@@ -586,10 +626,14 @@ func TestAutoWire_MultipleChildren(t *testing.T) {
 	e.SetFS(makeTestFS())
 
 	child1 := &childApp{Value: "c1"}
-	e.Register("sidebar", child1, "child/index.html")
+	child1.TargetName = "sidebar"
+	child1.Template = "child/index.html"
 
 	child2 := &childApp{Value: "c2"}
-	e.Register("footer", child2, "child/index.html")
+	child2.TargetName = "footer"
+	child2.Template = "child/index.html"
+
+	e.Register(child1, child2)
 
 	e.autoWireComponents()
 
@@ -620,7 +664,10 @@ func TestRun_NoComponents(t *testing.T) {
 func TestRun_WithMuxOptions(t *testing.T) {
 	e := NewEngine()
 	e.SetFS(makeTestFS())
-	e.Register("main", &testApp{}, "index.html")
+	app := &testApp{}
+	app.TargetName = "main"
+	app.Template = "index.html"
+	e.Register(app)
 
 	mux := http.NewServeMux()
 	e.SetMux(mux, &MuxOptions{WSPath: "/app/ws", ScriptPath: "/app/godom.js"})
@@ -638,7 +685,10 @@ func TestRun_DisableExecJS(t *testing.T) {
 	e := NewEngine()
 	e.DisableExecJS = true
 	e.SetFS(makeTestFS())
-	e.Register("main", &testApp{}, "index.html")
+	app := &testApp{}
+	app.TargetName = "main"
+	app.Template = "index.html"
+	e.Register(app)
 
 	mux := http.NewServeMux()
 	e.SetMux(mux, nil)
@@ -657,7 +707,10 @@ func TestRun_DisableExecJS(t *testing.T) {
 func TestRun_SetsUpAuth(t *testing.T) {
 	e := NewEngine()
 	e.SetFS(makeTestFS())
-	e.Register("main", &testApp{}, "index.html")
+	app := &testApp{}
+	app.TargetName = "main"
+	app.Template = "index.html"
+	e.Register(app)
 
 	mux := http.NewServeMux()
 	e.SetMux(mux, nil)
@@ -677,7 +730,10 @@ func TestRun_NoAuthSkipsAuth(t *testing.T) {
 	e := NewEngine()
 	e.NoAuth = true
 	e.SetFS(makeTestFS())
-	e.Register("main", &testApp{}, "index.html")
+	app := &testApp{}
+	app.TargetName = "main"
+	app.Template = "index.html"
+	e.Register(app)
 
 	mux := http.NewServeMux()
 	e.SetMux(mux, nil)
@@ -696,7 +752,10 @@ func TestRun_NoAuthSkipsAuth(t *testing.T) {
 func TestRun_CustomAuthPreserved(t *testing.T) {
 	e := NewEngine()
 	e.SetFS(makeTestFS())
-	e.Register("main", &testApp{}, "index.html")
+	app := &testApp{}
+	app.TargetName = "main"
+	app.Template = "index.html"
+	e.Register(app)
 
 	customCalled := false
 	e.SetAuth(func(w http.ResponseWriter, r *http.Request) bool {
@@ -733,12 +792,15 @@ func TestAuthMiddleware_NoAuth(t *testing.T) {
 // --- QuickServe ---
 
 func TestQuickServe_RegistersDocumentBody(t *testing.T) {
-	// QuickServe calls Register("document.body", ...) and sets up mux.
+	// QuickServe calls Register with TargetName="document.body" and sets up mux.
 	// We can't fully test QuickServe (it blocks on ListenAndServe), but we can
 	// verify the register + auto-wire path works for document.body.
 	e := NewEngine()
 	e.SetFS(makeTestFS())
-	e.Register("document.body", &testApp{Name: "root"}, "index.html")
+	app := &testApp{Name: "root"}
+	app.TargetName = "document.body"
+	app.Template = "index.html"
+	e.Register(app)
 	e.autoWireComponents()
 
 	if len(e.comps) != 1 {
@@ -769,7 +831,9 @@ func TestCleanup_CallsComponentCleanup(t *testing.T) {
 		"index.html": &fstest.MapFile{Data: []byte(simpleHTML)},
 	})
 	app := &cleanableApp{Name: "test"}
-	e.Register("main", app, "index.html")
+	app.TargetName = "main"
+	app.Template = "index.html"
+	e.Register(app)
 
 	// Wire up event channel (normally done by Run/server)
 	e.comps[0].EventCh = make(chan component.Event, 1)
@@ -784,7 +848,10 @@ func TestCleanup_CallsComponentCleanup(t *testing.T) {
 func TestCleanup_ClosesEventChannels(t *testing.T) {
 	e := NewEngine()
 	e.SetFS(makeTestFS())
-	e.Register("main", &testApp{}, "index.html")
+	app := &testApp{}
+	app.TargetName = "main"
+	app.Template = "index.html"
+	e.Register(app)
 
 	ch := make(chan component.Event, 1)
 	e.comps[0].EventCh = ch
@@ -801,7 +868,10 @@ func TestCleanup_ClosesEventChannels(t *testing.T) {
 func TestCleanup_SkipsComponentWithoutCleanupMethod(t *testing.T) {
 	e := NewEngine()
 	e.SetFS(makeTestFS())
-	e.Register("main", &testApp{}, "index.html")
+	app := &testApp{}
+	app.TargetName = "main"
+	app.Template = "index.html"
+	e.Register(app)
 
 	e.comps[0].EventCh = make(chan component.Event, 1)
 
