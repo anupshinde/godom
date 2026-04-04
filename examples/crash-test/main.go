@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"io/fs"
 	"log"
 	"os"
 	"time"
@@ -51,6 +52,13 @@ func (a *App) countdownAndDo(fn func()) {
 func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
+
+	// Custom disconnect overlay — load from a partial HTML file.
+	disconnectHTML, err := fs.ReadFile(ui, "ui/partials/disconnect.html")
+	if err != nil {
+		log.Fatal(err)
+	}
+	eng.DisconnectHTML = string(disconnectHTML)
 
 	app := &App{BGCountdown: 30}
 	app.Template = "ui/index.html"
