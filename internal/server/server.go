@@ -169,21 +169,19 @@ func Run(cfg EngineConfig) error {
 	}
 
 	// Build the JS bundle once: protobuf, protocol, plugins, bridge.
-	var bundleJS string
-	bundleJS += protobufMinJS + "\n" + protocolJS + "\n"
+	var parts []string
+	parts = append(parts, protobufMinJS, protocolJS)
 	if len(plugins) > 0 {
-		bundleJS += "var godom=window[window.GODOM_NS||'godom']=window[window.GODOM_NS||'godom']||{};godom._plugins=godom._plugins||{};godom.register=function(n,h){godom._plugins[n]=h};\n"
+		parts = append(parts, "var godom=window[window.GODOM_NS||'godom']=window[window.GODOM_NS||'godom']||{};godom._plugins=godom._plugins||{};godom.register=function(n,h){godom._plugins[n]=h};")
 		for _, pluginScripts := range plugins {
-			for _, js := range pluginScripts {
-				bundleJS += js + "\n"
-			}
+			parts = append(parts, pluginScripts...)
 		}
 	}
 	if disableExecJS {
-		bundleJS += "window.GODOM_DISABLE_EXEC=true;\n"
+		parts = append(parts, "window.GODOM_DISABLE_EXEC=true;")
 	}
 	if env.Debug {
-		bundleJS += "window.GODOM_DEBUG=true;\n"
+		parts = append(parts, "window.GODOM_DEBUG=true;")
 	}
 	hasRoot := false
 	for _, ci := range comps {
@@ -193,9 +191,10 @@ func Run(cfg EngineConfig) error {
 		}
 	}
 	if hasRoot {
-		bundleJS += "window.GODOM_ROOT=true;\n"
+		parts = append(parts, "window.GODOM_ROOT=true;")
 	}
-	bundleJS += bridge
+	parts = append(parts, bridge)
+	bundleJS := strings.Join(parts, "\n")
 
 	// Serve as external script.
 	mux.HandleFunc(scriptPath, func(w http.ResponseWriter, r *http.Request) {
