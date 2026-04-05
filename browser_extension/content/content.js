@@ -32,6 +32,8 @@
       scriptPath: scriptPath,
       wsUrl: wsUrl,
       allowRoot: rule.allowRoot || false,
+      panelComponent: rule.panelComponent || "root",
+      panelIsolateCSS: rule.panelIsolateCSS !== false,
     }, (resp) => {
       if (resp && resp.error) {
         console.error("[godom] Injection failed:", resp.error);

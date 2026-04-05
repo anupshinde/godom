@@ -10,6 +10,8 @@ const edAppUrl = document.getElementById("ed-app-url");
 const edScriptPath = document.getElementById("ed-script-path");
 const edUrlWarning = document.getElementById("ed-url-warning");
 const edAllowRoot = document.getElementById("ed-allow-root");
+const edPanelComponent = document.getElementById("ed-panel-component");
+const edPanelIsolateCSS = document.getElementById("ed-panel-isolate-css");
 const edInclude = document.getElementById("ed-include");
 const edExclude = document.getElementById("ed-exclude");
 const edSave = document.getElementById("ed-save");
@@ -90,6 +92,8 @@ function openEditor(index) {
   edAppUrl.value = rule.appUrl || "";
   edScriptPath.value = rule.scriptPath || "";
   edAllowRoot.checked = rule.allowRoot || false;
+  edPanelComponent.value = rule.panelComponent || "";
+  edPanelIsolateCSS.checked = rule.panelIsolateCSS !== false;
   edInclude.value = (rule.include || []).join("\n");
   edExclude.value = (rule.exclude || []).join("\n");
 
@@ -124,6 +128,8 @@ function collectEditor() {
     appUrl: edAppUrl.value.trim(),
     scriptPath: edScriptPath.value.trim() || "",
     allowRoot: edAllowRoot.checked,
+    panelComponent: edPanelComponent.value.trim() || "",
+    panelIsolateCSS: edPanelIsolateCSS.checked,
     include,
     exclude,
     enabled: editingIndex >= 0 ? rules[editingIndex].enabled : true,

@@ -13,7 +13,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ error: "No tab" });
       return;
     }
-    injectGodom(tabId, msg.appUrl, msg.scriptPath, msg.wsUrl, msg.allowRoot).then(
+    injectGodom(tabId, msg.appUrl, msg.scriptPath, msg.wsUrl, msg.allowRoot, msg.panelComponent, msg.panelIsolateCSS).then(
       () => sendResponse({ ok: true }),
       (err) => sendResponse({ error: err.message })
     );
@@ -21,7 +21,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot) {
+async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelComponent, panelIsolateCSS) {
   // Fetch the godom.js bundle from the app server.
   // The service worker can fetch from any origin (LAN IPs, etc.)
   // regardless of the target page's CSP.
@@ -44,7 +44,7 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot) {
   await chrome.scripting.executeScript({
     target: { tabId, frameIds: [0] },
     world: "MAIN",
-    func: (code, iconUrl, icon16Url) => {
+    func: (code, iconUrl, icon16Url, panelComponent, panelIsolateCSS) => {
       if (window.__GODOM_INJECTED__) return;
       window.__GODOM_INJECTED__ = true;
       const blob = new Blob([code], { type: "application/javascript" });
@@ -84,7 +84,7 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot) {
         + '<img src="' + icon16Url + '" width="16" height="16" style="display:block">'
         + '<button class="__godom-panel-close">&times;</button>'
         + '</div>'
-        + '<div class="__godom-panel-content" g-component="counter" g-shadow></div>';
+        + '<div class="__godom-panel-content" g-component="' + panelComponent + '"' + (panelIsolateCSS ? ' g-shadow' : '') + '></div>';
       document.body.appendChild(panel);
 
       const handle = panel.querySelector(".__godom-panel-handle");
@@ -121,6 +121,6 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot) {
         document.addEventListener("mouseup", onUp);
       });
     },
-    args: [fullCode, allowRoot ? null : chrome.runtime.getURL("icons/icon48.png"), chrome.runtime.getURL("icons/icon16.png")],
+    args: [fullCode, allowRoot ? null : chrome.runtime.getURL("icons/icon48.png"), chrome.runtime.getURL("icons/icon16.png"), panelComponent || "extension", panelIsolateCSS !== false],
   });
 }
