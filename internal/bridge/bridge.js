@@ -26,6 +26,8 @@
     // 1. State & globals
     // =========================================================================
 
+    if (typeof window.GODOM_INJECT_ALLOW_ROOT === "undefined") { window.GODOM_INJECT_ALLOW_ROOT = true; }
+
     const nsName = window.GODOM_NS || "godom";
     const ns = window[nsName] = window[nsName] || {};
     if (!ns._plugins) ns._plugins = {};
@@ -147,7 +149,7 @@
                 const name = msg.target || "";
                 const ctxList = targets[name];
                 if (!ctxList || ctxList.length === 0) {
-                    console.warn(`[godom patch] no target context for name=${name}`);
+                    if (window.GODOM_DEBUG) console.warn(`[godom patch] no target context for name=${name}`);
                     return;
                 }
                 for (let i = 0; i < ctxList.length; i++) {
@@ -246,6 +248,7 @@
     // builds the initial DOM tree inside each target element.
     function initTarget(name, msg) {
         if (name === "document.body") {
+            if (!window.GODOM_INJECT_ALLOW_ROOT) return;
             // Root component: render into document.body.
             hasRoot = true;
             cleanupAllTargets();

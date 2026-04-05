@@ -439,6 +439,21 @@ go build -o counter ./examples/counter
 ./counter
 ```
 
+## Browser extension
+
+godom includes a Chrome extension that injects `godom.js` into any website, letting your Go app enhance pages you don't control. Configure URL patterns to decide which pages get injection, and a sidebar panel renders your godom component alongside the host page.
+
+- Configurable include/exclude URL patterns per rule with enable/disable toggles
+- Resizable sidebar panel with CSS isolation (`g-shadow`), maximize/restore, and page-split layout
+- Sidebar state persists across page navigations within the same site
+- Works with named components — the sidebar renders a `g-component` of your choice (default: `extension`)
+- Root mode (`document.body`) is blocked by default to prevent replacing the host page
+- Hide badge per rule for screen recordings and demos
+- Export/import rules as JSON for sharing across machines
+- Cross-machine support via HTTPS reverse proxy (e.g. Caddy)
+
+See [browser_extension/README.md](browser_extension/README.md) for installation and configuration.
+
 ## Design principles
 
 - **Minimal JavaScript** — the JS bridge is injected automatically. For most apps, you write zero JS. When you need a JS library (charts, maps, editors), the plugin system bridges Go data to it with a thin adapter. For purely browser-side micro-interactions (scroll sync, focus, animations), a plain `<script>` tag in your template works — see [docs/javascript-libraries.md](docs/javascript-libraries.md#when-to-use-plain-javascript)
