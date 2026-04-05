@@ -7,7 +7,7 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>godom Injector</h1>
+      <h1><img src="../icons/icon48.png" width="24" height="24" style="vertical-align:middle;margin-right:8px">godom Injector</h1>
       <button id="add-rule-btn">+ New Rule</button>
     </div>
 
@@ -65,6 +65,10 @@
         <legend>Exclude Pages <span class="hint">(excludes override includes)</span></legend>
         <textarea id="ed-exclude" rows="2" placeholder="https://github.com/settings/*"></textarea>
       </fieldset>
+
+      <div class="checkbox-label">
+        <input id="ed-show-badge" type="checkbox" checked> <span>Show badge <span class="hint">(uncheck to hide the floating icon and panel)</span></span>
+      </div>
 
       <div class="checkbox-label">
         <input id="ed-allow-root" type="checkbox"> <span>Allow root mode <span class="hint">(replaces the entire page — use with caution)</span></span>

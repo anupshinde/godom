@@ -10,7 +10,8 @@
   const result = await chrome.storage.local.get("godom_rules");
   const rules = result.godom_rules || [];
 
-  for (const rule of rules) {
+  for (let i = 0; i < rules.length; i++) {
+    const rule = rules[i];
     if (!rule.enabled) continue;
     if (!rule.appUrl) continue;
 
@@ -32,8 +33,10 @@
       scriptPath: scriptPath,
       wsUrl: wsUrl,
       allowRoot: rule.allowRoot || false,
-      panelComponent: rule.panelComponent || "root",
+      panelComponent: rule.panelComponent || "extension",
       panelIsolateCSS: rule.panelIsolateCSS !== false,
+      hidden: rule.hidden || false,
+      ruleIndex: i,
     }, (resp) => {
       if (resp && resp.error) {
         console.error("[godom] Injection failed:", resp.error);
@@ -44,6 +47,14 @@
     break;
   }
 })();
+
+// Listen for hide requests from the injected page code
+document.addEventListener("__godom_hide_rule", (e) => {
+  const ruleIndex = e.detail?.ruleIndex;
+  if (ruleIndex !== undefined) {
+    chrome.runtime.sendMessage({ type: "HIDE_RULE", ruleIndex });
+  }
+});
 
 // Match URL against an array of patterns.
 // Patterns support * (any chars) and ? (single char).

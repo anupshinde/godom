@@ -9,6 +9,7 @@ const edName = document.getElementById("ed-name");
 const edAppUrl = document.getElementById("ed-app-url");
 const edScriptPath = document.getElementById("ed-script-path");
 const edUrlWarning = document.getElementById("ed-url-warning");
+const edShowBadge = document.getElementById("ed-show-badge");
 const edAllowRoot = document.getElementById("ed-allow-root");
 const edPanelComponent = document.getElementById("ed-panel-component");
 const edPanelIsolateCSS = document.getElementById("ed-panel-isolate-css");
@@ -57,8 +58,9 @@ function renderRules() {
         <div class="rule-patterns">${includeCount} include, ${excludeCount} exclude</div>
       </div>
       <div class="rule-actions">
-        <button class="edit">Edit</button>
-        <button class="delete">Del</button>
+        <button class="badge-toggle" title="${rule.hidden ? "Show badge" : "Hide badge"}">${rule.hidden ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>' : "&#x1F441;"}</button>
+        <button class="edit" title="Edit">&#9998;</button>
+        <button class="delete" title="Delete">&times;</button>
       </div>
     `;
 
@@ -68,11 +70,18 @@ function renderRules() {
       saveRules();
     });
 
+    // Badge toggle
+    card.querySelector(".badge-toggle").addEventListener("click", () => {
+      rules[i].hidden = !rules[i].hidden;
+      saveRules();
+    });
+
     // Edit
     card.querySelector(".edit").addEventListener("click", () => openEditor(i));
 
     // Delete
     card.querySelector(".delete").addEventListener("click", () => {
+      if (!confirm("Delete rule \"" + (rules[i].name || "Unnamed") + "\"?")) return;
       rules.splice(i, 1);
       saveRules();
     });
@@ -91,6 +100,7 @@ function openEditor(index) {
   edName.value = rule.name || "";
   edAppUrl.value = rule.appUrl || "";
   edScriptPath.value = rule.scriptPath || "";
+  edShowBadge.checked = !rule.hidden;
   edAllowRoot.checked = rule.allowRoot || false;
   edPanelComponent.value = rule.panelComponent || "";
   edPanelIsolateCSS.checked = rule.panelIsolateCSS !== false;
@@ -127,6 +137,7 @@ function collectEditor() {
     name: edName.value.trim() || "Unnamed",
     appUrl: edAppUrl.value.trim(),
     scriptPath: edScriptPath.value.trim() || "",
+    hidden: !edShowBadge.checked,
     allowRoot: edAllowRoot.checked,
     panelComponent: edPanelComponent.value.trim() || "",
     panelIsolateCSS: edPanelIsolateCSS.checked,

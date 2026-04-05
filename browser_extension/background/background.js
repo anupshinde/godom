@@ -7,13 +7,28 @@ chrome.action.onClicked.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === "HIDE_RULE") {
+    chrome.storage.local.get("godom_rules", (result) => {
+      const rules = result.godom_rules || [];
+      if (msg.ruleIndex >= 0 && msg.ruleIndex < rules.length) {
+        rules[msg.ruleIndex].hidden = true;
+        chrome.storage.local.set({ godom_rules: rules }, () => {
+          sendResponse({ ok: true });
+        });
+      } else {
+        sendResponse({ error: "Invalid rule index" });
+      }
+    });
+    return true;
+  }
+
   if (msg.type === "INJECT") {
     const tabId = sender.tab?.id;
     if (!tabId) {
       sendResponse({ error: "No tab" });
       return;
     }
-    injectGodom(tabId, msg.appUrl, msg.scriptPath, msg.wsUrl, msg.allowRoot, msg.panelComponent, msg.panelIsolateCSS).then(
+    injectGodom(tabId, msg.appUrl, msg.scriptPath, msg.wsUrl, msg.allowRoot, msg.panelComponent, msg.panelIsolateCSS, msg.hidden, msg.ruleIndex).then(
       () => sendResponse({ ok: true }),
       (err) => sendResponse({ error: err.message })
     );
@@ -21,7 +36,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelComponent, panelIsolateCSS) {
+async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelComponent, panelIsolateCSS, hidden, ruleIndex) {
   // Fetch the godom.js bundle from the app server.
   // The service worker can fetch from any origin (LAN IPs, etc.)
   // regardless of the target page's CSP.
@@ -44,7 +59,7 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
   await chrome.scripting.executeScript({
     target: { tabId, frameIds: [0] },
     world: "MAIN",
-    func: (code, iconUrl, icon16Url, panelComponent, panelIsolateCSS) => {
+    func: (code, iconUrl, icon16Url, panelComponent, panelIsolateCSS, hidden, ruleIndex) => {
       if (window.__GODOM_INJECTED__) return;
       window.__GODOM_INJECTED__ = true;
       const blob = new Blob([code], { type: "application/javascript" });
@@ -54,8 +69,8 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
       script.onload = () => URL.revokeObjectURL(url);
       document.head.appendChild(script);
 
-      // Floating indicator (only in embedded mode)
-      if (!iconUrl) return;
+      // Floating indicator (only in embedded mode, skip if hidden)
+      if (!iconUrl || hidden) return;
       const badge = document.createElement("div");
       badge.innerHTML = `<img src="${iconUrl}" width="20" height="20" style="display:block">`;
       badge.title = "godom active";
@@ -71,6 +86,8 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
         .__godom-panel-handle { position:absolute;top:0;left:-4px;bottom:0;width:8px;cursor:col-resize;background:transparent;z-index:1; }
         .__godom-panel-handle:hover { background:rgba(0,0,0,0.1); }
         .__godom-panel-header { display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e5e5e5;background:#0B1120;color:#E8F4FD;flex-shrink:0; }
+        .__godom-panel-btn { background:none;border:none;color:#aac;font-size:12px;cursor:pointer;padding:2px 6px; }
+        .__godom-panel-btn:hover { color:#fff; }
         .__godom-panel-close { background:none;border:none;color:#aac;font-size:20px;cursor:pointer;padding:0 4px; }
         .__godom-panel-close:hover { color:#fff; }
         .__godom-panel-content { flex:1;overflow-y:auto;padding:16px; }
@@ -81,7 +98,10 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
       panel.className = "__godom-panel";
       panel.innerHTML = '<div class="__godom-panel-handle"></div>'
         + '<div class="__godom-panel-header">'
+        + '<span style="display:flex;align-items:center;gap:8px">'
         + '<img src="' + icon16Url + '" width="16" height="16" style="display:block">'
+        + '<button class="__godom-panel-hide __godom-panel-btn" title="Hide badge and panel (restore from extension settings)">Hide</button>'
+        + '</span>'
         + '<button class="__godom-panel-close">&times;</button>'
         + '</div>'
         + '<div class="__godom-panel-content" g-component="' + panelComponent + '"' + (panelIsolateCSS ? ' g-shadow' : '') + '></div>';
@@ -99,6 +119,14 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
 
       badge.addEventListener("click", toggle);
       panel.querySelector(".__godom-panel-close").addEventListener("click", toggle);
+
+      // Hide button: remove badge + panel, dispatch event for content script to persist
+      panel.querySelector(".__godom-panel-hide").addEventListener("click", () => {
+        badge.remove();
+        panel.remove();
+        document.body.style.marginRight = "";
+        document.dispatchEvent(new CustomEvent("__godom_hide_rule", { detail: { ruleIndex } }));
+      });
 
       // Resize by dragging left edge
       handle.addEventListener("mousedown", (e) => {
@@ -121,6 +149,6 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
         document.addEventListener("mouseup", onUp);
       });
     },
-    args: [fullCode, allowRoot ? null : chrome.runtime.getURL("icons/icon48.png"), chrome.runtime.getURL("icons/icon16.png"), panelComponent || "extension", panelIsolateCSS !== false],
+    args: [fullCode, allowRoot ? null : chrome.runtime.getURL("icons/icon48.png"), chrome.runtime.getURL("icons/icon16.png"), panelComponent || "extension", panelIsolateCSS !== false, hidden, ruleIndex],
   });
 }
