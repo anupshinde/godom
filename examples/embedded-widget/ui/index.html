@@ -38,6 +38,10 @@
         .sidebar-item p { font-size: 12px; color: #888; }
 
         .footer { border-top: 3px double #1a1a1a; padding: 16px 24px; text-align: center; font-size: 12px; color: #999; background: #fff; margin-top: 40px; }
+
+        /* This rule would break the heatmap if it weren't inside a
+           Shadow DOM (g-shadow). Remove g-shadow to see the effect. */
+        .ghm span { color: yellow !important; font-size: 20px !important; }
     </style>
     <script>
         window.GODOM_WS_URL = "ws://localhost:9091/ws";
