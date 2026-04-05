@@ -16,8 +16,8 @@ var plotlyLibJS string
 //go:embed plotly.js
 var bridgeJS string
 
-// Register adds the Plotly plugin to a godom Engine.
-func Register(eng *godom.Engine) {
+// Plugin registers Plotly with a godom Engine.
+var Plugin godom.PluginFunc = func(eng *godom.Engine) {
 	eng.RegisterPlugin("plotly", plotlyLibJS, bridgeJS)
 }
 

@@ -16,8 +16,8 @@ var echartsLibJS string
 //go:embed echarts.js
 var bridgeJS string
 
-// Register adds the ECharts plugin to a godom Engine.
-func Register(eng *godom.Engine) {
+// Plugin registers ECharts with a godom Engine.
+var Plugin godom.PluginFunc = func(eng *godom.Engine) {
 	eng.RegisterPlugin("echarts", echartsLibJS, bridgeJS)
 }
 

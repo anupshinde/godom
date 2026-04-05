@@ -16,9 +16,15 @@ var chartLibJS string
 //go:embed chartjs.js
 var bridgeJS string
 
-// Register adds the Chart.js plugin to a godom Engine.
-func Register(eng *godom.Engine) {
+// Plugin registers Chart.js with a godom Engine.
+var Plugin godom.PluginFunc = func(eng *godom.Engine) {
 	eng.RegisterPlugin("chartjs", chartLibJS, bridgeJS)
+}
+
+// Register adds the Chart.js plugin to a godom Engine.
+// Deprecated: Use eng.Use(chartjs.Plugin) instead.
+func Register(eng *godom.Engine) {
+	Plugin(eng)
 }
 
 // Chart holds the configuration and data for a Chart.js chart.

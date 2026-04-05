@@ -237,8 +237,7 @@ func round1(v float64) float64 {
 func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
-	plotly.Register(eng)
-	echarts.Register(eng)
+	eng.Use(plotly.Plugin, echarts.Plugin)
 
 	root := &App{}
 	root.Template = "ui/index.html"
