@@ -59,7 +59,7 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
       const badge = document.createElement("div");
       badge.innerHTML = `<img src="${iconUrl}" width="20" height="20" style="display:block">`;
       badge.title = "godom active";
-      badge.style.cssText = "position:fixed;bottom:12px;right:12px;z-index:2147483647;background:#0B1120;border-radius:8px;padding:6px;cursor:pointer;opacity:0.7;transition:opacity 0.2s;box-shadow:0 2px 8px rgba(0,0,0,0.3);";
+      badge.style.cssText = "position:fixed;bottom:12px;right:12px;z-index:2147483647;background:#0B1120;border-radius:8px;padding:6px;cursor:pointer;opacity:0.7;transition:opacity 0.2s;box-shadow:0 0 0 2px rgba(255,255,255,0.6),0 2px 8px rgba(0,0,0,0.3);";
       badge.onmouseenter = () => badge.style.opacity = "1";
       badge.onmouseleave = () => badge.style.opacity = "0.7";
       document.body.appendChild(badge);
