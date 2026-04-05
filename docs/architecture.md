@@ -93,6 +93,8 @@ log.Fatal(eng.ListenAndServe())                             // bind port, open b
 | `internal/middleware/` | Pluggable auth (`AuthFunc`, `TokenAuth`) |
 | `internal/utils/` | Shared helpers (`LocalIP`, `PrintQR`, `OpenBrowser`) |
 | `plugins/chartjs/` | Chart.js plugin — embeds library + thin bridge adapter |
+| `plugins/plotly/` | Plotly.js plugin — embeds basic bundle + thin bridge adapter |
+| `plugins/echarts/` | ECharts plugin — embeds library + thin bridge adapter |
 
 ## Data flow
 
@@ -334,6 +336,12 @@ sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
 ```
 
 Components don't know about each other's types — they communicate through function values.
+
+### Shared pointer auto-refresh
+
+When two components embed the same pointer (e.g. `*SharedState`), modifying the shared state in one component and calling `Refresh()` automatically refreshes the sibling component too. The server detects shared embedded pointers at `Run()` time by scanning component struct fields for pointer values that appear in multiple components (`buildSharedPtrMaps`). When a refresh occurs, `refreshSharedComponents()` checks whether any sibling components share a pointer with the refreshing component and triggers their refresh as well.
+
+This means components sharing state via embedded pointers stay in sync without manual cross-component `Refresh()` calls. See `examples/shared-state/` for a working example.
 
 ### External hosting (Register-only pattern)
 

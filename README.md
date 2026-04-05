@@ -417,6 +417,14 @@ See [docs/plugins.md](docs/plugins.md) for the full list and [docs/javascript-li
 - [examples/embedded-widget/](examples/embedded-widget/) — godom components embedded in an external HTML page (separate static server, `GODOM_WS_URL`, `/godom.js` script tag, `g-component` targets, `g-shadow` for CSS isolation)
 - [examples/same-component-repeated/](examples/same-component-repeated/) — same component type rendered into multiple `g-component` targets simultaneously
 - [examples/video-player/](examples/video-player/) — video player with Go decoding frames via ffmpeg and rendering on canvas
+- [examples/breakout-game/](examples/breakout-game/) — breakout game with Go-side physics, canvas rendering, keyboard input, and collision detection
+- [examples/chart-plugins/](examples/chart-plugins/) — Plotly and ECharts plugins side by side with live-updating charts
+- [examples/markdown-editor/](examples/markdown-editor/) — two-pane markdown editor with live preview and plain JS scroll sync
+- [examples/multi-page/](examples/multi-page/) — multi-page app with user-owned mux and routing between pages
+- [examples/shared-state/](examples/shared-state/) — shared state between components via embedded struct pointers
+- [examples/dynamic-mount/](examples/dynamic-mount/) — dynamic component mounting and unmounting via `godom.mount()`
+- [examples/exec-and-call/](examples/exec-and-call/) — ExecJS (Go→browser) and `godom.call()` (browser→Go) demo
+- [examples/ws-lifecycle/](examples/ws-lifecycle/) — WebSocket lifecycle hooks (`onconnect`, `ondisconnect`, `onerror`)
 
 After cloning the repo (see [Install](#install)), run any example with:
 

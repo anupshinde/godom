@@ -771,6 +771,10 @@ Then run `air` instead of `go run .`. When you save a `.go` or `.html` file, Air
 | `same-component-repeated` | Same component in multiple DOM targets |
 | `shared-state` | Shared state between components via embedded struct |
 | `select-test` | Select/dropdown binding |
+| `chart-plugins` | Plotly and ECharts plugins side by side |
+| `dynamic-mount` | Dynamic component mounting via `godom.mount()` |
+| `exec-and-call` | ExecJS (Go→browser) and `godom.call()` (browser→Go) |
+| `ws-lifecycle` | WebSocket lifecycle hooks (`onconnect`, `ondisconnect`, `onerror`) |
 
 Run any example:
 
