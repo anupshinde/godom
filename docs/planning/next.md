@@ -2,7 +2,9 @@
 
 All planned features, improvements, and ideas are tracked in the GODOM project on Linear.
 
-## Active
+> **Note:** Active feature development is paused. The framework is feature-complete for current use cases. Future improvements will be driven by real-world usage — bug fixes and features will land as needed.
+
+## Issues and Features
 
 ### Medium priority
 
