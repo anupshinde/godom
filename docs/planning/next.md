@@ -8,7 +8,7 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 
 | # | Issue | Type |
 |---|-------|------|
-| 3 | COR-59: Browser extension integration | In Progress |
+| 3 | COR-59: Browser extension integration | Done |
 
 ## Deferred
 
