@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/anupshinde/godom/internal/component"
@@ -148,15 +149,25 @@ func TestVDOMBuildUpdate_Increment(t *testing.T) {
 		t.Fatalf("expected type 'patch', got %q", msg.Kind)
 	}
 
-	// Should have a text patch changing "0" to "1"
-	var hasTextPatch bool
+	// Should have exactly one text patch changing "0" to "1",
+	// and it should target the Count binding's node ID.
+	countBindings := ci.Bindings["Count"]
+	if len(countBindings) == 0 {
+		t.Fatal("expected bindings for Count field")
+	}
+	boundNodeID := countBindings[0].NodeID
+
+	var textPatchCount int
 	for _, p := range msg.Patches {
 		if p.Op == render.OpText && p.Text == "1" {
-			hasTextPatch = true
+			textPatchCount++
+			if p.NodeId != int32(boundNodeID) {
+				t.Errorf("text patch targets node %d, expected bound node %d", p.NodeId, boundNodeID)
+			}
 		}
 	}
-	if !hasTextPatch {
-		t.Errorf("expected text patch '0' → '1', patches: %+v", msg.Patches)
+	if textPatchCount != 1 {
+		t.Errorf("expected exactly 1 text patch '0' → '1', got %d; patches: %+v", textPatchCount, msg.Patches)
 	}
 
 	// Should be serializable
@@ -774,15 +785,22 @@ func TestHandleNodeEvent_UpdatesTreeAndBroadcasts(t *testing.T) {
 	if msg.Kind != gproto.ServerKind_SERVER_PATCH {
 		t.Errorf("expected 'patch', got %q", msg.Kind)
 	}
-	// Verify the patch carries the correct value
+	// Verify the patch carries the correct value by unmarshaling the facts
 	var hasValuePatch bool
 	for _, p := range msg.Patches {
-		if p.Op == render.OpFacts && strings.Contains(string(p.Facts), "42") {
+		if p.Op != render.OpFacts || len(p.Facts) == 0 {
+			continue
+		}
+		var facts render.WireFactsDiff
+		if err := json.Unmarshal(p.Facts, &facts); err != nil {
+			t.Fatalf("unmarshal facts: %v", err)
+		}
+		if val, ok := facts.Props["value"]; ok && fmt.Sprint(val) == "42" {
 			hasValuePatch = true
 		}
 	}
 	if !hasValuePatch {
-		t.Errorf("expected facts patch containing value '42', got patches: %+v", msg.Patches)
+		t.Errorf("expected facts patch with Props[value]='42', got patches: %+v", msg.Patches)
 	}
 }
 
@@ -959,7 +977,7 @@ func (a *refreshApp) IncrementAndRefresh() {
 	}
 }
 
-func TestHandleMethodCall_SkipsRebuildWhenRefreshed(t *testing.T) {
+func TestHandleMethodCall_DoubleRefreshIsHarmless(t *testing.T) {
 	app := &refreshApp{Count: 0}
 	v := reflect.ValueOf(app)
 	templates, err := vdom.ParseTemplate(`<!DOCTYPE html><html><head></head><body><span g-text="Count">0</span></body></html>`)
@@ -1022,13 +1040,12 @@ func TestHandleMethodCall_SkipsRebuildWhenRefreshed(t *testing.T) {
 		t.Errorf("expected Count=1 after IncrementAndRefresh, got %d", app.Count)
 	}
 
-	// NOTE: RefreshFn is called twice — once by the method itself, once by
-	// handleMethodCall after the method returns. This double-refresh is
-	// harmless (second diff is empty → no broadcast) but ideally
-	// handleMethodCall would detect that Refresh was already called and skip.
-	// The old Refreshed flag did this but was removed.
-	if refreshCount < 1 {
-		t.Error("expected RefreshFn to be called at least once")
+	// RefreshFn is called once by the method itself (IncrementAndRefresh calls
+	// ci.RefreshFn). handleMethodCall then calls executeRefresh which does a
+	// BuildUpdate directly (not through RefreshFn). The second BuildUpdate finds
+	// no diff (already applied by the method's RefreshFn) → no extra broadcast.
+	if refreshCount != 1 {
+		t.Errorf("expected RefreshFn called exactly 1 time (by the method), got %d", refreshCount)
 	}
 
 	// Client should receive at least one message
@@ -1291,16 +1308,32 @@ func TestBuildSurgicalPatches_UpdatesLiveTree(t *testing.T) {
 	app.Name = "Bob"
 	_ = (&serverCtx{lookup: newNodeLookup()}).buildSurgicalPatches(ci, []string{"Name"})
 
-	// Verify the live tree was updated in place
-	// Find text node with "Bob" in the live tree
-	found := false
-	walkTree(ci.Tree, func(n vdom.Node) {
-		if tn, ok := n.(*vdom.TextNode); ok && tn.Text == "Bob" {
-			found = true
+	// Verify the live tree was updated at the specific bound node
+	bindings := ci.Bindings["Name"]
+	if len(bindings) == 0 {
+		t.Fatal("expected bindings for 'Name' field")
+	}
+	foundText := false
+	for _, b := range bindings {
+		if b.Kind == "text" {
+			node := vdom.FindNodeByID(ci.Tree, b.NodeID)
+			if node == nil {
+				t.Errorf("bound node ID %d not found in tree", b.NodeID)
+				continue
+			}
+			// The text binding points directly to a TextNode
+			if tn, ok := node.(*vdom.TextNode); ok {
+				foundText = true
+				if tn.Text != "Bob" {
+					t.Errorf("expected bound text node to contain 'Bob', got %q", tn.Text)
+				}
+			} else {
+				t.Errorf("expected TextNode at binding NodeID %d, got %T", b.NodeID, node)
+			}
 		}
-	})
-	if !found {
-		t.Error("expected live tree to be updated with 'Bob'")
+	}
+	if !foundText {
+		t.Error("expected a 'text' binding for Name to be found and updated")
 	}
 }
 
@@ -4301,5 +4334,377 @@ func TestRun_EmbeddedMode_NoDocumentBody(t *testing.T) {
 	}
 	if !findTextInTree(&tree, "09:00:00") {
 		t.Error("expected tree to contain '09:00:00'")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// BuildComponentInfo tests
+// ---------------------------------------------------------------------------
+
+type bciApp struct {
+	Component struct{} // dummy embed
+	Title     string
+}
+
+func TestBuildComponentInfo_Success(t *testing.T) {
+	app := &bciApp{Title: "hello"}
+	fsys := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(
+			`<!DOCTYPE html><html><head></head><body><span g-text="Title">placeholder</span></body></html>`,
+		)},
+	}
+
+	ci := BuildComponentInfo(app, fsys, "index.html")
+
+	if ci == nil {
+		t.Fatal("expected non-nil component.Info")
+	}
+	if ci.Value.Interface() != app {
+		t.Error("expected Value to point to the app struct")
+	}
+	if ci.Typ.Name() != "bciApp" {
+		t.Errorf("expected Typ.Name()='bciApp', got %q", ci.Typ.Name())
+	}
+	if ci.HTMLBody == "" {
+		t.Error("expected HTMLBody to be set")
+	}
+	if ci.VDOMTemplates == nil || len(ci.VDOMTemplates) == 0 {
+		t.Error("expected VDOMTemplates to be populated")
+	}
+}
+
+func TestBuildComponentInfo_PreservesHTMLBody(t *testing.T) {
+	app := &bciApp{Title: "test"}
+	html := `<!DOCTYPE html><html><head></head><body><div class="wrapper"><span g-text="Title">x</span></div></body></html>`
+	fsys := fstest.MapFS{
+		"page.html": &fstest.MapFile{Data: []byte(html)},
+	}
+
+	ci := BuildComponentInfo(app, fsys, "page.html")
+
+	if !strings.Contains(ci.HTMLBody, `class="wrapper"`) {
+		t.Error("expected HTMLBody to preserve the wrapper div")
+	}
+	if !strings.Contains(ci.HTMLBody, `g-text="Title"`) {
+		t.Error("expected HTMLBody to preserve the g-text directive")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// stripSourceMapLines tests
+// ---------------------------------------------------------------------------
+
+func TestStripSourceMapLines_RemovesSourceMap(t *testing.T) {
+	input := "var x = 1;\n//# sourceMappingURL=foo.map\nvar y = 2;"
+	got := stripSourceMapLines(input)
+	want := "var x = 1;\nvar y = 2;"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestStripSourceMapLines_RemovesWithLeadingWhitespace(t *testing.T) {
+	input := "var x = 1;\n  //# sourceMappingURL=foo.map\nvar y = 2;"
+	got := stripSourceMapLines(input)
+	want := "var x = 1;\nvar y = 2;"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestStripSourceMapLines_PreservesNonSourceMapComments(t *testing.T) {
+	input := "// regular comment\nvar x = 1;\n//# sourceURL=foo.js"
+	got := stripSourceMapLines(input)
+	if got != input {
+		t.Errorf("should preserve non-sourcemap lines, got %q", got)
+	}
+}
+
+func TestStripSourceMapLines_EmptyInput(t *testing.T) {
+	got := stripSourceMapLines("")
+	if got != "" {
+		t.Errorf("expected empty string, got %q", got)
+	}
+}
+
+func TestStripSourceMapLines_MultipleSourceMapLines(t *testing.T) {
+	input := "line1\n//# sourceMappingURL=a.map\nline2\n//# sourceMappingURL=b.map\nline3"
+	got := stripSourceMapLines(input)
+	want := "line1\nline2\nline3"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestStripSourceMapLines_NoNewlines(t *testing.T) {
+	input := "//# sourceMappingURL=foo.map"
+	got := stripSourceMapLines(input)
+	if got != "" {
+		t.Errorf("expected empty string, got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// BuildInit reconnect path tests
+// ---------------------------------------------------------------------------
+
+func TestBuildInit_Reconnect_ReusesExistingTree(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 5}
+	ci := makeCounterCI(app)
+
+	// First init builds tree from scratch
+	_ = BuildInit(ci)
+	if ci.Tree == nil {
+		t.Fatal("expected tree to be built after first init")
+	}
+
+	// Capture the root node ID
+	rootID := ci.Tree.NodeID()
+
+	// Change state without calling BuildUpdate
+	app.Count = 10
+
+	// Second init (reconnect) should re-resolve but keep tree IDs stable
+	msg2 := BuildInit(ci)
+
+	if msg2 == nil {
+		t.Fatal("expected non-nil message on reconnect")
+	}
+	if msg2.Kind != gproto.ServerKind_SERVER_INIT {
+		t.Errorf("expected SERVER_INIT, got %v", msg2.Kind)
+	}
+
+	// Tree should still exist with same root ID (IDs preserved via MergeTree)
+	if ci.Tree.NodeID() != rootID {
+		t.Errorf("expected root ID %d to be preserved on reconnect, got %d", rootID, ci.Tree.NodeID())
+	}
+
+	// The reconnected tree should reflect the new count
+	var tree render.WireNode
+	if err := json.Unmarshal(msg2.Tree, &tree); err != nil {
+		t.Fatal(err)
+	}
+	if !findTextInTree(&tree, "10") {
+		t.Error("expected reconnect tree to reflect updated Count=10")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// executeRefresh tests
+// ---------------------------------------------------------------------------
+
+// newWSPairWithServerConn creates a WebSocket pair where both server and client
+// connections are accessible. Returns (serverConn, clientConn, cleanup).
+func newWSPairWithServerConn(t *testing.T) (*websocket.Conn, *websocket.Conn, func()) {
+	t.Helper()
+	var serverConn *websocket.Conn
+	done := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		up := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+		c, err := up.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		serverConn = c
+		close(done)
+		time.Sleep(5 * time.Second) // keep handler alive
+	}))
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+	client, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		srv.Close()
+		t.Fatalf("dial: %v", err)
+	}
+	<-done
+	return serverConn, client, func() {
+		client.Close()
+		srv.Close()
+	}
+}
+
+func TestExecuteRefresh_SurgicalPath(t *testing.T) {
+	app := &surgicalApp{Name: "Alice"}
+	ci := makeSurgicalCI(app)
+	ci.Tree = buildTree(ci)
+	ci.EventCh = make(chan component.Event, 10)
+
+	srvConn, client, cleanup := newWSPairWithServerConn(t)
+	defer cleanup()
+	pool := &connPool{}
+	pool.add(srvConn)
+
+	// Mark a field and execute refresh — should take surgical path
+	ci.AddMarkedFields("Name")
+	app.Name = "Bob"
+
+	sctx := &serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}
+	sctx.executeRefresh(ci)
+
+	// Should have broadcast a patch
+	client.SetReadDeadline(time.Now().Add(time.Second))
+	_, data, err := client.ReadMessage()
+	if err != nil {
+		t.Fatalf("expected broadcast from surgical refresh: %v", err)
+	}
+
+	var msg gproto.ServerMessage
+	if err := proto.Unmarshal(data, &msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg.Kind != gproto.ServerKind_SERVER_PATCH {
+		t.Errorf("expected SERVER_PATCH, got %v", msg.Kind)
+	}
+	// Verify actual text change in patches
+	var foundBob bool
+	for _, p := range msg.Patches {
+		if p.Op == render.OpText && p.Text == "Bob" {
+			foundBob = true
+		}
+	}
+	if !foundBob {
+		t.Errorf("expected patch with text 'Bob', patches: %+v", msg.Patches)
+	}
+}
+
+func TestExecuteRefresh_FallbackToFullBuildUpdate(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+	_ = BuildInit(ci)
+	ci.EventCh = make(chan component.Event, 10)
+
+	srvConn, client, cleanup := newWSPairWithServerConn(t)
+	defer cleanup()
+	pool := &connPool{}
+	pool.add(srvConn)
+
+	// Change state without marking fields — forces full BuildUpdate path
+	app.Count = 42
+
+	sctx := &serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}
+	sctx.executeRefresh(ci)
+
+	client.SetReadDeadline(time.Now().Add(time.Second))
+	_, data, err := client.ReadMessage()
+	if err != nil {
+		t.Fatalf("expected broadcast from full refresh: %v", err)
+	}
+
+	var msg gproto.ServerMessage
+	if err := proto.Unmarshal(data, &msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg.Kind != gproto.ServerKind_SERVER_PATCH {
+		t.Errorf("expected SERVER_PATCH, got %v", msg.Kind)
+	}
+	// Verify the text change to "42"
+	var found42 bool
+	for _, p := range msg.Patches {
+		if p.Op == render.OpText && p.Text == "42" {
+			found42 = true
+		}
+	}
+	if !found42 {
+		t.Errorf("expected patch with text '42', patches: %+v", msg.Patches)
+	}
+}
+
+func TestExecuteRefresh_NoChange_NoBroadcast(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 5}
+	ci := makeCounterCI(app)
+	_ = BuildInit(ci)
+	ci.EventCh = make(chan component.Event, 10)
+
+	srvConn, client, cleanup := newWSPairWithServerConn(t)
+	defer cleanup()
+	pool := &connPool{}
+	pool.add(srvConn)
+
+	// No state change — should not broadcast
+	sctx := &serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}
+	sctx.executeRefresh(ci)
+
+	client.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	_, _, err := client.ReadMessage()
+	if err == nil {
+		t.Error("expected no broadcast when nothing changed")
+	}
+}
+
+func TestExecuteRefresh_EmptySurgicalPatches_FallsBackToFull(t *testing.T) {
+	// When surgical patches returns empty (e.g. field marked but no binding),
+	// executeRefresh should fall back to full BuildUpdate.
+	app := &counterApp{Step: 1, Count: 0}
+	ci := makeCounterCI(app)
+	_ = BuildInit(ci)
+	ci.EventCh = make(chan component.Event, 10)
+
+	srvConn, client, cleanup := newWSPairWithServerConn(t)
+	defer cleanup()
+	pool := &connPool{}
+	pool.add(srvConn)
+
+	// Mark a non-existent field — surgical path returns empty patches
+	ci.AddMarkedFields("NonExistentField")
+	// Also change actual state so full BuildUpdate produces a diff
+	app.Count = 99
+
+	sctx := &serverCtx{pool: pool, sm: &sharedPtrMaps{}, lookup: newNodeLookup()}
+	sctx.executeRefresh(ci)
+
+	client.SetReadDeadline(time.Now().Add(time.Second))
+	_, data, err := client.ReadMessage()
+	if err != nil {
+		t.Fatalf("expected fallback broadcast: %v", err)
+	}
+
+	var msg gproto.ServerMessage
+	if err := proto.Unmarshal(data, &msg); err != nil {
+		t.Fatal(err)
+	}
+	// The full BuildUpdate path should have produced a text patch for "99"
+	var found99 bool
+	for _, p := range msg.Patches {
+		if p.Op == render.OpText && p.Text == "99" {
+			found99 = true
+		}
+	}
+	if !found99 {
+		t.Errorf("expected text patch '99' from fallback path, patches: %+v", msg.Patches)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// BuildUpdate edge cases
+// ---------------------------------------------------------------------------
+
+func TestBuildUpdate_NilTree_ReturnsInitMessage(t *testing.T) {
+	// When Tree is nil, BuildUpdate should build from scratch and return init message
+	app := &counterApp{Step: 1, Count: 7}
+	ci := makeCounterCI(app)
+	// Don't call BuildInit — Tree stays nil
+
+	msg, _ := BuildUpdate(ci)
+	if msg == nil {
+		t.Fatal("expected init message when Tree is nil")
+	}
+
+	// Should be an init-style message with full tree
+	if len(msg.Tree) == 0 {
+		t.Error("expected non-empty tree in init message")
+	}
+}
+
+func TestBuildUpdate_EmptyPatches_ReturnsNil(t *testing.T) {
+	app := &counterApp{Step: 1, Count: 5}
+	ci := makeCounterCI(app)
+	_ = BuildInit(ci)
+
+	// No changes
+	msg, fields := BuildUpdate(ci)
+	if msg != nil {
+		t.Error("expected nil when no patches")
+	}
+	if fields != nil {
+		t.Error("expected nil changed fields when no patches")
 	}
 }
