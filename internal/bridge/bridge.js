@@ -149,7 +149,7 @@
                 const name = msg.target || "";
                 const ctxList = targets[name];
                 if (!ctxList || ctxList.length === 0) {
-                    console.warn(`[godom patch] no target context for name=${name}`);
+                    if (window.GODOM_DEBUG) console.warn(`[godom patch] no target context for name=${name}`);
                     return;
                 }
                 for (let i = 0; i < ctxList.length; i++) {
