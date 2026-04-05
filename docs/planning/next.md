@@ -8,7 +8,7 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 
 | # | Issue | Type |
 |---|-------|------|
-| 3 | COR-59: Browser extension integration | Done |
+| 3 | COR-86: Multi-app isolation (scope bridges, components, plugins per instance) | Feature |
 
 ## Deferred
 
