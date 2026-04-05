@@ -81,6 +81,6 @@ For `document.body` components (via `QuickServe`), the server ensures the root i
 
 The `examples/multi-component/` example demonstrates nested composition: a layout component whose template contains `g-component` targets for child components (counter, clock, sidebar, etc.) using QuickServe. The `examples/embedded-widget/` example demonstrates external hosting with flat components.
 
-### Future changes may affect this
+### How init ordering works
 
-This works because the bridge queues pending inits and retries them after each successful init render. Changes to the init queueing mechanism or target discovery could affect nested composition. See COR-76 for the planned pull-based init model.
+The bridge queues pending inits and retries them after each successful init render. Init is pull-based: the bridge discovers `[g-component]` elements in the DOM and requests their trees via `BROWSER_INIT_REQUEST`. This means registration order is flexible — child components can be registered before or after parent components.

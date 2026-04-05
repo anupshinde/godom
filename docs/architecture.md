@@ -187,10 +187,10 @@ Each component instance has a buffered event channel (`EventCh`) and a single pr
 This eliminates race conditions between concurrent sources (multiple browser tabs, background goroutines) without requiring locks on the component's state. Node-to-component routing uses a lazily-populated `nodeLookup` index (O(1) on hit, tree traversal on first miss). One exception uses `ci.Mu` directly: `handleInit` (writes the tree on new connection — must be synchronous so the browser receives the tree before subsequent patches).
 
 Two filter hooks control event flow:
-- `shouldEnqueue(event)` — called before sending to the channel (for future deduplication)
-- `shouldProcess(event)` — called before processing from the channel (for future filtering)
+- `shouldEnqueue(event)` — called before sending to the channel
+- `shouldProcess(event)` — called before processing from the channel
 
-Both return `true` for now.
+Both currently return `true` unconditionally.
 
 ### Surgical refresh (MarkRefresh)
 

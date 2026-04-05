@@ -73,12 +73,4 @@ SSE has built-in auto-reconnect via `EventSource`. WebSocket requires manual rec
 
 For godom (localhost-only, fast input binding, potential high-frequency events), WebSocket is the better fit.
 
-## Current dependency situation
-
-We use `github.com/gorilla/websocket` for WebSocket and `google.golang.org/protobuf` for the binary wire format. Options for reducing dependencies:
-
-1. **`golang.org/x/net/websocket`** — already in our dependency tree for HTML parsing. Basic but sufficient for godom's needs (send/receive binary messages). The most pragmatic path to drop gorilla.
-
-2. **Wait for stdlib WebSocket** — Go may add native WebSocket support in a future release. Monitor this.
-
-3. **SSE + POST** — eliminates all WebSocket code. Viable if we add client-side throttling for high-frequency events. The overhead concern is real but small on localhost.
+For ideas on alternative transports and media streaming, see [planning/future-protocol-extensions.md](planning/future-protocol-extensions.md).

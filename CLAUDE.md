@@ -46,6 +46,6 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 - `docs/nested-components.md` — nested component composition in embedded mode, gotchas
 - `docs/planning/next.md` — prioritized roadmap (details tracked in Linear)
 - `docs/transport.md` — WebSocket vs SSE+POST analysis
-- `docs/protocol.md` — wire format (protobuf), transport decisions, media streaming
+- `docs/protocol.md` — wire protocol (protobuf message types, transport)
 - `internal/proto/protocol.proto` — protobuf schema defining the wire format
 - `internal/vdom/README.md` — VDOM package documentation with usage examples
