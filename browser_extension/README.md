@@ -53,10 +53,10 @@ The simplest setup is a reverse proxy with TLS on the godom machine:
 
 ```bash
 # Using Caddy
-caddy reverse-proxy --from https://192.168.1.50:9443 --to localhost:9091
+caddy reverse-proxy --from https://192.168.1.xx:9443 --to localhost:9091
 ```
 
-Then use `https://192.168.1.50:9443` as the App URL.
+Then use `https://192.168.1.xx:9443` as the App URL.
 
 Other options: Cloudflare Tunnel (`cloudflared tunnel --url http://localhost:9091`) or Tailscale with HTTPS certificates.
 
