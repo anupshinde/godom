@@ -1,6 +1,5 @@
 // godom Injector — background service worker
-
-const STORAGE_KEY = "godom_rules";
+// Handles extension icon click and godom.js injection requests.
 
 // Click extension icon → open options in a new tab
 chrome.action.onClicked.addListener(() => {
@@ -8,20 +7,6 @@ chrome.action.onClicked.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === "GET_RULES") {
-    chrome.storage.local.get(STORAGE_KEY, (result) => {
-      sendResponse({ rules: result[STORAGE_KEY] || [] });
-    });
-    return true;
-  }
-
-  if (msg.type === "SAVE_RULES") {
-    chrome.storage.local.set({ [STORAGE_KEY]: msg.rules }, () => {
-      sendResponse({ ok: true });
-    });
-    return true;
-  }
-
   if (msg.type === "INJECT") {
     const tabId = sender.tab?.id;
     if (!tabId) {
