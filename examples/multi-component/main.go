@@ -18,7 +18,7 @@ var ui embed.FS
 func main() {
 	eng := godom.NewEngine()
 	eng.SetFS(ui)
-	chartjs.Register(eng)
+	eng.Use(chartjs.Plugin)
 
 	// Child components — registered by name, auto-wired via g-component attributes
 	navbar := &Navbar{ComponentCount: 6, Status: "Connected"}
