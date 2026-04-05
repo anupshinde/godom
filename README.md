@@ -294,7 +294,8 @@ eng.NoAuth = true                       // Disable token auth (default false = a
 eng.FixedAuthToken = "my-secret"                // Fixed token (default: random per startup)
 eng.NoBrowser = true                            // Don't auto-open browser
 eng.Quiet = true                                // Suppress startup output
-eng.RegisterPlugin("chartjs", libJS, bridgeJS)  // Register a plugin with one or more JS scripts
+eng.Use(chartjs.Plugin, plotly.Plugin)           // Register plugins (Chart.js, Plotly, ECharts, etc.)
+eng.RegisterPlugin("myplugin", bridgeJS)         // Register a custom plugin with one or more JS scripts
 eng.SetFS(fsys)                                 // Set the shared UI filesystem for templates
 eng.DisconnectHTML = "<div>Custom overlay</div>"        // Custom disconnect overlay (root mode)
 eng.DisconnectBadgeHTML = "<span>Offline</span>"        // Custom disconnect badge (embedded mode)
@@ -384,21 +385,17 @@ Integrate JS libraries (charts, maps, editors) without authoring JS yourself. A 
 <canvas g-plugin:chartjs="MyChart"></canvas>
 ```
 
-```go
-eng.RegisterPlugin("chartjs", libraryJS, bridgeJS)  // register with one or more JS scripts
-```
-
-The plugin JS calls `godom.register(name, {init, update})` to handle data from Go. Scripts are injected in order — typically the library first, then the bridge. See `plugins/chartjs/` for a complete example.
-
-See [docs/javascript-libraries.md](docs/javascript-libraries.md) for a detailed guide on using any JS library — with or without a plugin package.
-
-godom ships a Chart.js plugin (`github.com/anupshinde/godom/plugins/chartjs`) that embeds Chart.js and provides a minimal Go struct for chart data. Charts are configured using plain `map[string]interface{}` — any Chart.js property passes straight through:
+Shipped plugins are registered with `eng.Use()`:
 
 ```go
-import "github.com/anupshinde/godom/plugins/chartjs"
-
-chartjs.Register(eng)  // registers plugin + embeds Chart.js library
+eng.Use(chartjs.Plugin)   // Chart.js — line, bar, pie, doughnut
+eng.Use(plotly.Plugin)    // Plotly — scatter, bar, heatmaps, dual-axis
+eng.Use(echarts.Plugin)   // ECharts — line, bar, pie, candlestick, geo
 ```
+
+For custom/one-off integrations, use the lower-level `eng.RegisterPlugin(name, scripts...)` to register JS adapters directly. The plugin JS calls `godom.register(name, {init, update})` to handle data from Go. Scripts are injected in order — typically the library first, then the bridge.
+
+See [docs/plugins.md](docs/plugins.md) for the full list and [docs/javascript-libraries.md](docs/javascript-libraries.md) for a guide on using any JS library — with or without a plugin package.
 
 ## Examples
 

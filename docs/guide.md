@@ -558,7 +558,7 @@ GODOM_NO_BROWSER=1 GODOM_HOST=0.0.0.0 GODOM_PORT=8081 GODOM_TOKEN=my-secret ./my
 
 Plugins bridge JavaScript libraries for things Go can't render (charts, maps, rich editors).
 
-**Built-in: Chart.js**
+**Built-in plugins: Chart.js, Plotly, ECharts**
 
 ```go
 import "github.com/anupshinde/godom/plugins/chartjs"
@@ -569,7 +569,7 @@ func main() {
 
     eng := godom.NewEngine()
     eng.SetFS(ui)
-    chartjs.Register(eng)
+    eng.Use(chartjs.Plugin)  // or plotly.Plugin, echarts.Plugin
     log.Fatal(eng.QuickServe(app))
 }
 ```

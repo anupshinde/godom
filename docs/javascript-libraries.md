@@ -22,7 +22,7 @@ You write a small JS adapter that receives data from your Go struct, and the fra
 | Approach | When to use | Example |
 |----------|-------------|---------|
 | [Keep it local](#keep-it-local) | You're integrating a library for your own app | `examples/charts-without-plugin/` |
-| [Create a plugin package](#create-a-plugin-package) | You want a reusable package that others can import | `plugins/chartjs/` |
+| [Create a plugin package](#create-a-plugin-package) | You want a reusable package that others can import | `plugins/chartjs/`, `plugins/plotly/`, `plugins/echarts/` |
 
 Both use the same mechanism under the hood: `eng.RegisterPlugin()` to register a JS adapter, and `g-plugin:name` in HTML to bind a Go struct field to it. The difference is just where the code lives.
 
@@ -164,7 +164,7 @@ When you want a reusable, importable package — something others can `go get` a
 
 ```
 plugins/mylib/
-├── mylib.go       # Go package — Register function + optional types
+├── mylib.go       # Go package — Plugin var + optional types
 ├── mylib.js       # JS adapter
 └── mylib.min.js   # (optional) embedded JS library
 ```
@@ -199,7 +199,8 @@ import (
 //go:embed mylib.js
 var bridgeJS string
 
-func Register(eng *godom.Engine) {
+// Plugin registers mylib with a godom Engine.
+var Plugin godom.PluginFunc = func(eng *godom.Engine) {
     eng.RegisterPlugin("mylib", bridgeJS)
 }
 ```
@@ -215,7 +216,8 @@ var libJS string
 //go:embed mylib.js
 var bridgeJS string
 
-func Register(eng *godom.Engine) {
+// Plugin registers mylib with a godom Engine.
+var Plugin godom.PluginFunc = func(eng *godom.Engine) {
     eng.RegisterPlugin("mylib", libJS, bridgeJS)
 }
 ```
@@ -246,14 +248,15 @@ func main() {
 
     eng := godom.NewEngine()
     eng.SetFS(ui)
-    mylib.Register(eng)
+    eng.Use(mylib.Plugin)
     log.Fatal(eng.QuickServe(app))
 }
 ```
 
-### Working example
+### Working examples
 
-See `plugins/chartjs/` + `examples/system-monitor-chartjs/` for the Chart.js plugin — embeds the library, provides a Go struct, and powers a full system monitor with live charts.
+- `plugins/chartjs/` + `examples/system-monitor-chartjs/` — Chart.js plugin with live system monitor
+- `plugins/plotly/` + `plugins/echarts/` + `examples/chart-plugins/` — Plotly and ECharts side by side
 
 ---
 
