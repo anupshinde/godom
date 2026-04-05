@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>godom Injector</h1>
+      <button id="add-rule-btn">+ New Rule</button>
+    </div>
+
+    <div id="rules-list"></div>
+
+    <div id="empty-state" class="empty" hidden>
+      No injection rules yet. Click "+ New Rule" to get started.
+    </div>
+
+    <div class="footer">
+      <button id="export-btn" class="btn-secondary">Export</button>
+      <button id="import-btn" class="btn-secondary">Import</button>
+    </div>
+  </div>
+
+  <!-- Rule editor dialog -->
+  <div id="editor-overlay" class="overlay" hidden>
+    <div class="editor">
+      <div class="editor-header">
+        <h2 id="editor-title">New Rule</h2>
+        <button id="ed-close" class="editor-close">&times;</button>
+      </div>
+
+      <label>
+        Rule Name
+        <input id="ed-name" type="text" placeholder="e.g. GitHub Helper">
+      </label>
+
+      <label>
+        godom App URL
+        <input id="ed-app-url" type="text" placeholder="http://localhost:9091">
+        <div id="ed-url-warning" class="url-warning" hidden></div>
+      </label>
+
+      <label>
+        Script Path <span class="hint">(leave blank for default /godom.js)</span>
+        <input id="ed-script-path" type="text" placeholder="/godom.js">
+      </label>
+
+      <fieldset>
+        <legend>Include Pages <span class="hint">(one pattern per line, * = wildcard)</span></legend>
+        <textarea id="ed-include" rows="3" placeholder="https://github.com/*&#10;https://gitlab.com/myorg/*"></textarea>
+      </fieldset>
+
+      <fieldset>
+        <legend>Exclude Pages <span class="hint">(excludes override includes)</span></legend>
+        <textarea id="ed-exclude" rows="2" placeholder="https://github.com/settings/*"></textarea>
+      </fieldset>
+
+      <div class="checkbox-label">
+        <input id="ed-allow-root" type="checkbox"> <span>Allow root mode <span class="hint">(replaces the entire page — use with caution)</span></span>
+      </div>
+
+      <div class="editor-actions">
+        <button id="ed-save" class="btn-primary">Save</button>
+        <button id="ed-cancel" class="btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import dialog -->
+  <div id="import-overlay" class="overlay" hidden>
+    <div class="editor">
+      <div class="editor-header">
+        <h2>Import Rules</h2>
+        <button id="import-close" class="editor-close">&times;</button>
+      </div>
+      <p class="import-hint">Paste your exported JSON below:</p>
+      <textarea id="import-json" rows="10" placeholder='[{"name":"...","appUrl":"...","include":["..."],"exclude":[],"enabled":true}]'></textarea>
+      <div class="editor-actions">
+        <button id="import-copy" class="btn-secondary" hidden>Copy to Clipboard</button>
+        <button id="import-save" class="btn-primary">Import</button>
+        <button id="import-cancel" class="btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
