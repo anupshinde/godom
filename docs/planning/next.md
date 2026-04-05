@@ -8,9 +8,8 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 
 | # | Issue | Type |
 |---|-------|------|
-| 1 | COR-84: Clean up documentation — separate implemented features from future plans | Improvement |
-| 2 | COR-85: Coalesce multiple queued Refresh events into a single render | Improvement |
-| 3 | COR-48: Shadow DOM isolation (optional per-component) | Feature |
+| 1 | COR-85: Coalesce multiple queued Refresh events into a single render | Improvement |
+| 2 | COR-48: Shadow DOM isolation (optional per-component) | Feature |
 
 ### Medium priority
 
