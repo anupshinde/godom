@@ -82,7 +82,10 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
       // Sidebar panel (inline styles, no shadow DOM)
       const style = document.createElement("style");
       style.textContent = `
-        .__godom-panel { position:fixed;top:0;right:0;bottom:0;width:0;z-index:2147483647;transition:width 0.25s ease;overflow:hidden;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,0.15);display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;color:#1a1a1a; }
+        .__godom-panel { position:fixed;top:0;right:0;bottom:0;width:0;z-index:2147483647;transition:width 0.25s ease,left 0.25s ease;overflow:hidden;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,0.15);display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;color:#1a1a1a; }
+        .__godom-panel.maximized { left:0;width:100% !important;box-shadow:none; }
+        .__godom-panel.maximized .__godom-panel-header { flex-direction:row-reverse; }
+        .__godom-panel.maximized .__godom-panel-header img { display:none !important; }
         .__godom-panel-handle { position:absolute;top:0;left:-4px;bottom:0;width:8px;cursor:col-resize;background:transparent;z-index:1; }
         .__godom-panel-handle:hover { background:rgba(0,0,0,0.1); }
         .__godom-panel-header { display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e5e5e5;background:#0B1120;color:#E8F4FD;flex-shrink:0; }
@@ -111,7 +114,7 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
         + '<button class="__godom-panel-menu-btn" title="Menu">&#x22EE;</button>'
         + '<div class="__godom-panel-menu">'
         + '<button class="__godom-menu-close">Close Panel</button>'
-        + '<button class="__godom-menu-popout">Popout</button>'
+        + '<button class="__godom-menu-maximize">Maximize</button>'
         + '<button class="__godom-menu-hide">Hide Badge</button>'
         + '</div>'
         + '</div>'
@@ -120,17 +123,43 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
       document.body.appendChild(panel);
 
       const handle = panel.querySelector(".__godom-panel-handle");
+      const menuWrap = panel.querySelector(".__godom-panel-menu-wrap");
 
+      // Restore panel state from sessionStorage
+      var saved = {};
+      try { saved = JSON.parse(sessionStorage.__godom_panel || "{}"); } catch(e) {}
       let sidebarOpen = false;
-      let sidebarWidth = 320;
+      let sidebarWidth = saved.width || 320;
+
+      function saveState() {
+        sessionStorage.__godom_panel = JSON.stringify({ open: sidebarOpen, width: sidebarWidth });
+      }
       function toggle() {
         sidebarOpen = !sidebarOpen;
         panel.style.width = sidebarOpen ? sidebarWidth + "px" : "0";
         document.body.style.marginRight = sidebarOpen ? sidebarWidth + "px" : "";
+        saveState();
       }
 
+      let maximized = false;
+
+      // Auto-open if it was open on previous page
+      if (saved.open) { toggle(); }
+
       badge.addEventListener("click", toggle);
-      panel.querySelector(".__godom-panel-close").addEventListener("click", toggle);
+      panel.querySelector(".__godom-panel-close").addEventListener("click", () => {
+        if (maximized) {
+          maximized = false;
+          panel.classList.remove("maximized");
+          handle.style.display = "";
+          menuWrap.style.display = "";
+          document.body.style.marginRight = sidebarOpen ? sidebarWidth + "px" : "";
+          badge.style.display = "";
+          maxBtn.textContent = "Maximize";
+        } else {
+          toggle();
+        }
+      });
 
       // Kebab menu
       const menuBtn = panel.querySelector(".__godom-panel-menu-btn");
@@ -144,13 +173,28 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
       // Menu: Close Panel
       panel.querySelector(".__godom-menu-close").addEventListener("click", () => {
         menu.classList.remove("open");
+        if (maximized) {
+          maximized = false;
+          panel.classList.remove("maximized");
+          handle.style.display = "";
+          menuWrap.style.display = "";
+          badge.style.display = "";
+          maxBtn.textContent = "Maximize";
+        }
         if (sidebarOpen) toggle();
       });
 
-      // Menu: Popout (open panel content in a new window)
-      panel.querySelector(".__godom-menu-popout").addEventListener("click", () => {
+      // Menu: Maximize/Restore — toggle full overlay
+      const maxBtn = panel.querySelector(".__godom-menu-maximize");
+      maxBtn.addEventListener("click", () => {
         menu.classList.remove("open");
-        // TODO: popout functionality
+        maximized = !maximized;
+        panel.classList.toggle("maximized", maximized);
+        handle.style.display = maximized ? "none" : "";
+        menuWrap.style.display = maximized ? "none" : "";
+        document.body.style.marginRight = maximized ? "0" : (sidebarOpen ? sidebarWidth + "px" : "");
+        badge.style.display = maximized ? "none" : "";
+        maxBtn.textContent = maximized ? "Restore" : "Maximize";
       });
 
       // Menu: Hide Badge
@@ -159,6 +203,7 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
         badge.remove();
         panel.remove();
         document.body.style.marginRight = "";
+        delete sessionStorage.__godom_panel;
         document.dispatchEvent(new CustomEvent("__godom_hide_rule", { detail: { ruleIndex } }));
       });
 
@@ -178,6 +223,7 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
           document.removeEventListener("mousemove", onMove);
           document.removeEventListener("mouseup", onUp);
           panel.style.transition = "";
+          saveState();
         }
         document.addEventListener("mousemove", onMove);
         document.addEventListener("mouseup", onUp);
