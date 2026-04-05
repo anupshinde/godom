@@ -163,6 +163,42 @@ func TestRegisterPlugin_Overwrite(t *testing.T) {
 	}
 }
 
+// --- Use (PluginFunc) ---
+
+func TestUse_Single(t *testing.T) {
+	e := NewEngine()
+	p := PluginFunc(func(eng *Engine) {
+		eng.RegisterPlugin("myplugin", "plugin.js")
+	})
+	e.Use(p)
+
+	scripts, ok := e.plugins["myplugin"]
+	if !ok {
+		t.Fatal("expected plugin 'myplugin' to be registered via Use")
+	}
+	if len(scripts) != 1 || scripts[0] != "plugin.js" {
+		t.Errorf("unexpected scripts: %v", scripts)
+	}
+}
+
+func TestUse_Multiple(t *testing.T) {
+	e := NewEngine()
+	p1 := PluginFunc(func(eng *Engine) {
+		eng.RegisterPlugin("alpha", "a.js")
+	})
+	p2 := PluginFunc(func(eng *Engine) {
+		eng.RegisterPlugin("beta", "b.js")
+	})
+	e.Use(p1, p2)
+
+	if _, ok := e.plugins["alpha"]; !ok {
+		t.Error("expected plugin 'alpha' to be registered")
+	}
+	if _, ok := e.plugins["beta"]; !ok {
+		t.Error("expected plugin 'beta' to be registered")
+	}
+}
+
 // --- embedsComponent ---
 
 func TestEmbedsComponent_True(t *testing.T) {

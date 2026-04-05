@@ -1,17 +1,23 @@
 # Plugins
 
-The `plugins/` directory contains reusable Go packages that integrate JavaScript libraries with godom. Each plugin embeds its JS adapter (and optionally the library itself) so users can import and use it with a single `Register()` call.
+The `plugins/` directory contains reusable Go packages that integrate JavaScript libraries with godom. Each plugin embeds its JS adapter (and optionally the library itself) and exports a `Plugin` variable for use with `eng.Use()`.
 
 ## Shipped plugins
 
 | Plugin | Library | Description |
 |--------|---------|-------------|
 | `plugins/chartjs/` | [Chart.js](https://www.chartjs.org/) 4.4.8 | Charts — line, bar, pie, doughnut, etc. Library embedded, no CDN needed. |
+| `plugins/plotly/` | [Plotly.js](https://plotly.com/javascript/) 3.4.0 | Scientific/statistical charts — scatter, bar, heatmaps, dual-axis. Basic bundle embedded. |
+| `plugins/echarts/` | [Apache ECharts](https://echarts.apache.org/) 6.0.0 | Rich interactive charts — line, bar, pie, candlestick, treemap, geo. Library embedded. |
 
 ## Using a plugin
 
 ```go
-import "github.com/anupshinde/godom/plugins/chartjs"
+import (
+    "github.com/anupshinde/godom/plugins/chartjs"
+    "github.com/anupshinde/godom/plugins/plotly"
+    "github.com/anupshinde/godom/plugins/echarts"
+)
 
 func main() {
     app := &App{}
@@ -19,7 +25,7 @@ func main() {
 
     eng := godom.NewEngine()
     eng.SetFS(ui)
-    chartjs.Register(eng)  // registers the plugin + injects Chart.js
+    eng.Use(chartjs.Plugin, plotly.Plugin, echarts.Plugin)
     log.Fatal(eng.QuickServe(app))
 }
 ```
@@ -28,7 +34,7 @@ func main() {
 <canvas g-plugin:chartjs="MyChart"></canvas>
 ```
 
-See `examples/system-monitor-chartjs/` for a full working example.
+See `examples/system-monitor-chartjs/` for Chart.js, and `examples/chart-plugins/` for Plotly + ECharts side by side.
 
 ## Using a JS library without a plugin
 

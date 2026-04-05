@@ -409,7 +409,7 @@ It does not: evaluate expressions, access component state, make timing decisions
 
 ## Plugin system
 
-Plugins extend the bridge to delegate rendering to JS libraries. A plugin is registered with `eng.RegisterPlugin(name, scripts...)` — one or more JS scripts injected in order before `bridge.js`.
+Plugins extend the bridge to delegate rendering to JS libraries. Shipped plugins (Chart.js, Plotly, ECharts) are registered with `eng.Use(plugin.Plugin)`. Custom plugins use the lower-level `eng.RegisterPlugin(name, scripts...)` — one or more JS scripts injected in order before `bridge.js`.
 
 The last script should call `godom.register(name, {init, update})`. When the bridge encounters a `PatchPlugin` (from `g-plugin:name="Field"` in HTML), it calls `init(element, data)` on first render and `update(element, data)` on subsequent updates. The data is the JSON-serialized value of the Go struct field.
 
@@ -417,7 +417,7 @@ The last script should call `godom.register(name, {init, update})`. When the bri
 Go struct field  ──JSON──►  bridge.js  ──plugin patch──►  plugin handler  ──►  JS library
 ```
 
-Plugins can embed the JS library itself (e.g., `plugins/chartjs/` embeds Chart.js minified) so the user doesn't need a CDN `<script>` tag. `RegisterPlugin()` accepts variadic scripts — typically the library first, then the bridge adapter.
+Plugins can embed the JS library itself (e.g., `plugins/chartjs/` embeds Chart.js minified) so the user doesn't need a CDN `<script>` tag. `RegisterPlugin()` accepts variadic scripts — typically the library first, then the bridge adapter. Plugin packages export a `godom.PluginFunc` variable that wraps this call, enabling the `eng.Use()` API.
 
 The plugin state is tracked per node ID. The bridge calls `init` once per element and `update` for all subsequent renders.
 

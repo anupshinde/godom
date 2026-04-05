@@ -179,6 +179,16 @@ func (a *Engine) GetDisconnectBadgeHTML() string {
 }
 func (a *Engine) GetFaviconSVG() string { return defaultFaviconSVG }
 
+// PluginFunc sets up a plugin on an Engine.
+type PluginFunc func(*Engine)
+
+// Use registers one or more plugins with the engine.
+func (a *Engine) Use(plugins ...PluginFunc) {
+	for _, p := range plugins {
+		p(a)
+	}
+}
+
 // RegisterPlugin registers a named plugin with one or more JS scripts.
 func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts

@@ -9,7 +9,6 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 | # | Issue | Type |
 |---|-------|------|
 | 3 | COR-59: Browser extension integration | Idea |
-| 4 | COR-61: Plotly / ECharts plugins | Plugin |
 
 ## Deferred
 

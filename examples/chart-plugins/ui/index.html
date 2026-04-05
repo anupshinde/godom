@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chart Plugins Demo — Plotly + ECharts</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #f8fafc;
+        }
+        .subtitle {
+            text-align: center;
+            font-size: 0.85rem;
+            color: #64748b;
+            margin-bottom: 24px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #1e293b;
+            border-radius: 10px;
+            padding: 16px;
+            border: 1px solid #334155;
+        }
+        .card h2 {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #94a3b8;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .card h2 .badge {
+            display: inline-block;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+            font-weight: 600;
+            vertical-align: middle;
+        }
+        .badge-plotly { background: #3b2d6b; color: #a78bfa; }
+        .badge-echarts { background: #1e3a2f; color: #6ee7b7; }
+        .chart-container {
+            width: 100%;
+            height: 260px;
+            position: relative;
+        }
+        .chart-container > div {
+            width: 100% !important;
+            height: 100% !important;
+        }
+    </style>
+</head>
+<body>
+    <h1>Chart Plugins Demo</h1>
+    <p class="subtitle">Live weather simulation — Plotly.js 3.4 + Apache ECharts 6.0</p>
+
+    <div class="grid">
+        <div class="card">
+            <h2>Temperature &amp; Humidity <span class="badge badge-plotly">Plotly</span></h2>
+            <div class="chart-container">
+                <div g-plugin:plotly="PlotlyLine"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Pressure &amp; Wind <span class="badge badge-echarts">ECharts</span></h2>
+            <div class="chart-container">
+                <div g-plugin:echarts="EChartsLine"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Wind Speed (Recent) <span class="badge badge-plotly">Plotly</span></h2>
+            <div class="chart-container">
+                <div g-plugin:plotly="PlotlyBar"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Readings Comparison (Recent) <span class="badge badge-echarts">ECharts</span></h2>
+            <div class="chart-container">
+                <div g-plugin:echarts="EChartsBar"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Temp vs Humidity Scatter <span class="badge badge-plotly">Plotly</span></h2>
+            <div class="chart-container">
+                <div g-plugin:plotly="PlotlyScatter"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Current Readings <span class="badge badge-echarts">ECharts</span></h2>
+            <div class="chart-container">
+                <div g-plugin:echarts="EChartsPie"></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
