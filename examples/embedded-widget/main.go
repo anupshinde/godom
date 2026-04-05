@@ -52,10 +52,13 @@ func main() {
 	marquee.TargetName = "marquee"
 	marquee.Template = "ui/stock/marquee.html"
 
-	eng.Register(stock, marquee)
+	heatmap := newHeatmap()
+
+	eng.Register(stock, marquee, heatmap)
 
 	go stock.startTicker()
 	go marquee.startTicker()
+	go heatmap.startTicker()
 
 	mux := http.NewServeMux()
 	eng.SetMux(mux, nil)

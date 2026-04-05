@@ -286,7 +286,7 @@
         let pendingPluginInits = [];
         let hasNewComponents = false;
         const useShadow = targetEl !== document.body && targetEl.hasAttribute("g-shadow");
-        const renderRoot = useShadow ? targetEl.attachShadow({mode: "open"}) : targetEl;
+        const renderRoot = useShadow ? (targetEl.shadowRoot || targetEl.attachShadow({mode: "open"})) : targetEl;
 
         // --- DOM construction ---
 
