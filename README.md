@@ -443,10 +443,13 @@ go build -o counter ./examples/counter
 
 godom includes a Chrome extension that injects `godom.js` into any website, letting your Go app enhance pages you don't control. Configure URL patterns to decide which pages get injection, and a sidebar panel renders your godom component alongside the host page.
 
-- Configurable include/exclude URL patterns per rule
-- Resizable sidebar panel with CSS isolation (`g-shadow`)
+- Configurable include/exclude URL patterns per rule with enable/disable toggles
+- Resizable sidebar panel with CSS isolation (`g-shadow`), maximize/restore, and page-split layout
+- Sidebar state persists across page navigations within the same site
 - Works with named components — the sidebar renders a `g-component` of your choice (default: `extension`)
 - Root mode (`document.body`) is blocked by default to prevent replacing the host page
+- Hide badge per rule for screen recordings and demos
+- Export/import rules as JSON for sharing across machines
 - Cross-machine support via HTTPS reverse proxy (e.g. Caddy)
 
 See [browser_extension/README.md](browser_extension/README.md) for installation and configuration.
