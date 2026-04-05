@@ -558,12 +558,35 @@ func TestDiff_LazyDifferentArgs(t *testing.T) {
 	new := &LazyNode{Func: fn, Args: []any{2}, Cached: nil}
 
 	patches := Diff(old, new)
-	// Should have a lazy patch wrapping a text change
+	// Should have a lazy patch wrapping a text change "old" → "new"
 	if len(patches) != 1 {
 		t.Fatalf("expected 1 patch, got %d", len(patches))
 	}
 	if patches[0].Type != PatchLazy {
-		t.Errorf("expected PatchLazy, got %d", patches[0].Type)
+		t.Fatalf("expected PatchLazy, got %d", patches[0].Type)
+	}
+	// Verify the lazy patch wraps the correct sub-patches
+	lazyData, ok := patches[0].Data.(PatchLazyData)
+	if !ok {
+		t.Fatalf("expected PatchLazyData, got %T", patches[0].Data)
+	}
+	if len(lazyData.Patches) != 1 {
+		t.Fatalf("expected 1 sub-patch inside lazy, got %d", len(lazyData.Patches))
+	}
+	sub := lazyData.Patches[0]
+	if sub.Type != PatchText {
+		t.Errorf("expected sub-patch PatchText, got %d", sub.Type)
+	}
+	if td, ok := sub.Data.(PatchTextData); ok {
+		if td.Text != "new" {
+			t.Errorf("expected sub-patch text 'new', got %q", td.Text)
+		}
+	} else {
+		t.Errorf("expected PatchTextData, got %T", sub.Data)
+	}
+	// Verify the lazy function was evaluated and cached
+	if new.Cached == nil {
+		t.Error("expected new.Cached to be set after Diff")
 	}
 }
 
@@ -870,12 +893,34 @@ func TestDiff_KeyedSwap(t *testing.T) {
 		t.Fatalf("expected 1 patch, got %d: %+v", len(patches), patches)
 	}
 	data := patches[0].Data.(PatchReorderData)
-	// Should be move operations, not redraws.
-	// Moves use inserts without Node (nil) + removes with the same key.
+	// A swap [a,b] → [b,a] should produce move operations (inserts with nil Node)
+	// plus corresponding removes. Verify the complete structure.
 	for _, ins := range data.Inserts {
 		if ins.Node != nil {
-			t.Errorf("move insert should have nil Node, got non-nil for key %q", ins.Key)
+			t.Errorf("move insert should have nil Node (move, not new), got non-nil for key %q", ins.Key)
 		}
+	}
+	// Verify removes exist for the swapped keys
+	if len(data.Removes) == 0 {
+		t.Error("expected removes for swap, got none")
+	}
+	removedKeys := map[string]bool{}
+	for _, r := range data.Removes {
+		removedKeys[r.Key] = true
+	}
+	insertedKeys := map[string]bool{}
+	for _, ins := range data.Inserts {
+		insertedKeys[ins.Key] = true
+	}
+	// Every inserted key should also appear in removes (it's a move)
+	for key := range insertedKeys {
+		if !removedKeys[key] {
+			t.Errorf("insert key %q has no corresponding remove (not a proper move)", key)
+		}
+	}
+	// No sub-patches needed — content of "a" and "b" is unchanged
+	if len(data.Patches) != 0 {
+		t.Errorf("expected 0 sub-patches (content unchanged), got %d", len(data.Patches))
 	}
 }
 

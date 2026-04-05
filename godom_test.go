@@ -950,6 +950,171 @@ func TestExecJS_DisabledReturnsError(t *testing.T) {
 	}
 }
 
+// --- Engine getter methods ---
+
+func TestComponents_ReturnsRegisteredComps(t *testing.T) {
+	e := NewEngine()
+	e.SetFS(makeTestFS())
+
+	app := &testApp{Name: "Alice"}
+	app.TargetName = "main"
+	app.Template = "index.html"
+	e.Register(app)
+
+	comps := e.Components()
+	if len(comps) != 1 {
+		t.Fatalf("expected 1 component, got %d", len(comps))
+	}
+	if comps[0].Typ.Name() != "testApp" {
+		t.Errorf("expected Typ.Name()='testApp', got %q", comps[0].Typ.Name())
+	}
+}
+
+func TestComponents_EmptyBeforeRegister(t *testing.T) {
+	e := NewEngine()
+	if len(e.Components()) != 0 {
+		t.Errorf("expected 0 components before register, got %d", len(e.Components()))
+	}
+}
+
+func TestPluginScripts_ReturnsRegisteredPlugins(t *testing.T) {
+	e := NewEngine()
+	e.RegisterPlugin("chartjs", "chart.min.js")
+
+	plugins := e.PluginScripts()
+	scripts, ok := plugins["chartjs"]
+	if !ok {
+		t.Fatal("expected 'chartjs' in plugin scripts")
+	}
+	if len(scripts) != 1 || scripts[0] != "chart.min.js" {
+		t.Errorf("expected ['chart.min.js'], got %v", scripts)
+	}
+}
+
+func TestPluginScripts_EmptyByDefault(t *testing.T) {
+	e := NewEngine()
+	if len(e.PluginScripts()) != 0 {
+		t.Errorf("expected empty plugin scripts, got %d", len(e.PluginScripts()))
+	}
+}
+
+func TestEmbeddedJS_ReturnsNonEmpty(t *testing.T) {
+	e := NewEngine()
+	bridge, protobuf, protocol := e.EmbeddedJS()
+	if bridge == "" {
+		t.Error("expected non-empty bridge JS")
+	}
+	if protobuf == "" {
+		t.Error("expected non-empty protobuf JS")
+	}
+	if protocol == "" {
+		t.Error("expected non-empty protocol JS")
+	}
+}
+
+func TestMux_NilBeforeSetMux(t *testing.T) {
+	e := NewEngine()
+	if e.Mux() != nil {
+		t.Error("expected nil mux before SetMux")
+	}
+}
+
+func TestMux_ReturnsSetMux(t *testing.T) {
+	e := NewEngine()
+	mux := http.NewServeMux()
+	e.SetMux(mux, nil)
+	if e.Mux() != mux {
+		t.Error("expected Mux() to return the mux passed to SetMux()")
+	}
+}
+
+func TestWebSocketPath_EmptyBeforeRun(t *testing.T) {
+	e := NewEngine()
+	if e.WebSocketPath() != "" {
+		t.Errorf("expected empty ws path before Run, got %q", e.WebSocketPath())
+	}
+}
+
+func TestGodomScriptPath_EmptyBeforeRun(t *testing.T) {
+	e := NewEngine()
+	if e.GodomScriptPath() != "" {
+		t.Errorf("expected empty script path before Run, got %q", e.GodomScriptPath())
+	}
+}
+
+func TestAuth_NilByDefault(t *testing.T) {
+	e := NewEngine()
+	if e.Auth() != nil {
+		t.Error("expected nil auth by default")
+	}
+}
+
+func TestAuth_ReturnsSetAuth(t *testing.T) {
+	e := NewEngine()
+	fn := func(w http.ResponseWriter, r *http.Request) bool { return true }
+	e.SetAuth(fn)
+	if e.Auth() == nil {
+		t.Error("expected non-nil auth after SetAuth")
+	}
+}
+
+func TestExecJSDisabled_DefaultFalse(t *testing.T) {
+	e := NewEngine()
+	if e.ExecJSDisabled() {
+		t.Error("expected ExecJSDisabled=false by default")
+	}
+}
+
+func TestExecJSDisabled_ReflectsFlag(t *testing.T) {
+	e := NewEngine()
+	e.DisableExecJS = true
+	if !e.ExecJSDisabled() {
+		t.Error("expected ExecJSDisabled=true after setting flag")
+	}
+}
+
+func TestGetDisconnectHTML_DefaultNonEmpty(t *testing.T) {
+	e := NewEngine()
+	html := e.GetDisconnectHTML()
+	if html == "" {
+		t.Error("expected non-empty default disconnect HTML")
+	}
+}
+
+func TestGetDisconnectHTML_CustomOverridesDefault(t *testing.T) {
+	e := NewEngine()
+	custom := "<div>custom disconnect</div>"
+	e.DisconnectHTML = custom
+	if e.GetDisconnectHTML() != custom {
+		t.Errorf("expected custom HTML %q, got %q", custom, e.GetDisconnectHTML())
+	}
+}
+
+func TestGetDisconnectBadgeHTML_DefaultNonEmpty(t *testing.T) {
+	e := NewEngine()
+	html := e.GetDisconnectBadgeHTML()
+	if html == "" {
+		t.Error("expected non-empty default disconnect badge HTML")
+	}
+}
+
+func TestGetDisconnectBadgeHTML_CustomOverridesDefault(t *testing.T) {
+	e := NewEngine()
+	custom := "<span>offline</span>"
+	e.DisconnectBadgeHTML = custom
+	if e.GetDisconnectBadgeHTML() != custom {
+		t.Errorf("expected custom badge HTML %q, got %q", custom, e.GetDisconnectBadgeHTML())
+	}
+}
+
+func TestGetFaviconSVG_NonEmpty(t *testing.T) {
+	e := NewEngine()
+	svg := e.GetFaviconSVG()
+	if svg == "" {
+		t.Error("expected non-empty favicon SVG")
+	}
+}
+
 // --- Helpers ---
 
 // runSubprocess re-runs the named test in a subprocess with the given env var set to "1".
