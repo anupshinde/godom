@@ -86,10 +86,15 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
         .__godom-panel-handle { position:absolute;top:0;left:-4px;bottom:0;width:8px;cursor:col-resize;background:transparent;z-index:1; }
         .__godom-panel-handle:hover { background:rgba(0,0,0,0.1); }
         .__godom-panel-header { display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e5e5e5;background:#0B1120;color:#E8F4FD;flex-shrink:0; }
-        .__godom-panel-btn { background:none;border:none;color:#aac;font-size:12px;cursor:pointer;padding:2px 6px; }
-        .__godom-panel-btn:hover { color:#fff; }
         .__godom-panel-close { background:none;border:none;color:#aac;font-size:20px;cursor:pointer;padding:0 4px; }
         .__godom-panel-close:hover { color:#fff; }
+        .__godom-panel-menu-wrap { position:relative; }
+        .__godom-panel-menu-btn { background:none;border:none;color:#aac;font-size:18px;cursor:pointer;padding:0 4px;line-height:1; }
+        .__godom-panel-menu-btn:hover { color:#fff; }
+        .__godom-panel-menu { display:none;position:absolute;top:100%;right:0;margin-top:4px;background:#1a2234;border:1px solid #2a3a5a;border-radius:6px;min-width:140px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10;overflow:hidden; }
+        .__godom-panel-menu.open { display:block; }
+        .__godom-panel-menu button { display:block;width:100%;background:none;border:none;color:#ccd;font-size:13px;padding:8px 14px;text-align:left;cursor:pointer; }
+        .__godom-panel-menu button:hover { background:#2a3a5a;color:#fff; }
         .__godom-panel-content { flex:1;overflow-y:auto;padding:16px; }
       `;
       document.head.appendChild(style);
@@ -99,10 +104,17 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
       panel.innerHTML = '<div class="__godom-panel-handle"></div>'
         + '<div class="__godom-panel-header">'
         + '<span style="display:flex;align-items:center;gap:8px">'
-        + '<img src="' + icon16Url + '" width="16" height="16" style="display:block">'
-        + '<button class="__godom-panel-hide __godom-panel-btn" title="Hide badge and panel (restore from extension settings)">Hide</button>'
-        + '</span>'
         + '<button class="__godom-panel-close">&times;</button>'
+        + '<img src="' + icon16Url + '" width="16" height="16" style="display:block">'
+        + '</span>'
+        + '<div class="__godom-panel-menu-wrap">'
+        + '<button class="__godom-panel-menu-btn" title="Menu">&#x22EE;</button>'
+        + '<div class="__godom-panel-menu">'
+        + '<button class="__godom-menu-close">Close Panel</button>'
+        + '<button class="__godom-menu-popout">Popout</button>'
+        + '<button class="__godom-menu-hide">Hide Badge</button>'
+        + '</div>'
+        + '</div>'
         + '</div>'
         + '<div class="__godom-panel-content" g-component="' + panelComponent + '"' + (panelIsolateCSS ? ' g-shadow' : '') + '></div>';
       document.body.appendChild(panel);
@@ -120,8 +132,30 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
       badge.addEventListener("click", toggle);
       panel.querySelector(".__godom-panel-close").addEventListener("click", toggle);
 
-      // Hide button: remove badge + panel, dispatch event for content script to persist
-      panel.querySelector(".__godom-panel-hide").addEventListener("click", () => {
+      // Kebab menu
+      const menuBtn = panel.querySelector(".__godom-panel-menu-btn");
+      const menu = panel.querySelector(".__godom-panel-menu");
+      menuBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        menu.classList.toggle("open");
+      });
+      document.addEventListener("click", () => menu.classList.remove("open"));
+
+      // Menu: Close Panel
+      panel.querySelector(".__godom-menu-close").addEventListener("click", () => {
+        menu.classList.remove("open");
+        if (sidebarOpen) toggle();
+      });
+
+      // Menu: Popout (open panel content in a new window)
+      panel.querySelector(".__godom-menu-popout").addEventListener("click", () => {
+        menu.classList.remove("open");
+        // TODO: popout functionality
+      });
+
+      // Menu: Hide Badge
+      panel.querySelector(".__godom-menu-hide").addEventListener("click", () => {
+        menu.classList.remove("open");
         badge.remove();
         panel.remove();
         document.body.style.marginRight = "";
