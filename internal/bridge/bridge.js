@@ -192,11 +192,31 @@
         ws.send(msg);
     }
 
+    // querySelectorAllDeep searches the document and all shadow roots
+    // owned by godom targets. Regular querySelectorAll does not cross
+    // shadow boundaries, so nested g-component elements inside a
+    // shadow root would be missed without this.
+    function querySelectorAllDeep(selector) {
+        const results = Array.prototype.slice.call(document.querySelectorAll(selector));
+        for (const n in targets) {
+            if (!targets.hasOwnProperty(n)) continue;
+            const list = targets[n];
+            for (let i = 0; i < list.length; i++) {
+                const sr = list[i].targetEl.shadowRoot;
+                if (sr) {
+                    const inner = sr.querySelectorAll(selector);
+                    for (let j = 0; j < inner.length; j++) results.push(inner[j]);
+                }
+            }
+        }
+        return results;
+    }
+
     // scanAndRequestComponents finds all [g-component] elements not yet
     // initialized and sends init requests to the server for each unique
     // component name.
     function scanAndRequestComponents() {
-        const els = document.querySelectorAll("[g-component]");
+        const els = querySelectorAllDeep("[g-component]");
         const requested = {};
         for (let i = 0; i < els.length; i++) {
             if (readyEls.has(els[i])) continue;
@@ -235,7 +255,7 @@
             document.body.classList.add("g-ready");
         } else {
             // Named component: find all elements with g-component="name".
-            const els = document.querySelectorAll(`[g-component="${name}"]`);
+            const els = querySelectorAllDeep(`[g-component="${name}"]`);
             if (els.length === 0) {
                 if (window.GODOM_DEBUG) console.warn(`godom: no target found for component "${name}" — check that the parent is mounted first and the g-component attribute matches`);
                 return;
@@ -265,6 +285,8 @@
         let pluginState = {};
         let pendingPluginInits = [];
         let hasNewComponents = false;
+        const useShadow = targetEl !== document.body && targetEl.hasAttribute("g-shadow");
+        const renderRoot = useShadow ? (targetEl.shadowRoot || targetEl.attachShadow({mode: "open"})) : targetEl;
 
         // --- DOM construction ---
 
@@ -742,7 +764,7 @@
 
         return {
             init: function(msg) {
-                targetEl.innerHTML = "";
+                renderRoot.innerHTML = "";
 
                 const tree = JSON.parse(textDecoder.decode(msg.tree));
                 if (tree) {
@@ -750,11 +772,11 @@
                     if (domNode) {
                         if (tree.tag === "body") {
                             while (domNode.firstChild) {
-                                targetEl.appendChild(domNode.firstChild);
+                                renderRoot.appendChild(domNode.firstChild);
                             }
-                            nodeMap[tree.id] = targetEl;
+                            nodeMap[tree.id] = renderRoot;
                         } else {
-                            targetEl.appendChild(domNode);
+                            renderRoot.appendChild(domNode);
                         }
                     }
                 }

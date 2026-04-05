@@ -116,6 +116,7 @@ Requires Go 1.25+ and a web browser.
 | `g-attr:name` | `g-attr:transform="Rotation"` | Set any HTML/SVG attribute from a field |
 | `g-style:prop` | `g-style:width="BarWidth"` | Set an inline CSS property from a field |
 | `g-plugin:name` | `g-plugin:chartjs="MyChart"` | Send field data to a registered JS plugin |
+| `g-shadow` | `g-shadow` | Render component inside a Shadow DOM for CSS isolation |
 
 ### Events
 
@@ -416,7 +417,7 @@ chartjs.Register(eng)  // registers plugin + embeds Chart.js library
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
 - [examples/multi-component/](examples/multi-component/) — 9-component dashboard with stateful components, `g-component` composition, cross-component callbacks, Chart.js plugin, drag-and-drop reorder, goroutine-driven updates
-- [examples/embedded-widget/](examples/embedded-widget/) — godom components embedded in an external HTML page (separate static server, `GODOM_WS_URL`, `/godom.js` script tag, `g-component` targets)
+- [examples/embedded-widget/](examples/embedded-widget/) — godom components embedded in an external HTML page (separate static server, `GODOM_WS_URL`, `/godom.js` script tag, `g-component` targets, `g-shadow` for CSS isolation)
 - [examples/same-component-repeated/](examples/same-component-repeated/) — same component type rendered into multiple `g-component` targets simultaneously
 - [examples/video-player/](examples/video-player/) — video player with Go decoding frames via ffmpeg and rendering on canvas
 

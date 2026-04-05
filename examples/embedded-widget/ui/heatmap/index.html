@@ -1,0 +1,26 @@
+<style>
+    .ghm { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .ghm-row { display: flex; }
+    .ghm-tile {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        padding: 4px 2px; color: #fff; height: 56px;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3); overflow: hidden;
+        flex-basis: 0;
+    }
+    .ghm-sym { font-weight: 700; font-size: 12px; }
+    .ghm-pct { font-size: 10px; opacity: 0.9; }
+</style>
+<div class="ghm">
+    <div class="ghm-row">
+        <div g-for="tile in Row1" g-style:background="tile.Color" g-style:flex-grow="tile.Weight" class="ghm-tile">
+            <span class="ghm-sym">{{tile.Symbol}}</span>
+            <span class="ghm-pct">{{tile.Change}}</span>
+        </div>
+    </div>
+    <div class="ghm-row">
+        <div g-for="tile in Row2" g-style:background="tile.Color" g-style:flex-grow="tile.Weight" class="ghm-tile">
+            <span class="ghm-sym">{{tile.Symbol}}</span>
+            <span class="ghm-pct">{{tile.Change}}</span>
+        </div>
+    </div>
+</div>

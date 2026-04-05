@@ -1,6 +1,6 @@
 # Embedded Widget
 
-Demonstrates godom components rendered into an **external HTML page** not served by godom's own server. The page is a fictional news site ("MarketPulse") with two live godom widgets injected into it.
+Demonstrates godom components rendered into an **external HTML page** not served by godom's own server. The page is a fictional news site ("MarketPulse") with three live godom widgets injected into it.
 
 ## What it shows
 
@@ -11,6 +11,7 @@ Demonstrates godom components rendered into an **external HTML page** not served
 - **`GODOM_NS`** -- renames `window.godom` to `window.marketpulse` to avoid name collisions on the host page.
 - **`g-component` targets** -- the host HTML declares `<div g-component="stock">` and `<div g-component="marquee">` where godom renders.
 - **`<style>` in component templates** -- component CSS is scoped by namespace prefixes (`gdstock-*`) to avoid style bleed.
+- **`g-shadow` for CSS isolation** -- the heatmap component uses Shadow DOM (`g-shadow` attribute) for full CSS isolation. Host page styles cannot reach inside, and component styles cannot leak out. The host page includes a `.ghm span` rule that would break the heatmap without shadow protection.
 - **Same data, two layouts** -- the `stock` and `marquee` components share the same Go struct but render with different HTML templates (card view vs scrolling ticker).
 
 ## Architecture
@@ -24,7 +25,10 @@ Port 9090 (static server)          Port 9091 (godom)
 │  │   "stock"         │◄──ws────► │  Stock component     │
 │  ├─ g-component=     │           │                      │
 │  │   "marquee"       │◄──ws────► │  Stock component     │
-│  └─ static CSS/HTML  │           │  (marquee template)  │
+│  ├─ g-component=     │           │  (marquee template)  │
+│  │   "heatmap"       │◄──ws────► │  Heatmap component   │
+│  │   (g-shadow)      │           │  (Shadow DOM)        │
+│  └─ static CSS/HTML  │           │                      │
 └──────────────────────┘           └──────────────────────┘
 ```
 

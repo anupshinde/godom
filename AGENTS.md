@@ -23,7 +23,7 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 - `internal/server/` — WebSocket handling, connection pool, init/update pipeline
 - `internal/render/` — encode patches to protobuf DomPatch, encode trees to JSON wire format
 - `internal/template/` — HTML parsing, component expansion, directive validation
-- `internal/bridge/` — bridge.js (DOM construction, patch execution, event handling)
+- `internal/bridge/` — bridge.js (DOM construction, patch execution, event handling, Shadow DOM via `g-shadow`)
 - `internal/proto/` — protocol.proto, generated Go types, protocol.js, protobuf.min.js
 - `internal/env/` — environment config utilities (GODOM_* env var readers)
 - `internal/middleware/` — pluggable auth (AuthFunc, TokenAuth)
