@@ -44,7 +44,7 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot) {
   await chrome.scripting.executeScript({
     target: { tabId, frameIds: [0] },
     world: "MAIN",
-    func: (code, iconUrl) => {
+    func: (code, iconUrl, icon16Url) => {
       if (window.__GODOM_INJECTED__) return;
       window.__GODOM_INJECTED__ = true;
       const blob = new Blob([code], { type: "application/javascript" });
@@ -73,7 +73,7 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot) {
         <style>
           :host { all: initial; }
           .panel {
-            width: 320px; height: 100%;
+            width: 100%; height: 100%;
             background: #fff;
             box-shadow: -2px 0 12px rgba(0,0,0,0.15);
             transform: translateX(100%);
@@ -83,6 +83,11 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot) {
             font-size: 14px; color: #1a1a1a;
           }
           .panel.open { transform: translateX(0); }
+          .resize-handle {
+            position: absolute; top: 0; left: -4px; bottom: 0; width: 8px;
+            cursor: col-resize; background: transparent; z-index: 1;
+          }
+          .resize-handle:hover { background: rgba(0,0,0,0.1); }
           .header {
             display: flex; align-items: center; justify-content: space-between;
             padding: 12px 16px;
@@ -99,8 +104,9 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot) {
           .status { color: #888; font-size: 13px; }
         </style>
         <div class="panel">
+          <div class="resize-handle"></div>
           <div class="header">
-            <h2>godom</h2>
+            <img src="${icon16Url}" width="16" height="16" style="display:block">
             <button class="close-btn">&times;</button>
           </div>
           <div class="content">
@@ -109,17 +115,43 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot) {
         </div>
       `;
       const panel = shadow.querySelector(".panel");
+      const handle = shadow.querySelector(".resize-handle");
 
       let sidebarOpen = false;
+      let sidebarWidth = 320;
       function toggle() {
         sidebarOpen = !sidebarOpen;
         panel.classList.toggle("open", sidebarOpen);
-        sidebarHost.style.width = sidebarOpen ? "320px" : "0";
+        sidebarHost.style.width = sidebarOpen ? sidebarWidth + "px" : "0";
+        document.body.style.marginRight = sidebarOpen ? sidebarWidth + "px" : "";
       }
 
       badge.addEventListener("click", toggle);
       shadow.querySelector(".close-btn").addEventListener("click", toggle);
+
+      // Resize by dragging left edge
+      handle.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        const startX = e.clientX;
+        const startW = sidebarWidth;
+        sidebarHost.style.transition = "none";
+        panel.style.transition = "none";
+        function onMove(e) {
+          const delta = startX - e.clientX;
+          sidebarWidth = Math.max(200, Math.min(startW + delta, window.innerWidth * 0.8));
+          sidebarHost.style.width = sidebarWidth + "px";
+          document.body.style.marginRight = sidebarWidth + "px";
+        }
+        function onUp() {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          sidebarHost.style.transition = "";
+          panel.style.transition = "";
+        }
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
     },
-    args: [fullCode, allowRoot ? null : chrome.runtime.getURL("icons/icon48.png")],
+    args: [fullCode, allowRoot ? null : chrome.runtime.getURL("icons/icon48.png"), chrome.runtime.getURL("icons/icon16.png")],
   });
 }
