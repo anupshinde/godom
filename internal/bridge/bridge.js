@@ -26,6 +26,8 @@
     // 1. State & globals
     // =========================================================================
 
+    if (typeof window.GODOM_INJECT_ALLOW_ROOT === "undefined") { window.GODOM_INJECT_ALLOW_ROOT = true; }
+
     const nsName = window.GODOM_NS || "godom";
     const ns = window[nsName] = window[nsName] || {};
     if (!ns._plugins) ns._plugins = {};
@@ -246,6 +248,7 @@
     // builds the initial DOM tree inside each target element.
     function initTarget(name, msg) {
         if (name === "document.body") {
+            if (!window.GODOM_INJECT_ALLOW_ROOT) return;
             // Root component: render into document.body.
             hasRoot = true;
             cleanupAllTargets();
