@@ -265,6 +265,8 @@
         let pluginState = {};
         let pendingPluginInits = [];
         let hasNewComponents = false;
+        const useShadow = targetEl !== document.body && targetEl.hasAttribute("g-shadow");
+        const renderRoot = useShadow ? targetEl.attachShadow({mode: "open"}) : targetEl;
 
         // --- DOM construction ---
 
@@ -742,7 +744,7 @@
 
         return {
             init: function(msg) {
-                targetEl.innerHTML = "";
+                renderRoot.innerHTML = "";
 
                 const tree = JSON.parse(textDecoder.decode(msg.tree));
                 if (tree) {
@@ -750,11 +752,11 @@
                     if (domNode) {
                         if (tree.tag === "body") {
                             while (domNode.firstChild) {
-                                targetEl.appendChild(domNode.firstChild);
+                                renderRoot.appendChild(domNode.firstChild);
                             }
-                            nodeMap[tree.id] = targetEl;
+                            nodeMap[tree.id] = renderRoot;
                         } else {
-                            targetEl.appendChild(domNode);
+                            renderRoot.appendChild(domNode);
                         }
                     }
                 }
