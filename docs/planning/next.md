@@ -4,12 +4,6 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 
 ## Active
 
-### High priority
-
-| # | Issue | Type |
-|---|-------|------|
-| 1 | COR-48: Shadow DOM isolation (optional per-component) | Feature |
-
 ### Medium priority
 
 | # | Issue | Type |

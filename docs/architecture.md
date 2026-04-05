@@ -365,7 +365,15 @@ The external page loads `/godom.js` from the godom server and sets `GODOM_WS_URL
 
 The bridge uses `GODOM_WS_URL` (if set) instead of deriving the WebSocket URL from the current page's host. This allows a static HTML page on one server to connect to a godom instance on another port/host.
 
-See `examples/embedded-widget/` for a working example. For nested component trees in embedded mode (a layout component whose template contains further `g-component` targets), see [nested-components.md](nested-components.md).
+For CSS isolation in embedded mode, add `g-shadow` to the target element:
+
+```html
+<div g-component="stock" g-shadow></div>
+```
+
+The bridge attaches an open Shadow DOM root and renders the component's DOM into it. Host page styles cannot reach inside, and component styles cannot leak out. CSS custom properties (`var(--name)`) still cross the boundary for theming.
+
+See `examples/embedded-widget/` for a working example (the heatmap component uses `g-shadow`). For nested component trees in embedded mode (a layout component whose template contains further `g-component` targets), see [nested-components.md](nested-components.md).
 
 ### Namespace (GODOM_NS)
 
@@ -392,6 +400,7 @@ The bridge is vanilla JS with no dependencies. It:
 - ExecJS: evaluates JavaScript expressions sent by Go (`SERVER_JSCALL`), returns results via `BROWSER_JSRESULT`
 - `godom.call()`: allows JavaScript to invoke Go methods on components via `BROWSER_METHOD` with `node_id: 0`
 - Manages HTML5 drag-and-drop: `draggable` sets up `dragstart`/`dragend` with group-specific MIME types; drop handlers filter by group, apply CSS feedback classes (`.g-dragging`, `.g-drag-over`, `.g-drag-over-above`/`.g-drag-over-below`), and send drop data via `MethodCall`
+- Shadow DOM: when a `[g-component]` element has the `g-shadow` attribute, attaches an open shadow root and renders into it — isolates component CSS from the host page
 - Adds `.g-ready` CSS class to `document.body` (root mode) or `[g-component]` elements (embedded mode) after init, removes on cleanup — consumers use this to hide raw template content with CSS
 - Defers plugin `init` calls until the element is actually in the DOM (for libraries that need to measure dimensions)
 - Preserves focus and selection across patch application
