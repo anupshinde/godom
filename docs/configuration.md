@@ -123,6 +123,19 @@ Change the global namespace the bridge registers on. Default is `"godom"` (`wind
 <script src="http://localhost:9091/godom.js"></script>
 ```
 
+### GODOM_INJECT_ALLOW_ROOT
+
+Controls whether the bridge allows rendering a root component into `document.body` when godom.js is injected into a page not owned by godom (e.g. via the browser extension). Defaults to `true` when not set, so normal godom apps are unaffected.
+
+```html
+<script>window.GODOM_INJECT_ALLOW_ROOT = false;</script>
+<script src="http://localhost:9091/godom.js"></script>
+```
+
+When `false`, the bridge skips `document.body` rendering on `SERVER_INIT`, preventing the injected script from replacing the host page's content. Named components (`g-component`) still work normally.
+
+The godom browser extension sets this to `false` by default and provides an "Allow root mode" toggle per rule.
+
 ### GODOM_DEBUG
 
 Automatically injected by the server when `GODOM_DEBUG` is set. Accepts `1`, `true`, `0`, or `false`. Enables debug-level warnings in the bridge console (e.g. missing component targets during init). Not set manually — controlled via the server-side env var.

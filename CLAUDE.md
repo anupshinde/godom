@@ -28,6 +28,7 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 - `internal/env/` — environment config utilities (GODOM_* env var readers)
 - `internal/middleware/` — pluggable auth (AuthFunc, TokenAuth)
 - `internal/utils/` — shared helpers (LocalIP, PrintQR, OpenBrowser)
+- `browser_extension/` — Chrome Manifest V3 extension that injects godom.js into arbitrary websites via configurable URL rules
 
 ## Critical invariants
 - **IDCounter must never reset.** Each VDOM node gets a unique integer ID from `IDCounter`. The bridge's `nodeMap[id] → DOM node` depends on IDs being globally unique. Resetting the counter (e.g. `ci.IDCounter = &vdom.IDCounter{}` in `BuildUpdate`) causes new subtrees to reuse IDs of existing nodes, silently corrupting the bridge's nodeMap and breaking all subsequent patches. See `TestIDCounter_MustOnlyIncrement` in `internal/server/server_test.go`.
