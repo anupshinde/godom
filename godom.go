@@ -299,15 +299,14 @@ func (a *Engine) Run() error {
 func (a *Engine) ListenAndServe() error {
 	handler := middleware.Wrap(a.userMux, a.authFn)
 
-	host := utils.GetURLHost(a.Host)
-
-	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, a.Port))
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", a.Host, a.Port))
 	if err != nil {
 		return fmt.Errorf("godom: failed to listen: %w", err)
 	}
 
 	port := ln.Addr().(*net.TCPAddr).Port
-	utils.PrintUrlQRAndOpen(host, port, a.NoAuth, a.FixedAuthToken, a.NoBrowser, a.Quiet)
+	displayHost := utils.GetURLHost(a.Host)
+	utils.PrintUrlQRAndOpen(displayHost, port, a.NoAuth, a.FixedAuthToken, a.NoBrowser, a.Quiet)
 
 	srv := &http.Server{Handler: handler}
 	return srv.Serve(ln)
