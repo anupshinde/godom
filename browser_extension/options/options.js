@@ -9,6 +9,7 @@ const edName = document.getElementById("ed-name");
 const edAppUrl = document.getElementById("ed-app-url");
 const edScriptPath = document.getElementById("ed-script-path");
 const edUrlWarning = document.getElementById("ed-url-warning");
+const edEnabled = document.getElementById("ed-enabled");
 const edShowBadge = document.getElementById("ed-show-badge");
 const edAllowRoot = document.getElementById("ed-allow-root");
 const edPanelComponent = document.getElementById("ed-panel-component");
@@ -53,7 +54,7 @@ function renderRules() {
         <input type="checkbox" ${rule.enabled ? "checked" : ""} title="Enable/disable">
       </div>
       <div class="rule-info">
-        <div class="rule-name">${escapeHtml(rule.name || "Unnamed")}</div>
+        <div class="rule-name" style="${rule.enabled ? "" : "text-decoration:line-through;opacity:0.7"}">${escapeHtml(rule.name || "Unnamed")}</div>
         <div class="rule-url">${escapeHtml(rule.appUrl || "\u2014")}</div>
         <div class="rule-patterns">${includeCount} include, ${excludeCount} exclude</div>
       </div>
@@ -100,6 +101,7 @@ function openEditor(index) {
   edName.value = rule.name || "";
   edAppUrl.value = rule.appUrl || "";
   edScriptPath.value = rule.scriptPath || "";
+  edEnabled.checked = editingIndex >= 0 ? (rule.enabled !== false) : true;
   edShowBadge.checked = !rule.hidden;
   edAllowRoot.checked = rule.allowRoot || false;
   edPanelComponent.value = rule.panelComponent || "";
@@ -143,7 +145,7 @@ function collectEditor() {
     panelIsolateCSS: edPanelIsolateCSS.checked,
     include,
     exclude,
-    enabled: editingIndex >= 0 ? rules[editingIndex].enabled : true,
+    enabled: edEnabled.checked,
   };
 }
 
