@@ -45,6 +45,17 @@ func TestGetURLHost_ZeroResolves(t *testing.T) {
 	}
 }
 
+func TestGetURLHost_ZeroUsesResolvedLocalIP(t *testing.T) {
+	orig := localIPFn
+	localIPFn = func() string { return "192.0.2.25" }
+	defer func() { localIPFn = orig }()
+
+	got := GetURLHost("0.0.0.0")
+	if got != "192.0.2.25" {
+		t.Fatalf("GetURLHost(\"0.0.0.0\") = %q, want stubbed local IP", got)
+	}
+}
+
 // --- LocalIP ---
 
 func TestLocalIP_ValidOrEmpty(t *testing.T) {
