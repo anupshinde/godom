@@ -268,16 +268,16 @@ Expression resolution uses a fast path for simple expressions (field access, dot
 
 ## Component model
 
-### Presentational components
+### Template includes
 
-An HTML file used as a custom element tag. No separate Go struct — directives inside the child template resolve against the parent's state. Loop variables from `g-for` are available inside the child template.
+An HTML file used as a custom element tag. No separate Go struct — directives inside the child template resolve against the parent's state. Loop variables from `g-for` are available inside the child template. Expanded inline at registration time.
 
 ```
 Parent struct         ──state──►    Child HTML template
 (state + methods)                   (resolves against parent state)
 ```
 
-### Stateful components
+### Multiple components
 
 Each component is a self-contained unit: own Go struct, own HTML template, own VDOM tree, own diff cycle. They are like small independent applications that all run inside the same Go process and render through the same bridge.
 

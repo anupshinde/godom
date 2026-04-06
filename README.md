@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/anupshinde/godom)](https://goreportcard.com/report/github.com/anupshinde/godom)
 [![Go Reference](https://pkg.go.dev/badge/github.com/anupshinde/godom.svg)](https://pkg.go.dev/github.com/anupshinde/godom)
 
-> **Experimental — work in progress.** APIs may change without notice.
+> **Pre-1.0 — feature-complete for current use cases.** APIs are stabilizing but may still change before v1.0.
 
 godom is a framework for building **local apps** in Go that use the browser as the UI layer. It is not a web framework — there are no API endpoints, no frontend/backend split, no JavaScript to author for typical use. You build a Go struct, bind HTML to it with directives, and `go build` gives you a single binary. Run it, and the UI appears in your browser.
 
@@ -206,7 +206,7 @@ All expressions are resolved in Go (the browser-side bridge is a pure command ex
 
 ## Components
 
-### Presentational components
+### Template includes
 
 Split HTML into reusable files. Any HTML file in your embedded filesystem can be used as a custom element:
 
@@ -226,11 +226,11 @@ Split HTML into reusable files. Any HTML file in your embedded filesystem can be
 </ul>
 ```
 
-Custom elements are template includes — directives inside the child HTML resolve against the parent component's state. Loop variables (`todo`, `i`) are available inside the child template.
+Custom elements are expanded inline at registration time — directives resolve against the parent component's state. Loop variables (`todo`, `i`) are available inside the included template.
 
-### Stateful components
+### Multiple components
 
-For apps with multiple independent pieces of state, each component gets its own Go struct, its own HTML template, and its own VDOM tree. Components compose via `g-component` — the parent declares insertion points, children render into them.
+For apps with multiple independent pieces of state, register separate components. Each gets its own Go struct, HTML template, VDOM tree, and refresh cycle. The parent declares insertion points with `g-component`, and children render into them.
 
 ```go
 eng.SetFS(ui)
@@ -268,7 +268,7 @@ Child templates are HTML fragments (no `<html>`/`<head>`/`<body>`) — they rend
 </div>
 ```
 
-Each component has its own state, methods, and refresh cycle. Register is variadic, so you can register all children in one call:
+Register is variadic, so you can register all children in one call:
 
 ```go
 eng.Register(navbar, toast, sidebar, counter, clock, monitor, ticker, tips)
@@ -402,9 +402,9 @@ See [docs/plugins.md](docs/plugins.md) for the full list and [docs/javascript-li
 - [examples/counter/](examples/counter/) — minimal example (the one shown above)
 - [examples/progress-bar/](examples/progress-bar/) — animated progress bar with `Refresh()` and `g-style:width` from a goroutine
 - [examples/clock/](examples/clock/) — analog clock with `Refresh()` and `g-attr` (server-pushed updates)
-- [examples/todolist/](examples/todolist/) — presentational components with prop passing
+- [examples/todolist/](examples/todolist/) — template includes with prop passing
 - [examples/sync-demo/](examples/sync-demo/) — multi-tab state sync demonstration
-- [examples/system-monitor/](examples/system-monitor/) — live system monitor dashboard with `Refresh()`, `g-attr`, and presentational components
+- [examples/system-monitor/](examples/system-monitor/) — live system monitor dashboard with `Refresh()`, `g-attr`, and template includes
 - [examples/system-monitor-chartjs/](examples/system-monitor-chartjs/) — system monitor with Chart.js plugin (CPU, memory, disk, swap, load charts)
 - [examples/charts-without-plugin/](examples/charts-without-plugin/) — ApexCharts with inline bridge adapter (no plugin package)
 - [examples/drag-tiles/](examples/drag-tiles/) — 24 colored tiles with drag-to-reorder and a periodic shine animation sweep
@@ -413,7 +413,7 @@ See [docs/plugins.md](docs/plugins.md) for the full list and [docs/javascript-li
 - [examples/stock-ticker/](examples/stock-ticker/) — live stock ticker dashboard with 30 simulated stocks, per-stock tick intervals, table with color-coded gainers/losers, and external CSS via static file serving
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
-- [examples/multi-component/](examples/multi-component/) — 9-component dashboard with stateful components, `g-component` composition, cross-component callbacks, Chart.js plugin, drag-and-drop reorder, goroutine-driven updates
+- [examples/multi-component/](examples/multi-component/) — 9-component dashboard with `g-component` composition, cross-component callbacks, Chart.js plugin, drag-and-drop reorder, goroutine-driven updates
 - [examples/embedded-widget/](examples/embedded-widget/) — godom components embedded in an external HTML page (separate static server, `GODOM_WS_URL`, `/godom.js` script tag, `g-component` targets, `g-shadow` for CSS isolation)
 - [examples/same-component-repeated/](examples/same-component-repeated/) — same component type rendered into multiple `g-component` targets simultaneously
 - [examples/video-player/](examples/video-player/) — video player with Go decoding frames via ffmpeg and rendering on canvas

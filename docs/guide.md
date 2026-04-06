@@ -759,7 +759,7 @@ Then run `air` instead of `go run .`. When you save a `.go` or `.html` file, Air
 | `basic-form-builder` | Complex state, conditionals, JSON export |
 | `solar-system` | SVG animation, parameterless methods |
 | `breakout-game` | Canvas game, keyboard input |
-| `system-monitor` | System stats, presentational components |
+| `system-monitor` | System stats, template includes |
 | `system-monitor-chartjs` | System monitor with Chart.js plugin |
 | `charts-without-plugin` | ApexCharts with inline bridge adapter (no plugin package) |
 | `video-player` | Canvas rendering, ffmpeg integration |

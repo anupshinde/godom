@@ -1,6 +1,6 @@
 # Multi-Component Demo
 
-A 9-component dashboard demonstrating stateful components with `g-component` composition.
+A 9-component dashboard demonstrating `g-component` composition.
 
 ## Running
 
