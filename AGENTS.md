@@ -8,7 +8,7 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 
 ## Architecture
 - Go package (`godom`) that developers import
-- User owns the HTTP server and mux; godom registers /ws and /godom.js handlers on it
+- Developer owns the HTTP server and mux; godom registers /ws and /godom.js handlers on it
 - Virtual DOM in Go: templates parsed once, resolved per render, diffed for minimal patches
 - Binary WebSocket connection (Protocol Buffers) between browser and Go
 - Go → browser: `ServerMessage` with tree init or diff patches (`DomPatch`)

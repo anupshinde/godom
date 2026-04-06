@@ -36,7 +36,7 @@ todo.Template = "ui/index.html"                            // set template path
 log.Fatal(eng.QuickServe(todo))                            // register, serve, block
 ```
 
-**Multi-page app (user owns the server):**
+**Multi-page app (developer-owned server):**
 
 ```go
 eng := godom.NewEngine()

@@ -766,7 +766,7 @@ Then run `air` instead of `go run .`. When you save a `.go` or `.html` file, Air
 | `markdown-editor` | Two-pane editor, plain JS for scroll sync |
 | `terminal` | Terminal emulation in the browser |
 | `multi-component` | Stateful components, `g-component`, cross-component callbacks |
-| `multi-page` | Multi-page app with user-owned mux and routing |
+| `multi-page` | Multi-page app with developer-owned mux and routing |
 | `embedded-widget` | External hosting, `/godom.js`, `GODOM_WS_URL` |
 | `same-component-repeated` | Same component in multiple DOM targets |
 | `shared-state` | Shared state between components via embedded struct |

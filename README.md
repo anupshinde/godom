@@ -94,7 +94,7 @@ go get github.com/anupshinde/godom
 ```
 git clone https://github.com/anupshinde/godom.git
 cd godom
-go run ./examples/solar-system
+go run ./examples/counter
 ```
 
 Requires Go 1.25+ and a web browser.
@@ -124,6 +124,7 @@ Requires Go 1.25+ and a web browser.
 |-----------|---------|-------------|
 | `g-click` | `g-click="Save"` | Call a method on click |
 | `g-click` | `g-click="Remove(i)"` | Call with arguments resolved from context |
+| `g-keydown` | `g-keydown="Submit"` | Call method on every key press |
 | `g-keydown` | `g-keydown="Enter:Submit"` | Call method on specific key press |
 | `g-keydown` | `g-keydown="ArrowUp:Up;ArrowDown:Down"` | Multiple key bindings (semicolon-separated) |
 | `g-mousedown` | `g-mousedown="OnDown"` | Mouse button pressed — method receives `(x, y float64)` |
@@ -284,31 +285,54 @@ See [examples/multi-component/](examples/multi-component/) for a full 9-componen
 
 ## API
 
-### App
+### Engine
 
 ```go
-eng := godom.NewEngine()                 // Create a new Engine
-eng.Port = 8081                          // Set port (0 = random)
-eng.Host = "0.0.0.0"                    // Bind to all interfaces (default "localhost")
-eng.NoAuth = true                       // Disable token auth (default false = auth enabled)
-eng.FixedAuthToken = "my-secret"                // Fixed token (default: random per startup)
-eng.NoBrowser = true                            // Don't auto-open browser
-eng.Quiet = true                                // Suppress startup output
-eng.Use(chartjs.Plugin, plotly.Plugin)           // Register plugins (Chart.js, Plotly, ECharts, etc.)
-eng.RegisterPlugin("myplugin", bridgeJS)         // Register a custom plugin with one or more JS scripts
-eng.SetFS(fsys)                                 // Set the shared UI filesystem for templates
-eng.DisconnectHTML = "<div>Custom overlay</div>"        // Custom disconnect overlay (root mode)
-eng.DisconnectBadgeHTML = "<span>Offline</span>"        // Custom disconnect badge (embedded mode)
+eng := godom.NewEngine()                          // Create a new Engine
+eng.Port = 8081                                   // Set port (0 = random)
+eng.Host = "0.0.0.0"                              // Bind to all interfaces (default "localhost")
+eng.NoAuth = true                                 // Disable token auth (default false = auth enabled)
+eng.FixedAuthToken = "my-secret"                  // Fixed token (default: random per startup)
+eng.NoBrowser = true                              // Don't auto-open browser
+eng.Quiet = true                                  // Suppress startup output
+eng.DisableExecJS = true                          // Disable ExecJS server-side
+eng.Use(chartjs.Plugin, plotly.Plugin)            // Register plugins (Chart.js, Plotly, ECharts, etc.)
+eng.RegisterPlugin("myplugin", bridgeJS)          // Register a custom plugin with one or more JS scripts
+eng.SetFS(fsys)                                   // Set the shared UI filesystem for templates
+eng.DisconnectHTML = "<div>Custom overlay</div>"  // Custom disconnect overlay (root mode)
+eng.DisconnectBadgeHTML = "<span>Offline</span>"  // Custom disconnect badge (embedded mode)
 
-child.TargetName = "name"                               // Matches g-component="name" in parent template
-child.Template = "ui/child.html"                        // Template path relative to SetFS filesystem
-eng.Register(child)                                     // Register one or more components (variadic)
+child.TargetName = "name"                         // Matches g-component="name" in parent template
+child.Template = "ui/child.html"                  // Template path relative to SetFS filesystem
+eng.Register(child)                               // Register one or more components (variadic)
 
 app.Template = "ui/index.html"
-log.Fatal(eng.QuickServe(app))                          // Auto-sets TargetName to "document.body", registers, serves, blocks
+log.Fatal(eng.QuickServe(app))                    // Auto-sets TargetName to "document.body", registers, serves, blocks
 ```
 
-Settings can also be overridden at runtime via environment variables:
+For developer-owned servers, wire godom into your mux and lifecycle explicitly:
+
+```go
+mux := http.NewServeMux()
+mux.HandleFunc("/", servePage)
+
+eng.SetMux(mux, &godom.MuxOptions{
+    WSPath:     "/app/ws",
+    ScriptPath: "/assets/godom.js",
+})
+
+eng.SetAuth(myAuthFunc)  // optional
+
+if err := eng.Run(); err != nil {
+    log.Fatal(err)
+}
+
+log.Fatal(eng.ListenAndServe())
+```
+
+`Run()` validates templates, registers godom handlers on the mux from `SetMux()`, and starts component event processors. `ListenAndServe()` binds the configured host/port, wraps the mux with auth middleware, opens the browser unless disabled, and blocks serving requests. If you manage shutdown yourself, call `Cleanup()` before exit to stop component goroutines cleanly.
+
+Settings can also be set via environment variables before `NewEngine()` runs:
 
 ```
 GODOM_PORT=8081 GODOM_HOST=0.0.0.0 GODOM_DEBUG=true ./myapp
@@ -316,7 +340,7 @@ GODOM_PORT=8081 GODOM_HOST=0.0.0.0 GODOM_DEBUG=true ./myapp
 
 Boolean env vars (`GODOM_DEBUG`, `GODOM_NO_AUTH`, `GODOM_NO_BROWSER`, `GODOM_QUIET`) accept any value recognized by Go's `strconv.ParseBool`: `1`, `t`, `true`, `TRUE`, `0`, `f`, `false`, `FALSE`, etc.
 
-Env vars are only read for fields not already set in code. godom does not parse CLI flags — your binary owns its flags entirely.
+`NewEngine()` reads env vars into the engine's initial state; any field you set in code after `NewEngine()` overrides the env-derived value. `GODOM_DEBUG` is server-side only: it enables debug logging and bridge warnings, but it is not an `Engine` field. godom does not parse CLI flags, so your binary owns its flags entirely.
 
 For external hosting (embedding godom components in pages not served by godom), set browser-side variables before loading the bundle:
 
@@ -377,6 +401,22 @@ func (a *App) UpdatePrice(i int) {
 
 This avoids a full tree diff — only the nodes bound to the marked fields are rebuilt and patched.
 
+### ExecJS
+
+Run a JavaScript expression in each connected browser and receive each result asynchronously:
+
+```go
+a.ExecJS("location.pathname", func(result []byte, err string) {
+    if err != "" {
+        log.Println("exec error:", err)
+        return
+    }
+    log.Printf("browser returned: %s", result)
+})
+```
+
+This is mainly for browser-only capabilities or one-off integrations. It can be disabled on the server with `eng.DisableExecJS = true` and on the page with `window.GODOM_DISABLE_EXEC = true`.
+
 ### Plugins
 
 Integrate JS libraries (charts, maps, editors) without authoring JS yourself. A plugin is a thin JS adapter that receives Go data via the `g-plugin:name` directive:
@@ -419,8 +459,10 @@ See [docs/plugins.md](docs/plugins.md) for the full list and [docs/javascript-li
 - [examples/video-player/](examples/video-player/) — video player with Go decoding frames via ffmpeg and rendering on canvas
 - [examples/breakout-game/](examples/breakout-game/) — breakout game with Go-side physics, canvas rendering, keyboard input, and collision detection
 - [examples/chart-plugins/](examples/chart-plugins/) — Plotly and ECharts plugins side by side with live-updating charts
+- [examples/crash-test/](examples/crash-test/) — intentionally crashes after startup to exercise the disconnect UI
 - [examples/markdown-editor/](examples/markdown-editor/) — two-pane markdown editor with live preview and plain JS scroll sync
-- [examples/multi-page/](examples/multi-page/) — multi-page app with user-owned mux and routing between pages
+- [examples/multi-page/](examples/multi-page/) — multi-page app with developer-owned mux and routing between pages
+- [examples/select-test/](examples/select-test/) — focused repro app for select/input sync behavior
 - [examples/shared-state/](examples/shared-state/) — shared state between components via embedded struct pointers
 - [examples/dynamic-mount/](examples/dynamic-mount/) — dynamic component mounting and unmounting via `godom.mount()`
 - [examples/exec-and-call/](examples/exec-and-call/) — ExecJS (Go→browser) and `godom.call()` (browser→Go) demo
