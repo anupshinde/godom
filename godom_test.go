@@ -2,6 +2,7 @@ package godom
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"reflect"
@@ -44,8 +45,10 @@ var childHTML = `<!DOCTYPE html><html><head></head><body><span g-text="Value">pl
 
 func makeTestFS() fstest.MapFS {
 	return fstest.MapFS{
-		"index.html":       &fstest.MapFile{Data: []byte(testHTML)},
-		"child/index.html": &fstest.MapFile{Data: []byte(childHTML)},
+		"index.html":        &fstest.MapFile{Data: []byte(testHTML)},
+		"child/index.html":  &fstest.MapFile{Data: []byte(childHTML)},
+		"child/style.css":   &fstest.MapFile{Data: []byte("body { color: red; }")},
+		"assets/readme.txt": &fstest.MapFile{Data: []byte("static asset")},
 	}
 }
 
@@ -707,8 +710,30 @@ func TestRun_WithMuxOptions(t *testing.T) {
 		t.Fatalf("Run failed: %v", err)
 	}
 
-	// Verify handlers were registered on custom paths
-	// (mux doesn't expose handlers, but we can check it doesn't panic)
+	if got := e.WebSocketPath(); got != "/app/ws" {
+		t.Fatalf("WebSocketPath() = %q, want %q", got, "/app/ws")
+	}
+	if got := e.GodomScriptPath(); got != "/app/godom.js" {
+		t.Fatalf("GodomScriptPath() = %q, want %q", got, "/app/godom.js")
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/app/godom.js", nil)
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /app/godom.js = %d, want 200", rec.Code)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "/app/ws") {
+		t.Fatalf("godom.js should embed custom ws path %q, body was %q", "/app/ws", body)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/godom.js", nil)
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("GET /godom.js = %d, want 404 when custom script path is configured", rec.Code)
+	}
 }
 
 func TestRun_DisableExecJS(t *testing.T) {
@@ -819,6 +844,26 @@ func TestAuthMiddleware_NoAuth(t *testing.T) {
 	}
 }
 
+func TestAuthMiddleware_WithAuthRejectsUnauthorized(t *testing.T) {
+	e := NewEngine()
+	e.SetAuth(func(w http.ResponseWriter, r *http.Request) bool { return false })
+
+	wrapped := e.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("wrapped handler should not be called when auth rejects")
+	}))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/private", nil)
+	wrapped.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("AuthMiddleware status = %d, want 401", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Unauthorized") {
+		t.Fatalf("AuthMiddleware body = %q, want Unauthorized message", rec.Body.String())
+	}
+}
+
 // --- QuickServe ---
 
 func TestQuickServe_RegistersDocumentBody(t *testing.T) {
@@ -837,6 +882,102 @@ func TestQuickServe_RegistersDocumentBody(t *testing.T) {
 	}
 	if e.comps[0].SlotName != "document.body" {
 		t.Errorf("expected SlotName='document.body', got %q", e.comps[0].SlotName)
+	}
+}
+
+func TestQuickServe_BuildsMuxAndInjectsScriptBeforeListenError(t *testing.T) {
+	e := NewEngine()
+	e.Host = "127.0.0.1:1" // invalid host format once the port is appended
+	e.NoBrowser = true
+	e.NoAuth = true
+	e.SetFS(makeTestFS())
+
+	app := &testApp{Name: "root"}
+	app.Template = "index.html"
+
+	err := e.QuickServe(app)
+	if err == nil {
+		t.Fatal("expected QuickServe to return a listen error for invalid host")
+	}
+	if !strings.Contains(err.Error(), "failed to listen") {
+		t.Fatalf("QuickServe error = %v, want wrapped listen error", err)
+	}
+	if app.TargetName != "document.body" {
+		t.Fatalf("QuickServe should set TargetName to document.body, got %q", app.TargetName)
+	}
+	if e.Mux() == nil {
+		t.Fatal("QuickServe should set a mux before ListenAndServe runs")
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	e.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET / = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `<script src="/godom.js"></script>`) {
+		t.Fatalf("root page should include injected godom.js script, got %q", body)
+	}
+	if !strings.Contains(body, `g-text="Name"`) {
+		t.Fatalf("root page should contain the component template, got %q", body)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/godom.js", nil)
+	e.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /godom.js = %d, want 200", rec.Code)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "/ws") {
+		t.Fatalf("godom.js should reference the default ws path, got %q", body)
+	}
+}
+
+func TestQuickServe_SubdirTemplateServesStaticFilesBeforeListenError(t *testing.T) {
+	e := NewEngine()
+	e.Host = "127.0.0.1:1" // invalid host format once the port is appended
+	e.NoBrowser = true
+	e.NoAuth = true
+	e.SetFS(makeTestFS())
+
+	app := &childApp{Value: "child"}
+	app.Template = "child/index.html"
+
+	err := e.QuickServe(app)
+	if err == nil {
+		t.Fatal("expected QuickServe to return a listen error for invalid host")
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/style.css", nil)
+	e.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /style.css = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "color: red") {
+		t.Fatalf("static file should come from the template directory, got %q", body)
+	}
+	if strings.Contains(body, "static asset") {
+		t.Fatalf("static file should not come from the root template, got %q", body)
+	}
+}
+
+func TestListenAndServe_InvalidHostReturnsWrappedError(t *testing.T) {
+	e := NewEngine()
+	e.Host = "127.0.0.1:1" // invalid host format once the port is appended
+	e.NoBrowser = true
+	e.SetMux(http.NewServeMux(), nil)
+
+	err := e.ListenAndServe()
+	if err == nil {
+		t.Fatal("expected ListenAndServe to fail for invalid host")
+	}
+	if !strings.Contains(err.Error(), "failed to listen") {
+		t.Fatalf("ListenAndServe error = %v, want wrapped listen error", err)
 	}
 }
 

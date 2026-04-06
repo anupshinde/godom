@@ -470,7 +470,7 @@ func TestProcessEvents_DispatchesMethodCall(t *testing.T) {
 	// Send a method call event.
 	ci.EventCh <- component.Event{
 		Kind: component.MethodCallKind,
-		Msg: &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment", NodeId: 1},
+		Msg:  &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment", NodeId: 1},
 	}
 
 	close(ci.EventCh)
@@ -485,7 +485,7 @@ func TestProcessEvents_DispatchesMethodCall(t *testing.T) {
 
 func newTestWSPair(t *testing.T) (*websocket.Conn, *websocket.Conn, func()) {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -513,10 +513,24 @@ func newTestWSPair(t *testing.T) (*websocket.Conn, *websocket.Conn, func()) {
 	}
 }
 
+func newHTTPTestServer(t *testing.T, handler http.Handler) (srv *httptest.Server) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprint(r)
+			if strings.Contains(msg, "httptest: failed to listen on a port") || strings.Contains(msg, "bind: operation not permitted") {
+				t.Skipf("loopback listener unavailable in this environment: %s", msg)
+			}
+			panic(r)
+		}
+	}()
+	return httptest.NewServer(handler)
+}
+
 // wsServer starts a WS server and returns a connected client websocket + cleanup.
 func wsServer(t *testing.T, handler func(*websocket.Conn)) (*websocket.Conn, func()) {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		up := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 		conn, err := up.Upgrade(w, r, nil)
 		if err != nil {
@@ -589,7 +603,7 @@ func TestConnPool_Broadcast(t *testing.T) {
 	// Set up two server-side connections in a pool, verify both receive data
 	var mu sync.Mutex
 	var serverConns []*websocket.Conn
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		up := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 		conn, err := up.Upgrade(w, r, nil)
 		if err != nil {
@@ -656,7 +670,7 @@ func TestHandleInit_SendsInitMessage(t *testing.T) {
 
 	var serverConn *websocket.Conn
 	done := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		up := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 		c, err := up.Upgrade(w, r, nil)
 		if err != nil {
@@ -733,7 +747,7 @@ func TestHandleNodeEvent_UpdatesTreeAndBroadcasts(t *testing.T) {
 	// Set up a connection pool with a client
 	var serverConn *websocket.Conn
 	done := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		up := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 		c, _ := up.Upgrade(w, r, nil)
 		serverConn = c
@@ -827,7 +841,7 @@ func TestHandleMethodCall_CallsMethod(t *testing.T) {
 
 	var serverConn *websocket.Conn
 	done := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		up := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 		c, _ := up.Upgrade(w, r, nil)
 		serverConn = c
@@ -890,7 +904,7 @@ func TestHandleMethodCall_RebuildReflectsNewState(t *testing.T) {
 
 	var serverConn *websocket.Conn
 	done := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		up := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 		c, _ := up.Upgrade(w, r, nil)
 		serverConn = c
@@ -997,7 +1011,7 @@ func TestHandleMethodCall_DoubleRefreshIsHarmless(t *testing.T) {
 	// Wire RefreshFn exactly as Run does — sets Refreshed=true and broadcasts
 	var serverConn *websocket.Conn
 	done := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		up := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 		c, _ := up.Upgrade(w, r, nil)
 		serverConn = c
@@ -2438,7 +2452,7 @@ func TestRun_PluginScripts(t *testing.T) {
 func TestConnPool_BroadcastClose(t *testing.T) {
 	var serverConns []*websocket.Conn
 	var mu sync.Mutex
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		up := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 		conn, err := up.Upgrade(w, r, nil)
 		if err != nil {
@@ -3243,7 +3257,7 @@ func startTestServer(t *testing.T, cfg testConfig) (string, error) {
 		}
 	})
 
-	srv := httptest.NewServer(mux)
+	srv := newHTTPTestServer(t, mux)
 	t.Cleanup(srv.Close)
 	return strings.TrimPrefix(srv.URL, "http://"), nil
 }
@@ -4082,7 +4096,7 @@ func startMultiCompTestServer(t *testing.T, comps []*component.Info) (string, er
 		}
 	})
 
-	srv := httptest.NewServer(mux)
+	srv := newHTTPTestServer(t, mux)
 	t.Cleanup(func() {
 		srv.Close()
 		for _, ci := range comps {
@@ -4499,7 +4513,7 @@ func newWSPairWithServerConn(t *testing.T) (*websocket.Conn, *websocket.Conn, fu
 	t.Helper()
 	var serverConn *websocket.Conn
 	done := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		up := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 		c, err := up.Upgrade(w, r, nil)
 		if err != nil {
