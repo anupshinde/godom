@@ -30,6 +30,7 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 - `internal/utils/` — shared helpers (LocalIP, PrintQR, OpenBrowser)
 
 ## Key docs
+- `docs/llm-reference.md` — **complete API reference for AI agents** — read this to build godom apps without digging into source code
 - `docs/why.md` — project rationale and motivation
 - `docs/architecture.md` — system design, VDOM pipeline, data flow, wire protocol
 - `docs/configuration.md` — settings, environment variables, authentication, precedence rules

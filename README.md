@@ -523,6 +523,7 @@ See [docs/AI_USAGE.md](docs/AI_USAGE.md) for the full philosophy on how AI was u
 
 ## Documentation
 
+- [**AI Agent Reference**](docs/llm-reference.md) — complete API reference for AI agents and LLMs building godom apps
 - [**Getting Started Guide**](docs/guide.md) — build your first godom app step by step
 - [docs/why.md](docs/why.md) — project rationale, comparison with Electron/Tauri/Wails
 - [docs/architecture.md](docs/architecture.md) — system design, VDOM pipeline, wire protocol

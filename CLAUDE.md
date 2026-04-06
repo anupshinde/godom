@@ -37,6 +37,7 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 - **Init is pull-based.** On WebSocket connect, the server only pushes `document.body` init (root mode). All other components are initialized on demand: the bridge scans for `[g-component]` elements and sends `BROWSER_INIT_REQUEST` for each. In embedded mode (no `document.body`), the bridge scans on `ws.onopen`. The server injects `window.GODOM_ROOT=true` into the JS bundle so the bridge knows which mode it's in. See `scanAndRequestComponents` in `internal/bridge/bridge.js` and the `BROWSER_INIT_REQUEST` handler in `internal/server/server.go`.
 
 ## Key docs
+- `docs/llm-reference.md` — **complete API reference for AI agents** — read this to build godom apps without digging into source code
 - `docs/why.md` — project rationale and motivation
 - `docs/architecture.md` — system design, VDOM pipeline, data flow, wire protocol
 - `docs/configuration.md` — settings, environment variables, authentication, precedence rules
