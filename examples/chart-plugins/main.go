@@ -21,7 +21,7 @@ type M = map[string]interface{}
 const maxPoints = 40
 
 type App struct {
-	godom.Component
+	godom.Island
 
 	// Plotly charts
 	PlotlyLine    plotly.Chart

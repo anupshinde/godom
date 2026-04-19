@@ -9,7 +9,7 @@ import (
 
 // Clock is a time-driven component that refreshes from a goroutine.
 type Clock struct {
-	godom.Component
+	godom.Island
 	Time       string
 	HourHand   string
 	MinuteHand string

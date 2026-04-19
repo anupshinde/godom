@@ -26,7 +26,7 @@ type tickerState struct {
 
 // Ticker is a stock ticker component with random price updates.
 type Ticker struct {
-	godom.Component
+	godom.Island
 	Stocks []TickerStock
 	states []tickerState
 }

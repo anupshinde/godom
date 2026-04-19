@@ -13,7 +13,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/middleware"
 	gproto "github.com/anupshinde/godom/internal/proto"
@@ -26,7 +26,7 @@ import (
 // testConfig is a plain data bag used by startTestServer. It replaces the
 // deleted server.Config struct for test purposes only — tests don't call Run().
 type testConfig struct {
-	Comps         []*component.Info
+	Comps         []*island.Info
 	Plugins       map[string][]string
 	BridgeJS      string
 	ProtobufMinJS string
@@ -39,7 +39,7 @@ type testConfig struct {
 
 // counterApp mirrors the counter example's state struct.
 type counterApp struct {
-	Component struct{} // dummy — matches the field name check
+	Island struct{} // dummy — matches the field name check
 	Count     int
 	Step      int
 }
@@ -64,7 +64,7 @@ const counterHTML = `<!DOCTYPE html><html><head><title>Counter</title></head><bo
     </div>
 </body></html>`
 
-func makeCounterCI(app *counterApp) *component.Info {
+func makeCounterCI(app *counterApp) *island.Info {
 	v := reflect.ValueOf(app)
 	t := v.Elem().Type()
 
@@ -73,7 +73,7 @@ func makeCounterCI(app *counterApp) *component.Info {
 		panic(err)
 	}
 
-	return &component.Info{
+	return &island.Info{
 		Value:         v,
 		Typ:           t,
 		VDOMTemplates: templates,
@@ -258,7 +258,7 @@ func TestVDOMBuildUpdate_MultipleIncrements(t *testing.T) {
 // --- Cleanup tests ---
 
 type cleanupTracker struct {
-	Component struct{}
+	Island struct{}
 	cleaned   bool
 }
 
@@ -268,13 +268,13 @@ func (c *cleanupTracker) Cleanup() {
 
 func TestCleanup_CallsCleanupMethod(t *testing.T) {
 	app := &cleanupTracker{}
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:   reflect.ValueOf(app),
 		Typ:     reflect.TypeOf(*app),
-		EventCh: make(chan component.Event, 1),
+		EventCh: make(chan island.Event, 1),
 	}
 
-	Cleanup([]*component.Info{ci})
+	Cleanup([]*island.Info{ci})
 
 	if !app.cleaned {
 		t.Error("expected Cleanup() to be called on component")
@@ -282,13 +282,13 @@ func TestCleanup_CallsCleanupMethod(t *testing.T) {
 }
 
 func TestCleanup_ClosesEventCh(t *testing.T) {
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:   reflect.ValueOf(&counterApp{}),
 		Typ:     reflect.TypeOf(counterApp{}),
-		EventCh: make(chan component.Event, 1),
+		EventCh: make(chan island.Event, 1),
 	}
 
-	Cleanup([]*component.Info{ci})
+	Cleanup([]*island.Info{ci})
 
 	// Channel should be closed — reading should return zero value immediately.
 	select {
@@ -302,36 +302,36 @@ func TestCleanup_ClosesEventCh(t *testing.T) {
 }
 
 func TestCleanup_NilEventCh(t *testing.T) {
-	ci := &component.Info{
+	ci := &island.Info{
 		Value: reflect.ValueOf(&counterApp{}),
 		Typ:   reflect.TypeOf(counterApp{}),
 		// EventCh is nil
 	}
 	// Should not panic.
-	Cleanup([]*component.Info{ci})
+	Cleanup([]*island.Info{ci})
 }
 
 func TestCleanup_NoCleanupMethod(t *testing.T) {
 	app := &counterApp{}
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:   reflect.ValueOf(app),
 		Typ:     reflect.TypeOf(*app),
-		EventCh: make(chan component.Event, 1),
+		EventCh: make(chan island.Event, 1),
 	}
 	// Should not panic — counterApp doesn't have Cleanup().
-	Cleanup([]*component.Info{ci})
+	Cleanup([]*island.Info{ci})
 }
 
 func TestCleanup_EmptySlice(t *testing.T) {
 	Cleanup(nil)
-	Cleanup([]*component.Info{})
+	Cleanup([]*island.Info{})
 }
 
 // --- wireRefresh tests ---
 
 func TestWireRefresh_SendsRefreshEvent(t *testing.T) {
-	ci := &component.Info{
-		EventCh: make(chan component.Event, 1),
+	ci := &island.Info{
+		EventCh: make(chan island.Event, 1),
 	}
 	wireRefresh(ci)
 
@@ -339,7 +339,7 @@ func TestWireRefresh_SendsRefreshEvent(t *testing.T) {
 
 	select {
 	case evt := <-ci.EventCh:
-		if evt.Kind != component.RefreshKind {
+		if evt.Kind != island.RefreshKind {
 			t.Errorf("expected RefreshKind, got %d", evt.Kind)
 		}
 	default:
@@ -348,7 +348,7 @@ func TestWireRefresh_SendsRefreshEvent(t *testing.T) {
 }
 
 func TestWireRefresh_NilEventCh(t *testing.T) {
-	ci := &component.Info{}
+	ci := &island.Info{}
 	wireRefresh(ci)
 	// Should not panic when EventCh is nil.
 	ci.RefreshFn()
@@ -357,10 +357,10 @@ func TestWireRefresh_NilEventCh(t *testing.T) {
 // --- shouldEnqueue / shouldProcess tests ---
 
 func TestShouldEnqueue_AlwaysTrue(t *testing.T) {
-	events := []component.Event{
-		{Kind: component.NodeEventKind},
-		{Kind: component.MethodCallKind},
-		{Kind: component.RefreshKind},
+	events := []island.Event{
+		{Kind: island.NodeEventKind},
+		{Kind: island.MethodCallKind},
+		{Kind: island.RefreshKind},
 	}
 	for _, e := range events {
 		if !shouldEnqueue(e) {
@@ -370,10 +370,10 @@ func TestShouldEnqueue_AlwaysTrue(t *testing.T) {
 }
 
 func TestShouldProcess_AlwaysTrue(t *testing.T) {
-	events := []component.Event{
-		{Kind: component.NodeEventKind},
-		{Kind: component.MethodCallKind},
-		{Kind: component.RefreshKind},
+	events := []island.Event{
+		{Kind: island.NodeEventKind},
+		{Kind: island.MethodCallKind},
+		{Kind: island.RefreshKind},
 	}
 	for _, e := range events {
 		if !shouldProcess(e) {
@@ -388,7 +388,7 @@ func TestProcessEvents_DispatchesRefresh(t *testing.T) {
 	app := &counterApp{Step: 1, Count: 0}
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
-	ci.EventCh = make(chan component.Event, 8)
+	ci.EventCh = make(chan island.Event, 8)
 
 	// Build initial tree so executeRefresh works.
 	ci.IDCounter = &vdom.IDCounter{}
@@ -398,7 +398,7 @@ func TestProcessEvents_DispatchesRefresh(t *testing.T) {
 		pool:   &connPool{},
 		sm:     &sharedPtrMaps{ptrToCompIdx: map[uintptr][]int{}, compIdxToPtr: map[int][]uintptr{}},
 		lookup: newNodeLookup(),
-		comps:  []*component.Info{ci},
+		comps:  []*island.Info{ci},
 	}
 
 	// Start processor.
@@ -409,7 +409,7 @@ func TestProcessEvents_DispatchesRefresh(t *testing.T) {
 	}()
 
 	// Send refresh event.
-	ci.EventCh <- component.Event{Kind: component.RefreshKind}
+	ci.EventCh <- island.Event{Kind: island.RefreshKind}
 
 	// Close channel to stop processor.
 	close(ci.EventCh)
@@ -420,7 +420,7 @@ func TestProcessEvents_DispatchesNodeEvent(t *testing.T) {
 	app := &counterApp{Step: 1, Count: 0}
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
-	ci.EventCh = make(chan component.Event, 8)
+	ci.EventCh = make(chan island.Event, 8)
 
 	ci.IDCounter = &vdom.IDCounter{}
 	BuildInit(ci)
@@ -429,7 +429,7 @@ func TestProcessEvents_DispatchesNodeEvent(t *testing.T) {
 		pool:   &connPool{},
 		sm:     &sharedPtrMaps{ptrToCompIdx: map[uintptr][]int{}, compIdxToPtr: map[int][]uintptr{}},
 		lookup: newNodeLookup(),
-		comps:  []*component.Info{ci},
+		comps:  []*island.Info{ci},
 	}
 
 	done := make(chan struct{})
@@ -439,7 +439,7 @@ func TestProcessEvents_DispatchesNodeEvent(t *testing.T) {
 	}()
 
 	// Send a node event (with an invalid node ID — will log but not crash).
-	ci.EventCh <- component.Event{Kind: component.NodeEventKind, NodeID: 99999, Value: "test"}
+	ci.EventCh <- island.Event{Kind: island.NodeEventKind, NodeID: 99999, Value: "test"}
 
 	close(ci.EventCh)
 	<-done
@@ -449,7 +449,7 @@ func TestProcessEvents_DispatchesMethodCall(t *testing.T) {
 	app := &counterApp{Step: 1, Count: 0}
 	ci := makeCounterCI(app)
 	ci.HTMLBody = counterHTML
-	ci.EventCh = make(chan component.Event, 8)
+	ci.EventCh = make(chan island.Event, 8)
 
 	ci.IDCounter = &vdom.IDCounter{}
 	BuildInit(ci)
@@ -458,7 +458,7 @@ func TestProcessEvents_DispatchesMethodCall(t *testing.T) {
 		pool:   &connPool{},
 		sm:     &sharedPtrMaps{ptrToCompIdx: map[uintptr][]int{}, compIdxToPtr: map[int][]uintptr{}},
 		lookup: newNodeLookup(),
-		comps:  []*component.Info{ci},
+		comps:  []*island.Info{ci},
 	}
 
 	done := make(chan struct{})
@@ -468,8 +468,8 @@ func TestProcessEvents_DispatchesMethodCall(t *testing.T) {
 	}()
 
 	// Send a method call event.
-	ci.EventCh <- component.Event{
-		Kind: component.MethodCallKind,
+	ci.EventCh <- island.Event{
+		Kind: island.MethodCallKind,
 		Msg:  &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment", NodeId: 1},
 	}
 
@@ -979,7 +979,7 @@ func TestHandleMethodCall_InvalidMethod(t *testing.T) {
 // refreshApp has a method that calls RefreshFn, simulating the real production flow
 // where a user method calls Refresh() during execution.
 type refreshApp struct {
-	Component struct{}
+	Island struct{}
 	Count     int
 	refreshFn func()
 }
@@ -998,7 +998,7 @@ func TestHandleMethodCall_DoubleRefreshIsHarmless(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:         v,
 		Typ:           v.Elem().Type(),
 		VDOMTemplates: templates,
@@ -1119,7 +1119,7 @@ func TestHandleMethodCall_SyncsBindValues(t *testing.T) {
 
 // surgicalApp has multiple binding types for testing surgical patches.
 type surgicalApp struct {
-	Component struct{}
+	Island struct{}
 	Name      string
 	Color     string
 	Visible   bool
@@ -1140,14 +1140,14 @@ const surgicalHTML = `<!DOCTYPE html><html><head></head><body>
 	<input g-value="InputVal"/>
 </body></html>`
 
-func makeSurgicalCI(app *surgicalApp) *component.Info {
+func makeSurgicalCI(app *surgicalApp) *island.Info {
 	v := reflect.ValueOf(app)
 	t := v.Elem().Type()
 	templates, err := vdom.ParseTemplate(surgicalHTML)
 	if err != nil {
 		panic(err)
 	}
-	return &component.Info{
+	return &island.Info{
 		Value:         v,
 		Typ:           t,
 		VDOMTemplates: templates,
@@ -1655,7 +1655,7 @@ func TestBuildSurgicalPatches_EmptyExprFallsBackToFieldName(t *testing.T) {
 
 // unboundApp has an unbound input (no g-bind) that gets a StableID at parse time.
 type unboundApp struct {
-	Component struct{}
+	Island struct{}
 	Label     string
 }
 
@@ -1664,14 +1664,14 @@ const unboundHTML = `<!DOCTYPE html><html><head></head><body>
 	<input type="text" placeholder="unbound"/>
 </body></html>`
 
-func makeUnboundCI(app *unboundApp) *component.Info {
+func makeUnboundCI(app *unboundApp) *island.Info {
 	v := reflect.ValueOf(app)
 	t := v.Elem().Type()
 	templates, err := vdom.ParseTemplate(unboundHTML)
 	if err != nil {
 		panic(err)
 	}
-	return &component.Info{
+	return &island.Info{
 		Value:         v,
 		Typ:           t,
 		VDOMTemplates: templates,
@@ -1795,7 +1795,7 @@ func TestHandleNodeEvent_NotElementNode(t *testing.T) {
 // --- handleMethodMsg: method with arguments ---
 
 type argsApp struct {
-	Component struct{}
+	Island struct{}
 	Result    string
 }
 
@@ -1810,7 +1810,7 @@ func TestHandleMethodCall_WithArgs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:         v,
 		Typ:           v.Elem().Type(),
 		VDOMTemplates: templates,
@@ -2089,7 +2089,7 @@ func TestRun_ServesHTML(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := testConfig{
-		Comps:    []*component.Info{ci},
+		Comps:    []*island.Info{ci},
 		BridgeJS: "// bridge",
 	}
 
@@ -2125,7 +2125,7 @@ func TestRun_AuthRejectsWithoutToken(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := testConfig{
-		Comps:  []*component.Info{ci},
+		Comps:  []*island.Info{ci},
 		AuthFn: fixedTokenAuthFn("testsecret"),
 	}
 
@@ -2151,7 +2151,7 @@ func TestRun_AuthAcceptsWithToken(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := testConfig{
-		Comps:  []*component.Info{ci},
+		Comps:  []*island.Info{ci},
 		AuthFn: fixedTokenAuthFn("testsecret"),
 	}
 
@@ -2206,7 +2206,7 @@ func TestRun_WebSocketUpgrade(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := testConfig{
-		Comps: []*component.Info{ci},
+		Comps: []*island.Info{ci},
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2245,7 +2245,7 @@ func TestRun_WebSocketMethodCall(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := testConfig{
-		Comps: []*component.Info{ci},
+		Comps: []*island.Info{ci},
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2308,7 +2308,7 @@ func TestRun_WebSocketNodeEvent(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := testConfig{
-		Comps: []*component.Info{ci},
+		Comps: []*island.Info{ci},
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2377,7 +2377,7 @@ func TestRun_WebSocketAuthReject(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := testConfig{
-		Comps:  []*component.Info{ci},
+		Comps:  []*island.Info{ci},
 		AuthFn: fixedTokenAuthFn("secret"),
 	}
 
@@ -2403,7 +2403,7 @@ func TestRun_PluginScripts(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := testConfig{
-		Comps:    []*component.Info{ci},
+		Comps:    []*island.Info{ci},
 		Plugins:  map[string][]string{"chart": {"console.log('chart')"}},
 		BridgeJS: "// bridge",
 	}
@@ -2782,7 +2782,7 @@ func TestRun_WebSocketIgnoresNonBinary(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := testConfig{
-		Comps: []*component.Info{ci},
+		Comps: []*island.Info{ci},
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2833,7 +2833,7 @@ func TestRun_WebSocketBadProtobuf(t *testing.T) {
 	ci.HTMLBody = counterHTML
 
 	cfg := testConfig{
-		Comps: []*component.Info{ci},
+		Comps: []*island.Info{ci},
 	}
 
 	ln, err := startTestServer(t, cfg)
@@ -2944,7 +2944,7 @@ func TestBuildInit_Idempotent(t *testing.T) {
 // gifApp simulates a g-if transition: Items goes from nil to non-empty,
 // which inserts new nodes and shifts IDs of subsequent nodes.
 type gifApp struct {
-	Component struct{}
+	Island struct{}
 	Items     []string
 }
 
@@ -2960,14 +2960,14 @@ const gifHTML = `<!DOCTYPE html><html><head></head><body>
 <div class="footer"><span g-text="'done'">done</span></div>
 </body></html>`
 
-func makeGifCI(app *gifApp) *component.Info {
+func makeGifCI(app *gifApp) *island.Info {
 	v := reflect.ValueOf(app)
 	t := v.Elem().Type()
 	templates, err := vdom.ParseTemplate(gifHTML)
 	if err != nil {
 		panic(err)
 	}
-	return &component.Info{
+	return &island.Info{
 		Value:         v,
 		Typ:           t,
 		VDOMTemplates: templates,
@@ -3265,7 +3265,7 @@ func startTestServer(t *testing.T, cfg testConfig) (string, error) {
 // --- BuildUpdate: NodeStableIDs remap ---
 
 type stableRemapApp struct {
-	Component struct{}
+	Island struct{}
 	Label     string
 }
 
@@ -3285,7 +3285,7 @@ func TestBuildUpdate_RemapsNodeStableIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:         v,
 		Typ:           v.Elem().Type(),
 		VDOMTemplates: templates,
@@ -3353,7 +3353,7 @@ func TestBuildUpdate_RemapsNodeStableIDs_ElseBranch(t *testing.T) {
 	// so its new ID is NOT in the remap. The else branch keeps the original
 	// new-tree ID in NodeStableIDs.
 	type gifRemapApp struct {
-		Component struct{}
+		Island struct{}
 		ShowExtra bool
 	}
 	app := &gifRemapApp{ShowExtra: false}
@@ -3365,7 +3365,7 @@ func TestBuildUpdate_RemapsNodeStableIDs_ElseBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:         v,
 		Typ:           v.Elem().Type(),
 		VDOMTemplates: templates,
@@ -3405,77 +3405,77 @@ func TestBuildUpdate_RemapsNodeStableIDs_ElseBranch(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// findComponent / findNode cache tests
+// findIsland / findNode cache tests
 // ---------------------------------------------------------------------------
 
-func TestFindComponent_Found(t *testing.T) {
-	ci1 := &component.Info{}
+func TestFindIsland_Found(t *testing.T) {
+	ci1 := &island.Info{}
 	ci1.Tree = &vdom.ElementNode{
 		NodeBase: vdom.NodeBase{ID: 10}, Tag: "div",
 	}
-	ci2 := &component.Info{}
+	ci2 := &island.Info{}
 	ci2.Tree = &vdom.ElementNode{
 		NodeBase: vdom.NodeBase{ID: 20}, Tag: "span",
 	}
 
-	comps := []*component.Info{ci1, ci2}
+	comps := []*island.Info{ci1, ci2}
 	lookup := newNodeLookup()
 
-	found := findComponent(20, comps, lookup)
+	found := findIsland(20, comps, lookup)
 	if found != ci2 {
 		t.Error("expected to find ci2 for node ID 20")
 	}
 }
 
-func TestFindComponent_NotFound(t *testing.T) {
-	ci := &component.Info{}
+func TestFindIsland_NotFound(t *testing.T) {
+	ci := &island.Info{}
 	ci.Tree = &vdom.ElementNode{
 		NodeBase: vdom.NodeBase{ID: 10}, Tag: "div",
 	}
-	comps := []*component.Info{ci}
+	comps := []*island.Info{ci}
 	lookup := newNodeLookup()
 
-	found := findComponent(999, comps, lookup)
+	found := findIsland(999, comps, lookup)
 	if found != nil {
 		t.Error("expected nil for non-existent node ID")
 	}
 }
 
-func TestFindComponent_Empty(t *testing.T) {
+func TestFindIsland_Empty(t *testing.T) {
 	lookup := newNodeLookup()
-	found := findComponent(1, nil, lookup)
+	found := findIsland(1, nil, lookup)
 	if found != nil {
 		t.Error("expected nil for empty comps")
 	}
 }
 
-func TestFindComponent_CacheHit(t *testing.T) {
-	ci := &component.Info{}
+func TestFindIsland_CacheHit(t *testing.T) {
+	ci := &island.Info{}
 	ci.Tree = &vdom.ElementNode{
 		NodeBase: vdom.NodeBase{ID: 10}, Tag: "div",
 	}
-	comps := []*component.Info{ci}
+	comps := []*island.Info{ci}
 	lookup := newNodeLookup()
 
 	// First call — cache miss, traverses tree.
-	found1 := findComponent(10, comps, lookup)
+	found1 := findIsland(10, comps, lookup)
 	// Second call — cache hit.
-	found2 := findComponent(10, comps, lookup)
+	found2 := findIsland(10, comps, lookup)
 
 	if found1 != ci || found2 != ci {
 		t.Error("expected cache to return same component")
 	}
 }
 
-func TestFindComponent_EvictsRemovedNode(t *testing.T) {
+func TestFindIsland_EvictsRemovedNode(t *testing.T) {
 	child := &vdom.ElementNode{NodeBase: vdom.NodeBase{ID: 20}, Tag: "span"}
 	root := &vdom.ElementNode{
 		NodeBase: vdom.NodeBase{ID: 10}, Tag: "div",
 		Children: []vdom.Node{child},
 	}
-	ci := &component.Info{}
+	ci := &island.Info{}
 	ci.Tree = root
-	comps := []*component.Info{ci}
+	comps := []*island.Info{ci}
 	lookup := newNodeLookup()
 
 	// Populate cache for the child node.
@@ -3493,8 +3493,8 @@ func TestFindComponent_EvictsRemovedNode(t *testing.T) {
 		t.Error("expected cache entry to be evicted for removed node")
 	}
 
-	// findComponent should also return nil since the node is gone.
-	comp := findComponent(20, comps, lookup)
+	// findIsland should also return nil since the node is gone.
+	comp := findIsland(20, comps, lookup)
 	if comp != nil {
 		t.Error("expected nil for removed node")
 	}
@@ -3506,7 +3506,7 @@ func TestFindNode_Found(t *testing.T) {
 		NodeBase: vdom.NodeBase{ID: 1}, Tag: "div",
 		Children: []vdom.Node{child},
 	}
-	ci := &component.Info{Tree: root}
+	ci := &island.Info{Tree: root}
 	lookup := newNodeLookup()
 
 	found := findNode(5, ci, lookup)
@@ -3521,7 +3521,7 @@ func TestFindNode_CacheHit(t *testing.T) {
 		NodeBase: vdom.NodeBase{ID: 1}, Tag: "div",
 		Children: []vdom.Node{child},
 	}
-	ci := &component.Info{Tree: root}
+	ci := &island.Info{Tree: root}
 	lookup := newNodeLookup()
 
 	found1 := findNode(5, ci, lookup)
@@ -3535,7 +3535,7 @@ func TestFindNode_CacheHit(t *testing.T) {
 // --- Checkbox and InputBindings tests ---
 
 type checkboxApp struct {
-	Component struct{}
+	Island struct{}
 	Agree     bool
 	Dark      bool
 	Color     string
@@ -3557,14 +3557,14 @@ const checkboxHTML = `<!DOCTYPE html><html><head></head><body>
 	<span g-text="Title"></span>
 </body></html>`
 
-func makeCheckboxCI(app *checkboxApp) *component.Info {
+func makeCheckboxCI(app *checkboxApp) *island.Info {
 	v := reflect.ValueOf(app)
 	t := v.Elem().Type()
 	templates, err := vdom.ParseTemplate(checkboxHTML)
 	if err != nil {
 		panic(err)
 	}
-	return &component.Info{
+	return &island.Info{
 		Value:         v,
 		Typ:           t,
 		VDOMTemplates: templates,
@@ -3588,7 +3588,7 @@ func findNodeByTagAndAttr(n vdom.Node, tag, attrKey, attrVal string) *vdom.Eleme
 	return nil
 }
 
-func findNodeByTagAndDirective(ci *component.Info, kind, field string) int {
+func findNodeByTagAndDirective(ci *island.Info, kind, field string) int {
 	for f, bindings := range ci.Bindings {
 		if f != field {
 			continue
@@ -3969,9 +3969,9 @@ func TestInputBindings_RemappedAfterBuildUpdate(t *testing.T) {
 
 // --- BROWSER_INIT_REQUEST tests ---
 
-// clockApp is a simple component used as a named (non-root) component.
+// clockApp is a simple component used as a named (non-root) island.
 type clockApp struct {
-	Component struct{}
+	Island struct{}
 	Time      string
 }
 
@@ -3979,7 +3979,7 @@ const clockHTML = `<!DOCTYPE html><html><head></head><body>
 	<span g-text="Time">00:00</span>
 </body></html>`
 
-func makeClockCI(app *clockApp) *component.Info {
+func makeClockCI(app *clockApp) *island.Info {
 	v := reflect.ValueOf(app)
 	t := v.Elem().Type()
 
@@ -3988,7 +3988,7 @@ func makeClockCI(app *clockApp) *component.Info {
 		panic(err)
 	}
 
-	return &component.Info{
+	return &island.Info{
 		Value:         v,
 		Typ:           t,
 		VDOMTemplates: templates,
@@ -3998,7 +3998,7 @@ func makeClockCI(app *clockApp) *component.Info {
 
 // startMultiCompTestServer starts a test server with multiple components
 // and BROWSER_INIT_REQUEST handling, mirroring the Run() logic.
-func startMultiCompTestServer(t *testing.T, comps []*component.Info) (string, error) {
+func startMultiCompTestServer(t *testing.T, comps []*island.Info) (string, error) {
 	t.Helper()
 
 	pool := &connPool{}
@@ -4018,7 +4018,7 @@ func startMultiCompTestServer(t *testing.T, comps []*component.Info) (string, er
 	}
 
 	for idx, ci := range comps {
-		ci.EventCh = make(chan component.Event, 64)
+		ci.EventCh = make(chan island.Event, 64)
 		idx, ci := idx, ci
 		go ctx.processEvents(ci, idx)
 	}
@@ -4066,7 +4066,7 @@ func startMultiCompTestServer(t *testing.T, comps []*component.Info) (string, er
 			}
 			switch msg.Kind {
 			case gproto.BrowserKind_BROWSER_INPUT:
-				if ci := findComponent(int(msg.NodeId), ctx.comps, ctx.lookup); ci != nil {
+				if ci := findIsland(int(msg.NodeId), ctx.comps, ctx.lookup); ci != nil {
 					ctx.handleNodeEvent(ci, 0, msg.NodeId, msg.Value)
 				}
 			case gproto.BrowserKind_BROWSER_METHOD:
@@ -4077,11 +4077,11 @@ func startMultiCompTestServer(t *testing.T, comps []*component.Info) (string, er
 					}
 				}
 			case gproto.BrowserKind_BROWSER_INIT_REQUEST:
-				name := msg.Component
+				name := msg.Island
 				if name == "" {
 					continue
 				}
-				var target *component.Info
+				var target *island.Info
 				for _, ci := range ctx.comps {
 					if ci.SlotName == name {
 						target = ci
@@ -4108,10 +4108,10 @@ func startMultiCompTestServer(t *testing.T, comps []*component.Info) (string, er
 	return strings.TrimPrefix(srv.URL, "http://"), nil
 }
 
-// TestRun_InitRequestReturnsComponentTree verifies that sending a
+// TestRun_InitRequestReturnsIslandTree verifies that sending a
 // BROWSER_INIT_REQUEST for a known component returns a SERVER_INIT
 // with the correct target name and tree.
-func TestRun_InitRequestReturnsComponentTree(t *testing.T) {
+func TestRun_InitRequestReturnsIslandTree(t *testing.T) {
 	root := &counterApp{Step: 1, Count: 5}
 	rootCI := makeCounterCI(root)
 	rootCI.SlotName = "document.body"
@@ -4120,7 +4120,7 @@ func TestRun_InitRequestReturnsComponentTree(t *testing.T) {
 	clock := &clockApp{Time: "12:34:56"}
 	clockCI := makeClockCI(clock)
 
-	ln, err := startMultiCompTestServer(t, []*component.Info{rootCI, clockCI})
+	ln, err := startMultiCompTestServer(t, []*island.Info{rootCI, clockCI})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4152,7 +4152,7 @@ func TestRun_InitRequestReturnsComponentTree(t *testing.T) {
 	// Send BROWSER_INIT_REQUEST for "clock".
 	req := &gproto.BrowserMessage{
 		Kind:      gproto.BrowserKind_BROWSER_INIT_REQUEST,
-		Component: "clock",
+		Island: "clock",
 	}
 	payload, _ := proto.Marshal(req)
 	if err := client.WriteMessage(websocket.BinaryMessage, payload); err != nil {
@@ -4190,16 +4190,16 @@ func TestRun_InitRequestReturnsComponentTree(t *testing.T) {
 	}
 }
 
-// TestRun_InitRequestUnknownComponent verifies that sending a
+// TestRun_InitRequestUnknownIsland verifies that sending a
 // BROWSER_INIT_REQUEST for an unregistered component name does not
 // crash and produces no response.
-func TestRun_InitRequestUnknownComponent(t *testing.T) {
+func TestRun_InitRequestUnknownIsland(t *testing.T) {
 	root := &counterApp{Step: 1, Count: 0}
 	rootCI := makeCounterCI(root)
 	rootCI.SlotName = "document.body"
 	rootCI.HTMLBody = counterHTML
 
-	ln, err := startMultiCompTestServer(t, []*component.Info{rootCI})
+	ln, err := startMultiCompTestServer(t, []*island.Info{rootCI})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4221,7 +4221,7 @@ func TestRun_InitRequestUnknownComponent(t *testing.T) {
 	// Send BROWSER_INIT_REQUEST for a component that doesn't exist.
 	req := &gproto.BrowserMessage{
 		Kind:      gproto.BrowserKind_BROWSER_INIT_REQUEST,
-		Component: "nonexistent",
+		Island: "nonexistent",
 	}
 	payload, _ := proto.Marshal(req)
 	if err := client.WriteMessage(websocket.BinaryMessage, payload); err != nil {
@@ -4244,7 +4244,7 @@ func TestRun_InitRequestEmptyName(t *testing.T) {
 	rootCI.SlotName = "document.body"
 	rootCI.HTMLBody = counterHTML
 
-	ln, err := startMultiCompTestServer(t, []*component.Info{rootCI})
+	ln, err := startMultiCompTestServer(t, []*island.Info{rootCI})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4266,7 +4266,7 @@ func TestRun_InitRequestEmptyName(t *testing.T) {
 	// Send BROWSER_INIT_REQUEST with empty name.
 	req := &gproto.BrowserMessage{
 		Kind:      gproto.BrowserKind_BROWSER_INIT_REQUEST,
-		Component: "",
+		Island: "",
 	}
 	payload, _ := proto.Marshal(req)
 	if err := client.WriteMessage(websocket.BinaryMessage, payload); err != nil {
@@ -4288,7 +4288,7 @@ func TestRun_EmbeddedMode_NoDocumentBody(t *testing.T) {
 	clock := &clockApp{Time: "09:00:00"}
 	clockCI := makeClockCI(clock)
 
-	ln, err := startMultiCompTestServer(t, []*component.Info{clockCI})
+	ln, err := startMultiCompTestServer(t, []*island.Info{clockCI})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4319,7 +4319,7 @@ func TestRun_EmbeddedMode_NoDocumentBody(t *testing.T) {
 
 	req := &gproto.BrowserMessage{
 		Kind:      gproto.BrowserKind_BROWSER_INIT_REQUEST,
-		Component: "clock",
+		Island: "clock",
 	}
 	payload, _ := proto.Marshal(req)
 	if err := c2.WriteMessage(websocket.BinaryMessage, payload); err != nil {
@@ -4352,15 +4352,15 @@ func TestRun_EmbeddedMode_NoDocumentBody(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// BuildComponentInfo tests
+// BuildIslandInfo tests
 // ---------------------------------------------------------------------------
 
 type bciApp struct {
-	Component struct{} // dummy embed
+	Island struct{} // dummy embed
 	Title     string
 }
 
-func TestBuildComponentInfo_Success(t *testing.T) {
+func TestBuildIslandInfo_Success(t *testing.T) {
 	app := &bciApp{Title: "hello"}
 	fsys := fstest.MapFS{
 		"index.html": &fstest.MapFile{Data: []byte(
@@ -4368,10 +4368,10 @@ func TestBuildComponentInfo_Success(t *testing.T) {
 		)},
 	}
 
-	ci := BuildComponentInfo(app, fsys, "index.html")
+	ci := BuildIslandInfo(app, fsys, "index.html")
 
 	if ci == nil {
-		t.Fatal("expected non-nil component.Info")
+		t.Fatal("expected non-nil island.Info")
 	}
 	if ci.Value.Interface() != app {
 		t.Error("expected Value to point to the app struct")
@@ -4387,14 +4387,14 @@ func TestBuildComponentInfo_Success(t *testing.T) {
 	}
 }
 
-func TestBuildComponentInfo_PreservesHTMLBody(t *testing.T) {
+func TestBuildIslandInfo_PreservesHTMLBody(t *testing.T) {
 	app := &bciApp{Title: "test"}
 	html := `<!DOCTYPE html><html><head></head><body><div class="wrapper"><span g-text="Title">x</span></div></body></html>`
 	fsys := fstest.MapFS{
 		"page.html": &fstest.MapFile{Data: []byte(html)},
 	}
 
-	ci := BuildComponentInfo(app, fsys, "page.html")
+	ci := BuildIslandInfo(app, fsys, "page.html")
 
 	if !strings.Contains(ci.HTMLBody, `class="wrapper"`) {
 		t.Error("expected HTMLBody to preserve the wrapper div")
@@ -4540,7 +4540,7 @@ func TestExecuteRefresh_SurgicalPath(t *testing.T) {
 	app := &surgicalApp{Name: "Alice"}
 	ci := makeSurgicalCI(app)
 	ci.Tree = buildTree(ci)
-	ci.EventCh = make(chan component.Event, 10)
+	ci.EventCh = make(chan island.Event, 10)
 
 	srvConn, client, cleanup := newWSPairWithServerConn(t)
 	defer cleanup()
@@ -4584,7 +4584,7 @@ func TestExecuteRefresh_FallbackToFullBuildUpdate(t *testing.T) {
 	app := &counterApp{Step: 1, Count: 0}
 	ci := makeCounterCI(app)
 	_ = BuildInit(ci)
-	ci.EventCh = make(chan component.Event, 10)
+	ci.EventCh = make(chan island.Event, 10)
 
 	srvConn, client, cleanup := newWSPairWithServerConn(t)
 	defer cleanup()
@@ -4626,7 +4626,7 @@ func TestExecuteRefresh_NoChange_NoBroadcast(t *testing.T) {
 	app := &counterApp{Step: 1, Count: 5}
 	ci := makeCounterCI(app)
 	_ = BuildInit(ci)
-	ci.EventCh = make(chan component.Event, 10)
+	ci.EventCh = make(chan island.Event, 10)
 
 	srvConn, client, cleanup := newWSPairWithServerConn(t)
 	defer cleanup()
@@ -4650,7 +4650,7 @@ func TestExecuteRefresh_EmptySurgicalPatches_FallsBackToFull(t *testing.T) {
 	app := &counterApp{Step: 1, Count: 0}
 	ci := makeCounterCI(app)
 	_ = BuildInit(ci)
-	ci.EventCh = make(chan component.Event, 10)
+	ci.EventCh = make(chan island.Event, 10)
 
 	srvConn, client, cleanup := newWSPairWithServerConn(t)
 	defer cleanup()

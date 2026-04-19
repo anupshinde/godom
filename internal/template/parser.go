@@ -16,9 +16,9 @@ var openTagRe = regexp.MustCompile(`<([a-z][a-z0-9]*-[a-z0-9-]*)(\s[^>]*?)?\s*/?
 // gAttrRe matches g-* attributes (including g-class:done etc.) in an attribute string.
 var gAttrRe = regexp.MustCompile(`(g-[a-z]+(?::[a-z-]+)?)\s*=\s*"([^"]*)"`)
 
-// ExpandComponents takes HTML and recursively replaces custom element tags
+// ExpandPartials takes HTML and recursively replaces custom element tags
 // with the contents of their corresponding HTML files from the filesystem.
-func ExpandComponents(htmlStr string, fsys fs.FS, baseDir string) (string, error) {
+func ExpandPartials(htmlStr string, fsys fs.FS, baseDir string) (string, error) {
 	maxExpansions := 10
 	searchFrom := 0
 	for expansions := 0; expansions < maxExpansions; expansions++ {
@@ -35,7 +35,7 @@ func ExpandComponents(htmlStr string, fsys fs.FS, baseDir string) (string, error
 
 		tagName := htmlStr[loc[2]:loc[3]]
 
-		// Skip g-* tags — these are framework directives, not custom components.
+		// Skip g-* tags — these are framework directives, not custom elements (partials).
 		if strings.HasPrefix(tagName, "g-") {
 			searchFrom = loc[1]
 			expansions--
@@ -59,20 +59,20 @@ func ExpandComponents(htmlStr string, fsys fs.FS, baseDir string) (string, error
 			closeTag := "</" + tagName + ">"
 			closeIdx := strings.Index(htmlStr[loc[1]:], closeTag)
 			if closeIdx < 0 {
-				return "", fmt.Errorf("component %q: missing closing tag", tagName)
+				return "", fmt.Errorf("partial %q: missing closing tag", tagName)
 			}
 			end = loc[1] + closeIdx + len(closeTag)
 		}
 
-		// Load component HTML
+		// Load partial HTML
 		compHTML, err := fs.ReadFile(fsys, path.Join(baseDir, tagName+".html"))
 		if err != nil {
-			return "", fmt.Errorf("component %q: %w", tagName, err)
+			return "", fmt.Errorf("partial %q: %w", tagName, err)
 		}
 
 		expanded := strings.TrimSpace(string(compHTML))
 
-		// Transfer g-* attributes from the custom tag to the component's root element
+		// Transfer g-* attributes from the custom tag to the partial.s root element
 		if attrs != "" {
 			gAttrs := ExtractGAttrs(attrs)
 			if gAttrs != "" {

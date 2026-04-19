@@ -17,7 +17,7 @@ const monitorMaxPoints = 30
 // Monitor is a simulated system monitor with a Chart.js line chart.
 // It also displays the shared counter value as a read-only view.
 type Monitor struct {
-	godom.Component
+	godom.Island
 	*CounterState
 	CPUChart chartjs.Chart
 	cpuBase  float64

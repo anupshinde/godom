@@ -4,9 +4,9 @@
 // On init: builds DOM from tree description, registers events.
 // On patch: applies minimal DOM mutations using nodeMap[id] lookups.
 //
-// Each render target is identified by name (from g-component attribute).
-// The root component has name "document.body" and renders into document.body.
-// A named component can have multiple DOM targets — each gets its own
+// Each render target is identified by name (from g-island attribute).
+// The root island has name "document.body" and renders into document.body.
+// A named island can have multiple DOM targets — each gets its own
 // encapsulated context (own nodeMap, own pluginState).
 //
 // Structure:
@@ -65,7 +65,7 @@
             }
             document.body.appendChild(overlay);
         } else {
-            // Embedded — dim each component target and show a small badge.
+            // Embedded — dim each island target and show a small badge.
             for (const n in targets) {
                 if (!targets.hasOwnProperty(n)) continue;
                 const list = targets[n];
@@ -119,21 +119,21 @@
         ws.onopen = () => {
             hideDisconnectOverlay();
             reconnectDelay = 1000;
-            // Clean up all existing target contexts so scanAndRequestComponents
-            // treats every [g-component] as fresh. This handles reconnect after
+            // Clean up all existing target contexts so scanAndRequestIslands
+            // treats every [g-island] as fresh. This handles reconnect after
             // server restart (state lost) or long disconnect (state diverged).
             cleanupAllTargets();
             if (!firedOnConnect && ns.onconnect) {
                 firedOnConnect = true;
                 ns.onconnect();
             }
-            // In embedded mode, scan for g-component targets immediately —
+            // In embedded mode, scan for g-island targets immediately —
             // no SERVER_INIT will arrive to trigger it. In root mode, the
             // static HTML may contain unresolved template expressions
             // (e.g. {{slot.Name}}) so we wait for SERVER_INIT to render
             // the real DOM first.
             if (!window.GODOM_ROOT) {
-                scanAndRequestComponents();
+                scanAndRequestIslands();
             }
         };
 
@@ -143,7 +143,7 @@
             switch (msg.kind) {
             case SK.SERVER_INIT:
                 initTarget(msg.target || "", msg);
-                scanAndRequestComponents();
+                scanAndRequestIslands();
                 break;
             case SK.SERVER_PATCH: {
                 const name = msg.target || "";
@@ -185,18 +185,18 @@
     // 3. Target management — per-target encapsulated contexts
     // =========================================================================
 
-    // sendInitRequest sends a BROWSER_INIT_REQUEST for the given component name.
+    // sendInitRequest sends a BROWSER_INIT_REQUEST for the given island name.
     function sendInitRequest(name) {
         const msg = Proto.BrowserMessage.encode({
             kind: BK.BROWSER_INIT_REQUEST,
-            component: name
+            island: name
         }).finish();
         ws.send(msg);
     }
 
     // querySelectorAllDeep searches the document and all shadow roots
     // owned by godom targets. Regular querySelectorAll does not cross
-    // shadow boundaries, so nested g-component elements inside a
+    // shadow boundaries, so nested g-island elements inside a
     // shadow root would be missed without this.
     function querySelectorAllDeep(selector) {
         const results = Array.prototype.slice.call(document.querySelectorAll(selector));
@@ -214,15 +214,15 @@
         return results;
     }
 
-    // scanAndRequestComponents finds all [g-component] elements not yet
+    // scanAndRequestIslands finds all [g-island] elements not yet
     // initialized and sends init requests to the server for each unique
-    // component name.
-    function scanAndRequestComponents() {
-        const els = querySelectorAllDeep("[g-component]");
+    // island name.
+    function scanAndRequestIslands() {
+        const els = querySelectorAllDeep("[g-island]");
         const requested = {};
         for (let i = 0; i < els.length; i++) {
             if (readyEls.has(els[i])) continue;
-            const name = els[i].getAttribute("g-component");
+            const name = els[i].getAttribute("g-island");
             if (name && !requested[name]) {
                 requested[name] = true;
                 sendInitRequest(name);
@@ -231,7 +231,7 @@
     }
 
     // cleanupAllTargets destroys all existing target contexts, clearing
-    // readyEls and removing .g-ready so components can be re-initialized.
+    // readyEls and removing .g-ready so islands can be re-initialized.
     function cleanupAllTargets() {
         for (const n in targets) {
             if (targets.hasOwnProperty(n)) {
@@ -244,12 +244,12 @@
         targets = {};
     }
 
-    // initTarget creates encapsulated contexts for a named component and
+    // initTarget creates encapsulated contexts for a named island and
     // builds the initial DOM tree inside each target element.
     function initTarget(name, msg) {
         if (name === "document.body") {
             if (!window.GODOM_INJECT_ALLOW_ROOT) return;
-            // Root component: render into document.body.
+            // Root island: render into document.body.
             hasRoot = true;
             cleanupAllTargets();
             const ctx = createTargetContext(name, document.body);
@@ -257,10 +257,10 @@
             ctx.init(msg);
             document.body.classList.add("g-ready");
         } else {
-            // Named component: find all elements with g-component="name".
-            const els = querySelectorAllDeep(`[g-component="${name}"]`);
+            // Named island: find all elements with g-island="name".
+            const els = querySelectorAllDeep(`[g-island="${name}"]`);
             if (els.length === 0) {
-                if (window.GODOM_DEBUG) console.warn(`godom: no target found for component "${name}" — check that the parent is mounted first and the g-component attribute matches`);
+                if (window.GODOM_DEBUG) console.warn(`godom: no target found for island "${name}" — check that the parent is mounted first and the g-island attribute matches`);
                 return;
             }
             // Clean up existing contexts for this name.
@@ -287,7 +287,7 @@
         let nodeMap = {};
         let pluginState = {};
         let pendingPluginInits = [];
-        let hasNewComponents = false;
+        let hasNewIslands = false;
         const useShadow = targetEl !== document.body && targetEl.hasAttribute("g-shadow");
         const renderRoot = useShadow ? (targetEl.shadowRoot || targetEl.attachShadow({mode: "open"})) : targetEl;
 
@@ -319,8 +319,8 @@
 
             applyProps(el, tree.p);
             applyAttrs(el, tree.a);
-            if (tree.a && tree.a["g-component"]) {
-                hasNewComponents = true;
+            if (tree.a && tree.a["g-island"]) {
+                hasNewIslands = true;
             }
             applyAttrsNS(el, tree.an);
             applyStyles(el, tree.s);
@@ -793,10 +793,10 @@
             },
 
             applyPatches: function(patches) {
-                hasNewComponents = false;
+                hasNewIslands = false;
                 applyPatches(patches);
-                if (hasNewComponents) {
-                    scanAndRequestComponents();
+                if (hasNewIslands) {
+                    scanAndRequestIslands();
                 }
             },
 
@@ -866,16 +866,16 @@
     };
 
     // =========================================================================
-    // Dynamic mount API — mount a component into an arbitrary DOM element
+    // Dynamic mount API — mount an island into an arbitrary DOM element
     // =========================================================================
 
-    // ns.mount(name, element) mounts the named component into the given element.
-    // Sets g-component attribute if not already present and sends a
+    // ns.mount(name, element) mounts the named island into the given element.
+    // Sets g-island attribute if not already present and sends a
     // BROWSER_INIT_REQUEST to the server.
     ns.mount = function(name, element) {
         if (!name || !element) return;
-        if (!element.getAttribute("g-component")) {
-            element.setAttribute("g-component", name);
+        if (!element.getAttribute("g-island")) {
+            element.setAttribute("g-island", name);
         }
         sendInitRequest(name);
     };
@@ -927,8 +927,8 @@
     // =========================================================================
 
     // ns.call(method, ...args) sends a MethodCall to Go.
-    // The method is dispatched to the component that owns the calling context.
-    // For now, uses nodeId=0 (server resolves to the first component).
+    // The method is dispatched to the island that owns the calling context.
+    // For now, uses nodeId=0 (server resolves to the first island).
     ns.call = function(method) {
         const args = [];
         for (let i = 1; i < arguments.length; i++) {

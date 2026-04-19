@@ -9,7 +9,7 @@ import (
 // ControllerView is the mobile controller component. It embeds *GameState
 // so score, lives, and control inputs are shared with PlayView.
 type ControllerView struct {
-	godom.Component
+	godom.Island
 	*GameState
 }
 

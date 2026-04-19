@@ -20,7 +20,7 @@ type ToastItem struct {
 
 // Toast is a stacking toast notification component.
 type Toast struct {
-	godom.Component
+	godom.Island
 	Items   []ToastItem
 	counter int
 }

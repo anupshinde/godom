@@ -20,7 +20,7 @@ func main() {
 	eng.SetFS(ui)
 	eng.Use(chartjs.Plugin)
 
-	// Child components — registered by name, auto-wired via g-component attributes
+	// Child components — registered by name, auto-wired via g-island attributes
 	navbar := &Navbar{ComponentCount: 6, Status: "Connected"}
 	navbar.TargetName = "navbar"
 	navbar.Template = "ui/navbar/index.html"

@@ -11,12 +11,12 @@ import (
 var ui embed.FS
 
 type Layout struct {
-	godom.Component
+	godom.Island
 	Title string
 }
 
 type Counter struct {
-	godom.Component
+	godom.Island
 	Count int
 	Step  int
 }

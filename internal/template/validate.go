@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/island"
 )
 
 // directiveRe matches g-* attributes in HTML.
@@ -23,7 +23,7 @@ type loopVarInfo struct {
 
 // ValidateDirectives parses HTML for g-* directives and validates them
 // against the component's struct fields and methods. Called at Register() time.
-func ValidateDirectives(htmlStr string, ci *component.Info) error {
+func ValidateDirectives(htmlStr string, ci *island.Info) error {
 	loopVars := collectLoopVars(htmlStr, ci)
 
 	matches := directiveRe.FindAllStringSubmatch(htmlStr, -1)
@@ -76,7 +76,7 @@ func ValidateDirectives(htmlStr string, ci *component.Info) error {
 
 // collectLoopVars finds all loop variables declared in g-for expressions
 // and resolves their types from the component struct.
-func collectLoopVars(htmlStr string, ci *component.Info) map[string]*loopVarInfo {
+func collectLoopVars(htmlStr string, ci *island.Info) map[string]*loopVarInfo {
 	vars := map[string]*loopVarInfo{}
 	matches := gForRe.FindAllStringSubmatch(htmlStr, -1)
 	for _, m := range matches {
@@ -120,7 +120,7 @@ func collectLoopVars(htmlStr string, ci *component.Info) map[string]*loopVarInfo
 	return vars
 }
 
-func validateForExpr(expr string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
+func validateForExpr(expr string, ci *island.Info, loopVars map[string]*loopVarInfo) error {
 	parts := strings.SplitN(expr, " in ", 2)
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid g-for syntax: %q (expected 'item in List' or 'item, index in List')", expr)
@@ -141,8 +141,8 @@ func validateForExpr(expr string, ci *component.Info, loopVars map[string]*loopV
 	return fmt.Errorf("g-for references unknown field %q on %s", listField, ci.Typ.Name())
 }
 
-func validateMethodRef(dirName, expr string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
-	name, args := component.ParseCallExpr(expr)
+func validateMethodRef(dirName, expr string, ci *island.Info, loopVars map[string]*loopVarInfo) error {
+	name, args := island.ParseCallExpr(expr)
 	if !ci.HasMethod(name) {
 		return fmt.Errorf("%s references unknown method %q on %s", dirName, name, ci.Typ.Name())
 	}
@@ -154,7 +154,7 @@ func validateMethodRef(dirName, expr string, ci *component.Info, loopVars map[st
 	return nil
 }
 
-func validateKeydownExpr(expr string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
+func validateKeydownExpr(expr string, ci *island.Info, loopVars map[string]*loopVarInfo) error {
 	for _, part := range strings.Split(expr, ";") {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -173,7 +173,7 @@ func validateKeydownExpr(expr string, ci *component.Info, loopVars map[string]*l
 
 // validateBindExpr ensures g-bind references a field, not a method.
 // g-bind is two-way — it must be able to write back, which only works with fields.
-func validateBindExpr(expr string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
+func validateBindExpr(expr string, ci *island.Info, loopVars map[string]*loopVarInfo) error {
 	expr = strings.TrimSpace(expr)
 	if expr == "" {
 		return fmt.Errorf("empty g-bind expression")
@@ -194,7 +194,7 @@ func validateBindExpr(expr string, ci *component.Info, loopVars map[string]*loop
 	return validateFieldExpr(expr, ci, loopVars)
 }
 
-func validateFieldExpr(expr string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
+func validateFieldExpr(expr string, ci *island.Info, loopVars map[string]*loopVarInfo) error {
 	expr = strings.TrimSpace(expr)
 	if expr == "" {
 		return fmt.Errorf("empty directive expression")
@@ -306,7 +306,7 @@ func validateTypePath(t reflect.Type, path []string, fullExpr string) error {
 	return nil
 }
 
-func validateArgExpr(arg string, ci *component.Info, loopVars map[string]*loopVarInfo) error {
+func validateArgExpr(arg string, ci *island.Info, loopVars map[string]*loopVarInfo) error {
 	arg = strings.TrimSpace(arg)
 	if IsLiteral(arg) {
 		return nil

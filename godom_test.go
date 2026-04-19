@@ -10,14 +10,14 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/middleware"
 )
 
 // --- test app structs ---
 
 type testApp struct {
-	Component
+	Island
 	Name  string
 	Count int
 }
@@ -26,13 +26,13 @@ func (a *testApp) Increment() {
 	a.Count++
 }
 
-// noComponentApp does NOT embed godom.Component
-type noComponentApp struct {
+// noIslandApp does NOT embed godom.Island
+type noIslandApp struct {
 	Name string
 }
 
 type childApp struct {
-	Component
+	Island
 	Value string
 }
 
@@ -62,13 +62,13 @@ func TestNewEngine(t *testing.T) {
 	if e.plugins == nil {
 		t.Error("expected non-nil plugins map")
 	}
-	if e.compIndex == nil {
+	if e.islIndex == nil {
 		t.Error("expected non-nil compIndex map")
 	}
 	if e.names == nil {
 		t.Error("expected non-nil names map")
 	}
-	if len(e.comps) != 0 {
+	if len(e.islands) != 0 {
 		t.Error("expected empty comps before Register")
 	}
 }
@@ -202,41 +202,41 @@ func TestUse_Multiple(t *testing.T) {
 	}
 }
 
-// --- embedsComponent ---
+// --- embedsIsland ---
 
 func TestEmbedsComponent_True(t *testing.T) {
 	typ := reflect.TypeOf(testApp{})
-	if !embedsComponent(typ) {
-		t.Error("expected testApp to embed Component")
+	if !embedsIsland(typ) {
+		t.Error("expected testApp to embed Island")
 	}
 }
 
 func TestEmbedsComponent_False(t *testing.T) {
-	typ := reflect.TypeOf(noComponentApp{})
-	if embedsComponent(typ) {
-		t.Error("expected noComponentApp to NOT embed Component")
+	typ := reflect.TypeOf(noIslandApp{})
+	if embedsIsland(typ) {
+		t.Error("expected noIslandApp to NOT embed Island")
 	}
 }
 
 func TestEmbedsComponent_EmptyStruct(t *testing.T) {
 	type empty struct{}
 	typ := reflect.TypeOf(empty{})
-	if embedsComponent(typ) {
-		t.Error("expected empty struct to NOT embed Component")
+	if embedsIsland(typ) {
+		t.Error("expected empty struct to NOT embed Island")
 	}
 }
 
-// --- Component.MarkRefresh ---
+// --- Island.MarkRefresh ---
 
 func TestMarkRefresh_NilCI(t *testing.T) {
-	c := Component{ci: nil}
+	c := Island{ci: nil}
 	// Should not panic
 	c.MarkRefresh("Name")
 }
 
 func TestMarkRefresh_Accumulates(t *testing.T) {
-	ci := &component.Info{}
-	c := Component{ci: ci}
+	ci := &island.Info{}
+	c := Island{ci: ci}
 
 	c.MarkRefresh("Name")
 	c.MarkRefresh("Count")
@@ -253,29 +253,29 @@ func TestMarkRefresh_Accumulates(t *testing.T) {
 	}
 }
 
-// --- Component.Refresh ---
+// --- Island.Refresh ---
 
 func TestRefresh_NilCI(t *testing.T) {
-	c := Component{ci: nil}
+	c := Island{ci: nil}
 	// Should not panic
 	c.Refresh()
 }
 
 func TestRefresh_NilEventCh(t *testing.T) {
-	c := Component{ci: &component.Info{}}
+	c := Island{ci: &island.Info{}}
 	// EventCh is nil — should not panic
 	c.Refresh()
 }
 
 func TestRefresh_SendsToEventChannel(t *testing.T) {
-	ch := make(chan component.Event, 1)
-	c := Component{ci: &component.Info{EventCh: ch}}
+	ch := make(chan island.Event, 1)
+	c := Island{ci: &island.Info{EventCh: ch}}
 
 	c.Refresh()
 
 	select {
 	case evt := <-ch:
-		if evt.Kind != component.RefreshKind {
+		if evt.Kind != island.RefreshKind {
 			t.Errorf("expected RefreshKind, got %v", evt.Kind)
 		}
 	default:
@@ -290,7 +290,7 @@ func TestSetFS(t *testing.T) {
 	fsys := makeTestFS()
 	e.SetFS(fsys)
 
-	if e.componentFS == nil {
+	if e.sharedFS == nil {
 		t.Error("expected componentFS to be set")
 	}
 }
@@ -383,10 +383,10 @@ func TestRegister_Valid(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Register(app)
 
-	if len(e.comps) != 1 {
+	if len(e.islands) != 1 {
 		t.Fatal("expected one component after Register")
 	}
-	ci := e.comps[0]
+	ci := e.islands[0]
 	if ci.HTMLBody == "" {
 		t.Error("expected HTMLBody to be set")
 	}
@@ -403,11 +403,11 @@ func TestRegister_WiresComponentField(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Register(app)
 
-	if app.Component.ci == nil {
-		t.Fatal("expected Component.ci to be wired after Register")
+	if app.Island.ci == nil {
+		t.Fatal("expected Island.ci to be wired after Register")
 	}
-	if app.Component.ci != e.comps[0] {
-		t.Error("expected Component.ci to point to the same Info as Engine.comps[0]")
+	if app.Island.ci != e.islands[0] {
+		t.Error("expected Island.ci to point to the same Info as Engine.islands[0]")
 	}
 }
 
@@ -419,7 +419,7 @@ func TestRegister_SetsHTMLBodyFromTemplate(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Register(app)
 
-	ci := e.comps[0]
+	ci := e.islands[0]
 	if !strings.Contains(ci.HTMLBody, "g-text") {
 		t.Error("expected HTMLBody to contain template directives")
 	}
@@ -436,7 +436,7 @@ func TestRegister_SetsValueAndType(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Register(app)
 
-	ci := e.comps[0]
+	ci := e.islands[0]
 	if ci.Value.Pointer() != reflect.ValueOf(app).Pointer() {
 		t.Error("expected ci.Value to point to the original app")
 	}
@@ -465,13 +465,13 @@ func TestRegister_DocumentBody(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Register(app)
 
-	if len(e.comps) != 1 {
+	if len(e.islands) != 1 {
 		t.Fatal("expected one component")
 	}
 
 	// SlotName is set directly by Register.
-	if e.comps[0].SlotName != "document.body" {
-		t.Errorf("expected SlotName 'document.body', got %q", e.comps[0].SlotName)
+	if e.islands[0].SlotName != "document.body" {
+		t.Errorf("expected SlotName 'document.body', got %q", e.islands[0].SlotName)
 	}
 }
 
@@ -506,12 +506,12 @@ func TestRegister_NoEmbed(t *testing.T) {
 	if os.Getenv("TEST_FATAL_REGISTER_NOEMBED") == "1" {
 		e := NewEngine()
 		e.SetFS(makeTestFS())
-		e.Register(&noComponentApp{})
+		e.Register(&noIslandApp{})
 		return
 	}
 	out := runSubprocess(t, "TestRegister_NoEmbed", "TEST_FATAL_REGISTER_NOEMBED")
-	if !strings.Contains(out, "must embed godom.Component") {
-		t.Errorf("expected error about embedding Component, got: %s", out)
+	if !strings.Contains(out, "must embed godom.Island") {
+		t.Errorf("expected error about embedding Island, got: %s", out)
 	}
 }
 
@@ -525,7 +525,7 @@ func TestRegister_EmptyName(t *testing.T) {
 		return
 	}
 	out := runSubprocess(t, "TestRegister_EmptyName", "TEST_FATAL_REGISTER_EMPTY")
-	if !strings.Contains(out, "Component.TargetName to be set") {
+	if !strings.Contains(out, "Island.TargetName to be set") {
 		t.Errorf("expected TargetName error, got: %s", out)
 	}
 }
@@ -651,8 +651,8 @@ func TestRegister_SetsSlotName(t *testing.T) {
 	child.Template = "child/index.html"
 	e.Register(child)
 
-	if e.comps[0].SlotName != "sidebar" {
-		t.Errorf("expected SlotName='sidebar', got %q", e.comps[0].SlotName)
+	if e.islands[0].SlotName != "sidebar" {
+		t.Errorf("expected SlotName='sidebar', got %q", e.islands[0].SlotName)
 	}
 }
 
@@ -670,11 +670,11 @@ func TestRegister_SetsSlotNameMultiple(t *testing.T) {
 
 	e.Register(child1, child2)
 
-	if e.comps[0].SlotName != "sidebar" {
-		t.Errorf("sidebar: expected SlotName='sidebar', got %q", e.comps[0].SlotName)
+	if e.islands[0].SlotName != "sidebar" {
+		t.Errorf("sidebar: expected SlotName='sidebar', got %q", e.islands[0].SlotName)
 	}
-	if e.comps[1].SlotName != "footer" {
-		t.Errorf("footer: expected SlotName='footer', got %q", e.comps[1].SlotName)
+	if e.islands[1].SlotName != "footer" {
+		t.Errorf("footer: expected SlotName='footer', got %q", e.islands[1].SlotName)
 	}
 }
 
@@ -689,8 +689,8 @@ func TestRun_NoComponents(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when calling Run without Register")
 	}
-	if !strings.Contains(err.Error(), "no components registered") {
-		t.Errorf("expected 'no components registered' error, got: %v", err)
+	if !strings.Contains(err.Error(), "no islands registered") {
+		t.Errorf("expected 'no islands registered' error, got: %v", err)
 	}
 }
 
@@ -754,7 +754,7 @@ func TestRun_DisableExecJS(t *testing.T) {
 	}
 
 	// The registered component's ci should have ExecJSDisabled set
-	if !e.comps[0].ExecJSDisabled {
+	if !e.islands[0].ExecJSDisabled {
 		t.Error("expected ExecJSDisabled to be set on component after Run with DisableExecJS")
 	}
 }
@@ -877,11 +877,11 @@ func TestQuickServe_RegistersDocumentBody(t *testing.T) {
 	app.Template = "index.html"
 	e.Register(app)
 
-	if len(e.comps) != 1 {
+	if len(e.islands) != 1 {
 		t.Fatal("expected one component")
 	}
-	if e.comps[0].SlotName != "document.body" {
-		t.Errorf("expected SlotName='document.body', got %q", e.comps[0].SlotName)
+	if e.islands[0].SlotName != "document.body" {
+		t.Errorf("expected SlotName='document.body', got %q", e.islands[0].SlotName)
 	}
 }
 
@@ -986,7 +986,7 @@ func TestListenAndServe_InvalidHostReturnsWrappedError(t *testing.T) {
 var simpleHTML = `<!DOCTYPE html><html><head></head><body><span g-text="Name">placeholder</span></body></html>`
 
 type cleanableApp struct {
-	Component
+	Island
 	Name    string
 	cleaned bool
 }
@@ -1006,7 +1006,7 @@ func TestCleanup_CallsComponentCleanup(t *testing.T) {
 	e.Register(app)
 
 	// Wire up event channel (normally done by Run/server)
-	e.comps[0].EventCh = make(chan component.Event, 1)
+	e.islands[0].EventCh = make(chan island.Event, 1)
 
 	e.Cleanup()
 
@@ -1023,8 +1023,8 @@ func TestCleanup_ClosesEventChannels(t *testing.T) {
 	app.Template = "index.html"
 	e.Register(app)
 
-	ch := make(chan component.Event, 1)
-	e.comps[0].EventCh = ch
+	ch := make(chan island.Event, 1)
+	e.islands[0].EventCh = ch
 
 	e.Cleanup()
 
@@ -1043,7 +1043,7 @@ func TestCleanup_SkipsComponentWithoutCleanupMethod(t *testing.T) {
 	app.Template = "index.html"
 	e.Register(app)
 
-	e.comps[0].EventCh = make(chan component.Event, 1)
+	e.islands[0].EventCh = make(chan island.Event, 1)
 
 	// Should not panic — testApp has no Cleanup method
 	e.Cleanup()
@@ -1052,7 +1052,7 @@ func TestCleanup_SkipsComponentWithoutCleanupMethod(t *testing.T) {
 // --- ExecJS ---
 
 func TestExecJS_NilCI(t *testing.T) {
-	c := Component{ci: nil}
+	c := Island{ci: nil}
 	// Should not panic
 	c.ExecJS("test", func(result []byte, err string) {
 		t.Error("callback should not be called when ci is nil")
@@ -1060,7 +1060,7 @@ func TestExecJS_NilCI(t *testing.T) {
 }
 
 func TestExecJS_DelegatesToInfo(t *testing.T) {
-	ci := &component.Info{}
+	ci := &island.Info{}
 	called := false
 	ci.ExecJSFn = func(id int32, expr string) {
 		called = true
@@ -1069,7 +1069,7 @@ func TestExecJS_DelegatesToInfo(t *testing.T) {
 		}
 	}
 
-	c := Component{ci: ci}
+	c := Island{ci: ci}
 	c.ExecJS("location.href", func(result []byte, err string) {})
 
 	if !called {
@@ -1078,8 +1078,8 @@ func TestExecJS_DelegatesToInfo(t *testing.T) {
 }
 
 func TestExecJS_DisabledReturnsError(t *testing.T) {
-	ci := &component.Info{ExecJSDisabled: true}
-	c := Component{ci: ci}
+	ci := &island.Info{ExecJSDisabled: true}
+	c := Island{ci: ci}
 
 	var gotErr string
 	c.ExecJS("test", func(result []byte, err string) {
@@ -1102,7 +1102,7 @@ func TestComponents_ReturnsRegisteredComps(t *testing.T) {
 	app.Template = "index.html"
 	e.Register(app)
 
-	comps := e.Components()
+	comps := e.Islands()
 	if len(comps) != 1 {
 		t.Fatalf("expected 1 component, got %d", len(comps))
 	}
@@ -1113,8 +1113,8 @@ func TestComponents_ReturnsRegisteredComps(t *testing.T) {
 
 func TestComponents_EmptyBeforeRegister(t *testing.T) {
 	e := NewEngine()
-	if len(e.Components()) != 0 {
-		t.Errorf("expected 0 components before register, got %d", len(e.Components()))
+	if len(e.Islands()) != 0 {
+		t.Errorf("expected 0 components before register, got %d", len(e.Islands()))
 	}
 }
 

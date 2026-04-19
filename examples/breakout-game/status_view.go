@@ -9,7 +9,7 @@ import (
 // StatusView shows game status in the nav bar. Shares *GameState
 // with PlayView and ControllerView so it sees the same state.
 type StatusView struct {
-	godom.Component
+	godom.Island
 	*GameState
 }
 

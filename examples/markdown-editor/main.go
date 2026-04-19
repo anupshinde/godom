@@ -18,7 +18,7 @@ var ui embed.FS
 const modifiedPath = "source-modified.md"
 
 type App struct {
-	godom.Component
+	godom.Island
 	Markdown      string
 	EditorScroll  float64 // scroll target for textarea (set by preview scroll)
 	PreviewScroll float64 // scroll target for preview pane (set by editor scroll)

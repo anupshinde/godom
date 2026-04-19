@@ -143,7 +143,7 @@ Use it in your app struct:
 
 ```go
 type App struct {
-    godom.Component
+    godom.Island
     TempChart Chart
 }
 ```

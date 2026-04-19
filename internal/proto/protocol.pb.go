@@ -141,7 +141,7 @@ func (BrowserKind) EnumDescriptor() ([]byte, []int) {
 type ServerMessage struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Kind   ServerKind             `protobuf:"varint,1,opt,name=kind,proto3,enum=godom.ServerKind" json:"kind,omitempty"`
-	Target string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"` // component instance name (for init, patch, stream)
+	Target string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"` // island instance name (for init, patch, stream)
 	// VDOM fields (kind: INIT, PATCH)
 	Tree    []byte      `protobuf:"bytes,10,opt,name=tree,proto3" json:"tree,omitempty"`       // JSON-encoded tree description (init only)
 	Patches []*DomPatch `protobuf:"bytes,11,rep,name=patches,proto3" json:"patches,omitempty"` // incremental patches (patch only)
@@ -350,7 +350,7 @@ type BrowserMessage struct {
 	Result []byte `protobuf:"bytes,31,opt,name=result,proto3" json:"result,omitempty"`                // JSON-encoded result value
 	Error  string `protobuf:"bytes,32,opt,name=error,proto3" json:"error,omitempty"`                  // error message if eval failed
 	// Init request fields (kind: INIT_REQUEST)
-	Component     string `protobuf:"bytes,40,opt,name=component,proto3" json:"component,omitempty"`
+	Island        string `protobuf:"bytes,40,opt,name=island,proto3" json:"island,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -441,9 +441,9 @@ func (x *BrowserMessage) GetError() string {
 	return ""
 }
 
-func (x *BrowserMessage) GetComponent() string {
+func (x *BrowserMessage) GetIsland() string {
 	if x != nil {
-		return x.Component
+		return x.Island
 	}
 	return ""
 }
@@ -473,7 +473,7 @@ const file_protocol_proto_rawDesc = "" +
 	"\vplugin_data\x18\x0f \x01(\fR\n" +
 	"pluginData\x120\n" +
 	"\vsub_patches\x18\x10 \x03(\v2\x0f.godom.DomPatchR\n" +
-	"subPatches\"\xf8\x01\n" +
+	"subPatches\"\xf2\x01\n" +
 	"\x0eBrowserMessage\x12&\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x12.godom.BrowserKindR\x04kind\x12\x17\n" +
 	"\anode_id\x18\x02 \x01(\x05R\x06nodeId\x12\x14\n" +
@@ -483,8 +483,8 @@ const file_protocol_proto_rawDesc = "" +
 	"\x04args\x18\x15 \x03(\fR\x04args\x12\x17\n" +
 	"\acall_id\x18\x1e \x01(\x05R\x06callId\x12\x16\n" +
 	"\x06result\x18\x1f \x01(\fR\x06result\x12\x14\n" +
-	"\x05error\x18  \x01(\tR\x05error\x12\x1c\n" +
-	"\tcomponent\x18( \x01(\tR\tcomponent*k\n" +
+	"\x05error\x18  \x01(\tR\x05error\x12\x16\n" +
+	"\x06island\x18( \x01(\tR\x06island*k\n" +
 	"\n" +
 	"ServerKind\x12\x0f\n" +
 	"\vSERVER_INIT\x10\x00\x12\x10\n" +

@@ -21,7 +21,7 @@ func main() {
 	eng.NoAuth = true
 
 	// Background component — registered but not rendered on the page.
-	// Proves godom is alive even with no g-component target in the DOM.
+	// Proves godom is alive even with no g-island target in the DOM.
 	ticker := NewTicker()
 	ticker.TargetName = "ticker"
 	ticker.Template = "components/ticker/index.html"

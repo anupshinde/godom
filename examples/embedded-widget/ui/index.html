@@ -67,7 +67,7 @@
     <div class="ticker-bar">
         <div class="ticker-inner">
             <span class="ticker-label">Live</span>
-            <div g-component="marquee"></div>
+            <div g-island="marquee"></div>
         </div>
     </div>
 
@@ -82,7 +82,7 @@
             <div class="story-grid">
                 <div class="story-card">
                     <h3>How It Works</h3>
-                    <p>The host page includes two script tags: one sets <code>GODOM_WS_URL</code> pointing to the godom server, the other loads <code>godom.js</code> from it. godom finds <code>g-component</code> elements and wires them up over WebSocket.</p>
+                    <p>The host page includes two script tags: one sets <code>GODOM_WS_URL</code> pointing to the godom server, the other loads <code>godom.js</code> from it. godom finds <code>g-island</code> elements and wires them up over WebSocket.</p>
                     <div class="meta">Architecture</div>
                 </div>
                 <div class="story-card">
@@ -92,7 +92,7 @@
                 </div>
                 <div class="story-card">
                     <h3>No Mount Needed</h3>
-                    <p>The godom engine uses <code>Register()</code> only &mdash; no root component. Components attach to <code>g-component</code> elements wherever they appear on the host page.</p>
+                    <p>The godom engine uses <code>Register()</code> only &mdash; no root component. Components attach to <code>g-island</code> elements wherever they appear on the host page.</p>
                     <div class="meta">API</div>
                 </div>
                 <div class="story-card">
@@ -105,13 +105,13 @@
             <hr class="story-divider"/>
 
             <h2 style="font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-bottom: 12px;">Market Heatmap <span style="font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; color: #666;">&mdash; uses g-shadow for CSS isolation</span></h2>
-            <div g-component="heatmap" g-shadow></div>
+            <div g-island="heatmap" g-shadow></div>
         </div>
 
         <div class="sidebar">
             <div class="sidebar-section" style="padding-bottom: 20px; border-bottom: 1px solid #eee;">
                 <h2>Live Ticker</h2>
-                <div g-component="stock"></div>
+                <div g-island="stock"></div>
             </div>
             <div class="sidebar-section">
                 <h2>Trending</h2>

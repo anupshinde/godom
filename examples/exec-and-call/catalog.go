@@ -12,7 +12,7 @@ type Category struct {
 
 // Catalog is the component that owns the tree and detail view.
 type Catalog struct {
-	godom.Component
+	godom.Island
 	Categories   []Category
 	Tree         TreeData // plugin data for g-plugin:tree
 	SelectedID   string

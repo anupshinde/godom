@@ -1,4 +1,4 @@
-package component
+package island
 
 import (
 	"encoding/json"

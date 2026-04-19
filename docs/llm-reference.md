@@ -13,7 +13,7 @@ godom is a Go framework for building local GUI apps that use the browser as the 
 
 - [Minimal Complete App](#minimal-complete-app)
 - [Engine API](#engine-api)
-- [Component API](#component-api)
+- [Island API](#island-api)
 - [Template Directives](#template-directives)
 - [Expressions](#expressions)
 - [Event Handling](#event-handling)
@@ -22,7 +22,7 @@ godom is a Go framework for building local GUI apps that use the browser as the 
 - [Conditional Rendering](#conditional-rendering)
 - [Attributes, Classes, Styles](#attributes-classes-styles)
 - [Custom Elements (Template Includes)](#custom-elements-template-includes)
-- [Multiple Components](#multiple-components)
+- [Multiple Islands](#multiple-islands)
 - [Background Updates (Refresh)](#background-updates-refresh)
 - [Surgical Updates (MarkRefresh)](#surgical-updates-markrefresh)
 - [ExecJS (Go to Browser)](#execjs-go-to-browser)
@@ -62,7 +62,7 @@ import (
 var ui embed.FS
 
 type App struct {
-    godom.Component
+    godom.Island
     Count int
     Step  int
 }
@@ -124,11 +124,11 @@ eng := godom.NewEngine()
 | `SetFS(fs.FS)` | Set shared filesystem for templates (typically `embed.FS`) |
 | `SetMux(mux *http.ServeMux, opts *MuxOptions)` | Register godom handlers on a custom mux |
 | `SetAuth(middleware.AuthFunc)` | Set custom auth function |
-| `Register(components ...interface{})` | Register one or more components (variadic) |
+| `Register(islands ...interface{})` | Register one or more islands (variadic) |
 | `Use(plugins ...PluginFunc)` | Register plugin functions |
 | `RegisterPlugin(name string, scripts ...string)` | Register custom plugin with JS scripts |
 | `Run() error` | Validate templates, register handlers, start event processors |
-| `QuickServe(component interface{}) error` | All-in-one: sets TargetName="document.body", registers, runs, serves (blocks) |
+| `QuickServe(island interface{}) error` | All-in-one: sets TargetName="document.body", registers, runs, serves (blocks) |
 | `ListenAndServe() error` | Bind port, wrap with auth, open browser, serve (blocks) |
 | `AuthMiddleware(http.Handler) http.Handler` | Wrap handler with auth (call after Run) |
 | `Cleanup()` | Close event channels on shutdown |
@@ -144,27 +144,27 @@ type MuxOptions struct {
 
 ---
 
-## Component API
+## Island API
 
-Embed `godom.Component` in any Go struct to make it a component:
+Embed `godom.Island` in any Go struct to make it an island:
 
 ```go
 type MyApp struct {
-    godom.Component          // required embed
+    godom.Island          // required embed
     Name    string           // exported fields = template state
     Items   []Item           // slices for g-for loops
     count   int              // unexported = private, invisible to templates
 }
 ```
 
-### Component Fields
+### Island Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `TargetName` | `string` | Matches `g-component="name"` in parent template. Set to `"document.body"` for root (QuickServe does this automatically) |
+| `TargetName` | `string` | Matches `g-island="name"` in parent template. Set to `"document.body"` for root (QuickServe does this automatically) |
 | `Template` | `string` | Path to HTML template relative to SetFS filesystem |
 
-### Component Methods
+### Island Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -262,8 +262,8 @@ All directives are `g-*` attributes on HTML elements.
 
 | Directive | Syntax | Description |
 |-----------|--------|-------------|
-| `g-shadow` | `g-shadow` | Render component inside Shadow DOM for CSS isolation |
-| `g-component` | `g-component="name"` | Declare insertion point for a child component |
+| `g-shadow` | `g-shadow` | Render island inside Shadow DOM for CSS isolation |
+| `g-island` | `g-island="name"` | Declare insertion point for a child island |
 
 ---
 
@@ -296,7 +296,7 @@ Complex expressions use [expr-lang/expr](https://github.com/expr-lang/expr).
 
 ### Method Signatures
 
-Event handler methods are exported methods on the component struct. The framework calls them via reflection.
+Event handler methods are exported methods on the island struct. The framework calls them via reflection.
 
 ```go
 // No arguments — for simple clicks, toggles
@@ -377,7 +377,7 @@ Inner loops resolve fields from the outer loop variable. Works to arbitrary dept
 ### Go side
 ```go
 type App struct {
-    godom.Component
+    godom.Island
     Items []Item
 }
 
@@ -452,26 +452,26 @@ Split templates into reusable HTML files. Any HTML file in your embedded filesys
 ```
 
 - Custom elements are expanded inline at registration time
-- Directives inside the child HTML resolve against the **parent** component's state
+- Directives inside the child HTML resolve against the **parent** island's state
 - Loop variables (`todo`, `i`) are available inside child templates
 - The tag name maps to the filename: `<todo-item>` → `ui/todo-item.html`
-- This is purely a template include mechanism — not a separate component
+- This is purely a template include mechanism — not a separate island
 
 ---
 
-## Multiple Components
+## Multiple Islands
 
-For apps with independent state sections, use separate components:
+For apps with independent state sections, use separate islands:
 
 ```go
 type Counter struct {
-    godom.Component
+    godom.Island
     Count int
 }
 func (c *Counter) Increment() { c.Count++ }
 
 type Clock struct {
-    godom.Component
+    godom.Island
     Time string
 }
 
@@ -498,8 +498,8 @@ func main() {
 ```html
 <body>
     <h1>Dashboard</h1>
-    <div g-component="counter"></div>
-    <div g-component="clock"></div>
+    <div g-island="counter"></div>
+    <div g-island="clock"></div>
 </body>
 ```
 
@@ -511,7 +511,7 @@ func main() {
 </div>
 ```
 
-### Cross-component communication
+### Cross-island communication
 
 Wire Go callbacks in `main()`:
 
@@ -525,11 +525,11 @@ counter.OnChange = func(n int) { toast.Show("Count changed", "info") }
 type SharedState struct { Count int }
 
 type CompA struct {
-    godom.Component
+    godom.Island
     *SharedState
 }
 type CompB struct {
-    godom.Component
+    godom.Island
     *SharedState
 }
 
@@ -643,7 +643,7 @@ func (a *App) SelectItem(id string) {
 }
 ```
 
-The server searches all registered components for the method name. First match wins. After the method runs, godom auto-refreshes.
+The server searches all registered islands for the method name. First match wins. After the method runs, godom auto-refreshes.
 
 ---
 
@@ -677,7 +677,7 @@ The field (e.g., `ChartData`) is any struct or map that serializes to the librar
 
 ```go
 type App struct {
-    godom.Component
+    godom.Island
     ChartData map[string]interface{}
 }
 
@@ -769,13 +769,13 @@ func (a *App) Reorder(from, to float64, position string) { ... }
 
 ## Shadow DOM
 
-Add `g-shadow` to a component's target element for CSS isolation:
+Add `g-shadow` to an island.s target element for CSS isolation:
 
 ```html
-<div g-component="widget" g-shadow></div>
+<div g-island="widget" g-shadow></div>
 ```
 
-The component's template renders inside a Shadow DOM, isolated from the host page's CSS.
+The island.s template renders inside a Shadow DOM, isolated from the host page's CSS.
 
 ---
 
@@ -818,7 +818,7 @@ Boolean env vars accept Go's `strconv.ParseBool` values: `1`, `t`, `true`, `TRUE
 window.GODOM_WS_URL = "ws://localhost:9091/ws";  // Override WebSocket URL
 window.GODOM_DISABLE_EXEC = true;                 // Block ExecJS
 window.GODOM_NS = "myApp";                        // Rename window.godom to window.myApp
-window.GODOM_INJECT_ALLOW_ROOT = true;             // Allow root component in injected mode
+window.GODOM_INJECT_ALLOW_ROOT = true;             // Allow root island in injected mode
 </script>
 ```
 
@@ -857,7 +857,7 @@ log.Fatal(eng.ListenAndServe())
 
 ## Embedded Mode (External Hosting)
 
-Use godom components in pages served by something else:
+Use godom islands in pages served by something else:
 
 **Go server (headless):**
 ```go
@@ -881,7 +881,7 @@ log.Fatal(eng.ListenAndServe())
 <script>window.GODOM_WS_URL = "ws://localhost:9091/ws";</script>
 <script src="http://localhost:9091/godom.js"></script>
 
-<div g-component="stock"></div>
+<div g-island="stock"></div>
 ```
 
 ---
@@ -910,13 +910,13 @@ godom.onerror = function(evt) {
 
 ## Dynamic Mounting
 
-Mount components dynamically from JavaScript:
+Mount islands dynamically from JavaScript:
 
 ```js
-godom.mount("component-name", targetElement);
+godom.mount("island-name", targetElement);
 ```
 
-This sends a `BROWSER_INIT_REQUEST` for the named component. The Go side must have it registered.
+This sends a `BROWSER_INIT_REQUEST` for the named island. The Go side must have it registered.
 
 ---
 
@@ -928,11 +928,11 @@ Before godom initializes, raw template text (`{{Count}}`, placeholder values) is
 /* Root mode (QuickServe) */
 body:not(.g-ready) { visibility: hidden; }
 
-/* Embedded mode (g-component) */
-[g-component]:not(.g-ready) { visibility: hidden; }
+/* Embedded mode (g-island) */
+[g-island]:not(.g-ready) { visibility: hidden; }
 ```
 
-The `.g-ready` class is added after the component's initial tree renders.
+The `.g-ready` class is added after the island.s initial tree renders.
 
 ---
 
@@ -942,7 +942,7 @@ The `.g-ready` class is added after the component's initial tree renders.
 
 ```go
 type App struct {
-    godom.Component
+    godom.Island
     Todos []Todo
     Input string
 }
@@ -982,7 +982,7 @@ func (a *App) Remove(i int) {
 
 ```go
 type Monitor struct {
-    godom.Component
+    godom.Island
     CPU    float64
     Memory float64
 }
@@ -1020,7 +1020,7 @@ func main() {
         tmpl.Execute(w, pageData{Title: "Settings", Script: "/godom.js"})
     })
 
-    // Each page has its own component
+    // Each page has its own island
     home := &Home{}
     home.TargetName = "home"
     home.Template = "ui/home/index.html"
@@ -1058,7 +1058,7 @@ eng.SetMux(mux, nil)
 
 2. **Do NOT reset IDCounter.** Node IDs must be globally unique and monotonically increasing. Resetting causes silent DOM corruption.
 
-3. **Event handlers are serialized.** Each component has an event queue processed by a single goroutine. Events never run concurrently within a component.
+3. **Event handlers are serialized.** Each island has an event queue processed by a single goroutine. Events never run concurrently within an island.
 
 4. **`Refresh()` is thread-safe.** Call it from any goroutine.
 
@@ -1068,9 +1068,9 @@ eng.SetMux(mux, nil)
 
 7. **Templates are validated at startup.** Typos in field/method names cause `log.Fatal`, not silent runtime bugs.
 
-8. **Custom elements are template includes, not components.** They resolve against the parent's state, not their own.
+8. **Custom elements are template includes, not islands. Partials are stateless, islands are stateful.** They resolve against the parent's state, not their own.
 
-9. **Component instances cannot be registered twice.** Each pointer holds its own VDOM tree. Use shared state pattern for multiple views of same data.
+9. **Island instances cannot be registered twice.** Each pointer holds its own VDOM tree. Use shared state pattern for multiple views of same data.
 
 10. **Use single quotes for strings in HTML attributes.** `g-if="Status == 'active'"` not `g-if="Status == "active""`.
 
@@ -1084,21 +1084,21 @@ eng.SetMux(mux, nil)
 
 ```
 myapp/
-├── main.go              # App entry point, component definitions
+├── main.go              # App entry point, island definitions
 ├── ui/
 │   ├── index.html       # Root template (or layout template)
 │   ├── style.css        # Styles (linked from HTML)
 │   ├── counter/
-│   │   └── index.html   # Child component template
+│   │   └── index.html   # Child island template
 │   ├── clock/
-│   │   └── index.html   # Another child component
+│   │   └── index.html   # Another child island
 │   └── todo-item.html   # Custom element (template include)
 ├── go.mod
 └── go.sum
 ```
 
 - Templates go in a `ui/` directory, embedded with `//go:embed ui`
-- Child component templates in subdirectories
+- Child island templates in subdirectories
 - Custom element files at root of `ui/` (filename becomes tag name)
 - CSS files in `ui/`, linked via `<link>` in HTML
 - Static assets served via custom mux if needed
@@ -1129,10 +1129,10 @@ All examples are in the `examples/` directory. Run with `go run ./examples/<name
 | `terminal` | xterm.js integration, PTY, session respawn |
 | `video-player` | Canvas rendering, ffmpeg integration |
 | `markdown-editor` | Two-pane editor, plain JS for scroll sync |
-| `multi-component` | 9 components, g-component, cross-component callbacks, Chart.js |
+| `multi-island` | 9 islands, g-island, cross-island callbacks, Chart.js |
 | `multi-page` | Developer-owned mux, page routing |
 | `embedded-widget` | External hosting, GODOM_WS_URL, g-shadow |
-| `same-component-repeated` | Same struct type in multiple DOM targets |
+| `same-island-repeated` | Same struct type in multiple DOM targets |
 | `shared-state` | Shared state via embedded struct pointers |
 | `dynamic-mount` | godom.mount() from JavaScript |
 | `exec-and-call` | ExecJS (Go→browser) and godom.call (browser→Go) |

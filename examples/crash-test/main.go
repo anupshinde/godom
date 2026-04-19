@@ -16,7 +16,7 @@ import (
 var ui embed.FS
 
 type App struct {
-	godom.Component
+	godom.Island
 	Countdown   int
 	Action      string
 	BGCountdown int
@@ -88,7 +88,7 @@ func main() {
 	}()
 
 	if *embedMode {
-		// Embedded mode: static page with g-component targets.
+		// Embedded mode: static page with g-island targets.
 		app.TargetName = "crashtest"
 		app.Template = "ui/controls/index.html"
 

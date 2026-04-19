@@ -4,7 +4,7 @@ import "github.com/anupshinde/godom"
 
 // Navbar is a fixed top navigation bar.
 type Navbar struct {
-	godom.Component
+	godom.Island
 	ComponentCount int
 	Status         string
 }

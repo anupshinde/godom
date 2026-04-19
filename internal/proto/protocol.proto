@@ -31,7 +31,7 @@ enum BrowserKind {
 // The `kind` field determines which payload fields are relevant.
 message ServerMessage {
   ServerKind kind = 1;
-  string target = 2;                  // component instance name (for init, patch, stream)
+  string target = 2;                  // island instance name (for init, patch, stream)
 
   // VDOM fields (kind: INIT, PATCH)
   bytes tree = 10;                    // JSON-encoded tree description (init only)
@@ -86,7 +86,7 @@ message BrowserMessage {
   string error = 32;                  // error message if eval failed
 
   // Init request fields (kind: INIT_REQUEST)
-  string component = 40;
+  string island = 40;
 
   // Page info fields (kind: PAGE_INFO) — future
   // string page_path = 50;

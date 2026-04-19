@@ -8,7 +8,7 @@ import (
 
 // Tips cycles through demo hints with a typing animation.
 type Tips struct {
-	godom.Component
+	godom.Island
 	Text string
 }
 

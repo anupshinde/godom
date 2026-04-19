@@ -119,7 +119,7 @@ async function injectGodom(tabId, appUrl, scriptPath, wsUrl, allowRoot, panelCom
         + '</div>'
         + '</div>'
         + '</div>'
-        + '<div class="__godom-panel-content" g-component="' + panelComponent + '"' + (panelIsolateCSS ? ' g-shadow' : '') + '></div>';
+        + '<div class="__godom-panel-content" g-island="' + panelComponent + '"' + (panelIsolateCSS ? ' g-shadow' : '') + '></div>';
       document.body.appendChild(panel);
 
       const handle = panel.querySelector(".__godom-panel-handle");

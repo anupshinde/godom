@@ -1,14 +1,14 @@
 # godom Injector — Chrome Extension
 
-A Chrome extension that injects godom.js into websites, allowing godom apps to enhance any webpage with interactive components.
+A Chrome extension that injects godom.js into websites, allowing godom apps to enhance any webpage with interactive islands.
 
 ## How it works
 
 1. You configure **rules** — each rule maps URL patterns to a godom app
 2. When you visit a matching page, the extension fetches `godom.js` from the app server and injects it into the page
 3. A floating godom badge appears in the bottom-right corner
-4. Click the badge to open a resizable sidebar panel where a godom component renders
-5. The godom app can also render named components anywhere on the page via `g-component` attributes
+4. Click the badge to open a resizable sidebar panel where a godom island renders
+5. The godom app can also render named islands anywhere on the page via `g-island` attributes
 
 ## Installation
 
@@ -25,7 +25,7 @@ Click the extension icon to open the settings page. Each rule has:
 | **Rule Name** | Label for the rule | — |
 | **godom App URL** | Where the godom app is running | — |
 | **Script Path** | Path to the godom.js bundle | `/godom.js` |
-| **Panel Component** | `g-component` name for the sidebar panel | `extension` |
+| **Panel Island** | `g-island` name for the sidebar panel | `extension` |
 | **Isolate panel CSS** | Use shadow DOM to prevent host page CSS from affecting the panel | On |
 | **Enabled** | Whether the rule is active | On |
 | **Show badge** | Show the floating icon and sidebar panel | On |
@@ -78,14 +78,14 @@ Other options: Cloudflare Tunnel (`cloudflared tunnel --url http://localhost:909
 
 The extension shows a warning when a non-HTTPS URL is used with a remote host.
 
-## Named components vs root mode
+## Named islands vs root mode
 
-godom apps can register components in two ways:
+godom apps can register islands in two ways:
 
-- **Named components** (e.g. `counter`, `clock`) — render into `g-component` elements on the page. These work with the extension sidebar panel and can be injected anywhere.
+- **Named islands** (e.g. `counter`, `clock`) — render into `g-island` elements on the page. These work with the extension sidebar panel and can be injected anywhere.
 - **Root mode** (`document.body`) — replaces the entire page. The extension blocks this by default (`Allow root mode` is off) to prevent wiping out the host page. This is controlled by the `GODOM_INJECT_ALLOW_ROOT` bridge flag.
 
-The sidebar panel renders the component specified in **Panel Component** (default: `extension`). Your godom app should register a component with that name for it to appear in the sidebar.
+The sidebar panel renders the island specified in **Panel Island** (default: `extension`). Your godom app should register an island with that name for it to appear in the sidebar.
 
 ## File structure
 

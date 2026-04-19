@@ -8,7 +8,7 @@ type Widget struct {
 }
 
 type Layout struct {
-	godom.Component
+	godom.Island
 	Widgets []Widget
 	nextID  int
 }

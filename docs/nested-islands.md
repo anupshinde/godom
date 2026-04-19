@@ -1,0 +1,86 @@
+# Nested Island Composition
+
+godom supports nested island trees where a registered island's template contains `g-island` targets for other registered islands. This works in both the QuickServe pattern (single root) and the Register-only (external hosting / embedded) pattern.
+
+## How it works
+
+A layout island's template declares `g-island` targets. When the bridge renders the layout, those targets appear in the DOM. The bridge then discovers them and renders the child islands into them.
+
+### Example: embedded mode with nested layout
+
+**Go side** — all islands registered, no root:
+
+```go
+eng := godom.NewEngine()
+eng.SetFS(ui)
+
+// Layout is registered, not a root — it renders into the external page
+layout.TargetName = "layout"
+layout.Template = "ui/layout/index.html"
+eng.Register(layout)
+
+counter.TargetName = "counter"
+counter.Template = "ui/counter/index.html"
+eng.Register(counter)
+
+clock.TargetName = "clock"
+clock.Template = "ui/clock/index.html"
+eng.Register(clock)
+
+sidebar.TargetName = "sidebar"
+sidebar.Template = "ui/sidebar/index.html"
+eng.Register(sidebar)
+
+mux := http.NewServeMux()
+eng.SetMux(mux, nil)
+eng.NoBrowser = true
+if err := eng.Run(); err != nil {
+    log.Fatal(err)
+}
+log.Fatal(eng.ListenAndServe())
+```
+
+**Layout template** (`ui/layout/index.html`) — contains child targets:
+
+```html
+<div class="app">
+    <div g-island="sidebar"></div>
+    <div class="main">
+        <div g-island="counter"></div>
+        <div g-island="clock"></div>
+    </div>
+</div>
+```
+
+**External HTML page** — only declares the layout entry point:
+
+```html
+<script>window.GODOM_WS_URL = "ws://localhost:9091/ws";</script>
+<script src="http://localhost:9091/godom.js"></script>
+
+<div g-island="layout"></div>
+```
+
+The external page declares a single `g-island` target. godom renders the full island hierarchy inside it — layout first, then its children. The external page doesn't need to know about the internal structure.
+
+### Interactive features work fully
+
+This pattern supports the same interactive complexity as the QuickServe-based mode. Drag-and-drop reordering of child islands within the layout, shared state between siblings, and all other godom features work correctly through the nested chain.
+
+The VDOM pipeline (tree build, diff, patches) operates the same way regardless of whether the outer shell is served by godom or by an external page. The `nodeMap` and `IDCounter` stay consistent through the full hierarchy.
+
+## Gotchas
+
+### Registration order
+
+When a child island's init arrives before the parent has rendered, the bridge queues it and retries after the next successful init. This means registration order is flexible — the bridge handles out-of-order inits automatically.
+
+For `document.body` islands (via `QuickServe`), the server ensures the root is sent first.
+
+### Examples
+
+The `examples/multi-island/` example demonstrates nested composition: a layout island whose template contains `g-island` targets for child islands (counter, clock, sidebar, etc.) using QuickServe. The `examples/embedded-widget/` example demonstrates external hosting with flat islands.
+
+### How init ordering works
+
+The bridge queues pending inits and retries them after each successful init render. Init is pull-based: the bridge discovers `[g-island]` elements in the DOM and requests their trees via `BROWSER_INIT_REQUEST`. This means registration order is flexible — child islands can be registered before or after parent islands.

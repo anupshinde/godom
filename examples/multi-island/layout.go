@@ -11,7 +11,7 @@ type SlotInfo struct {
 // Layout is the root component that owns the page structure.
 // Its Slots list drives a g-for loop with drag-to-reorder support.
 type Layout struct {
-	godom.Component
+	godom.Island
 	Slots []SlotInfo
 }
 

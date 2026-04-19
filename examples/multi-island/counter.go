@@ -10,7 +10,7 @@ type CounterState struct {
 
 // Counter is a click-driven component with increment/decrement buttons.
 type Counter struct {
-	godom.Component
+	godom.Island
 	*CounterState
 }
 

@@ -12,7 +12,7 @@ import (
 	"path"
 	"reflect"
 
-	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/middleware"
 	"github.com/anupshinde/godom/internal/server"
@@ -38,8 +38,8 @@ var defaultDisconnectBadgeHTML string
 //go:embed internal/bridge/favicon.svg
 var defaultFaviconSVG string
 
-// Engine is the godom runtime. It registers components and plugins,
-// mounts the root component, and starts the server.
+// Engine is the godom runtime. It registers islands and plugins,
+// mounts the root island, and starts the server.
 type Engine struct {
 	Port           int    // 0 = random available port
 	Host           string // default "localhost"; set to "0.0.0.0" for network access
@@ -51,11 +51,11 @@ type Engine struct {
 	DisconnectHTML      string // custom disconnect overlay HTML (root mode); empty = default
 	DisconnectBadgeHTML string // custom disconnect badge HTML (embedded mode); empty = default
 
-	comps      []*component.Info        // mounted components
+	islands    []*island.Info           // mounted islands
 	plugins    map[string][]string      // plugin name → JS scripts
-	compIndex  map[interface{}]int      // comp pointer → index in comps slice
+	islIndex   map[interface{}]int      // island pointer → index in islands slice
 	names      map[string]bool          // registered target names (for duplicate check)
-	componentFS fs.FS                   // filesystem for component templates, set via SetFS
+	sharedFS   fs.FS                    // shared UI filesystem, set via SetFS; used when an island has no TemplateFS
 	userMux    *http.ServeMux           // custom mux from SetMux()
 	muxOpts    *MuxOptions              // custom paths for /ws and /godom.js
 	authFn     middleware.AuthFunc      // auth check; nil = no auth
@@ -69,17 +69,20 @@ type MuxOptions struct {
 	ScriptPath string // godom.js script path (default "/godom.js")
 }
 
-// Component is embedded in user structs to make them godom components.
-type Component struct {
-	TargetName string // matches g-component="name" attributes in parent templates
-	Template   string // template path relative to the filesystem set via SetFS
-	ci       *component.Info
+// Island is embedded in user structs to make them godom islands.
+// An island is a self-contained, stateful unit: its own goroutine, event
+// queue, and VDOM tree. This is islands-architecture terminology — what
+// other frameworks call "component" at the page level. See docs/why-islands.md.
+type Island struct {
+	TargetName string // matches g-island="name" attributes in parent templates
+	Template   string // template path relative to TemplateFS (or the engine's shared FS)
+	ci       *island.Info
 }
 
 // MarkRefresh marks fields for surgical refresh. The actual refresh happens
 // when Refresh() is called (either by the user or automatically by the
 // framework after a method call). Multiple calls accumulate.
-func (c *Component) MarkRefresh(fields ...string) {
+func (c *Island) MarkRefresh(fields ...string) {
 	if c.ci == nil {
 		return
 	}
@@ -96,7 +99,7 @@ func (c *Component) MarkRefresh(fields ...string) {
 //	    var path string
 //	    json.Unmarshal(result, &path)
 //	})
-func (c *Component) ExecJS(expr string, cb func(result []byte, err string)) {
+func (c *Island) ExecJS(expr string, cb func(result []byte, err string)) {
 	if c.ci == nil {
 		return
 	}
@@ -111,12 +114,12 @@ func (c *Component) ExecJS(expr string, cb func(result []byte, err string)) {
 // The framework automatically refreshes after every method call, so calling
 // Refresh there would result in a redundant double invocation.
 // Use Refresh only from background goroutines (timers, tickers, async work).
-func (c *Component) Refresh() {
+func (c *Island) Refresh() {
 	if c.ci == nil {
 		return
 	}
 	if c.ci.EventCh != nil {
-		c.ci.EventCh <- component.Event{Kind: component.RefreshKind}
+		c.ci.EventCh <- island.Event{Kind: island.RefreshKind}
 	}
 }
 
@@ -130,15 +133,15 @@ func NewEngine() *Engine {
 		NoBrowser:      env.NoBrowser(),
 		Quiet:          env.Quiet(),
 		plugins:        make(map[string][]string),
-		compIndex:      make(map[interface{}]int),
+		islIndex:       make(map[interface{}]int),
 		names:          make(map[string]bool),
 	}
 }
 
-// SetFS sets the shared UI filesystem for templates. When set, Register()
-// uses this filesystem instead of requiring one per call.
+// SetFS sets the shared UI filesystem for island templates. It is used by
+// Register() when an island does not carry its own TemplateFS.
 func (a *Engine) SetFS(fsys fs.FS) {
-	a.componentFS = fsys
+	a.sharedFS = fsys
 }
 
 // SetMux sets the HTTP mux. godom registers its handlers (/ws, /godom.js) on it.
@@ -157,7 +160,7 @@ func (a *Engine) SetAuth(fn middleware.AuthFunc) {
 
 // --- EngineConfig interface methods (used by internal/server) ---
 
-func (a *Engine) Components() []*component.Info         { return a.comps }
+func (a *Engine) Islands() []*island.Info               { return a.islands }
 func (a *Engine) PluginScripts() map[string][]string    { return a.plugins }
 func (a *Engine) EmbeddedJS() (string, string, string)  { return bridgeJS, protobufMinJS, protocolJS }
 func (a *Engine) Mux() *http.ServeMux                   { return a.userMux }
@@ -194,75 +197,75 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts
 }
 
-// Register registers one or more components. Each component must have Name
-// and Template set on its embedded godom.Component before calling Register.
+// Register registers one or more islands. Each island must have TargetName
+// and Template set on its embedded godom.Island before calling Register.
 //
-// Register uses the filesystem set via SetFS().
-// The Template path is relative to that filesystem (e.g. "ui/counter/index.html").
-func (a *Engine) Register(comps ...interface{}) {
-	for _, comp := range comps {
-		v := reflect.ValueOf(comp)
+// Register uses the filesystem set via SetFS() unless the island carries
+// its own TemplateFS. The Template path is resolved against that filesystem.
+func (a *Engine) Register(islands ...interface{}) {
+	for _, isl := range islands {
+		v := reflect.ValueOf(isl)
 		if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
 			log.Fatal("godom: Register requires a pointer to a struct")
 		}
-		if !embedsComponent(v.Elem().Type()) {
-			log.Fatal("godom: registered struct must embed godom.Component")
+		if !embedsIsland(v.Elem().Type()) {
+			log.Fatal("godom: registered struct must embed godom.Island")
 		}
 
-		// Read Name and Template from the embedded Component.
-		compField := v.Elem().FieldByName("Component")
-		name := compField.FieldByName("TargetName").String()
-		entryPath := compField.FieldByName("Template").String()
+		// Read TargetName and Template from the embedded Island.
+		islField := v.Elem().FieldByName("Island")
+		name := islField.FieldByName("TargetName").String()
+		entryPath := islField.FieldByName("Template").String()
 
 		if name == "" {
-			log.Fatal("godom: Register requires Component.TargetName to be set")
+			log.Fatal("godom: Register requires Island.TargetName to be set")
 		}
 		if name != "document.body" && !vdom.IsValidIdentifier(name) {
-			log.Fatalf("godom: Component.TargetName %q must be a valid identifier (letters, digits, underscores; cannot start with a digit)", name)
+			log.Fatalf("godom: Island.TargetName %q must be a valid identifier (letters, digits, underscores; cannot start with a digit)", name)
 		}
 		if entryPath == "" {
-			log.Fatalf("godom: Register %q requires Component.Template to be set", name)
+			log.Fatalf("godom: Register %q requires Island.Template to be set", name)
 		}
 
 		if a.names[name] {
-			log.Fatalf("godom: component %q already registered", name)
+			log.Fatalf("godom: island %q already registered", name)
 		}
 
-		// Each component instance can only be registered once because it holds
+		// Each island instance can only be registered once because it holds
 		// a single VDOM tree, bindings, and event channel. Registering the same
-		// pointer twice would create two component.Info entries sharing one struct,
+		// pointer twice would create two island.Info entries sharing one struct,
 		// causing tree/binding conflicts. Use shared state via embedded pointers
 		// instead (see examples/shared-state).
-		if idx, exists := a.compIndex[comp]; exists {
-			log.Fatalf("godom: Register %q failed — same instance already registered as %q", name, a.comps[idx].SlotName)
+		if idx, exists := a.islIndex[isl]; exists {
+			log.Fatalf("godom: Register %q failed — same instance already registered as %q", name, a.islands[idx].SlotName)
 		}
 
-		if a.componentFS == nil {
+		if a.sharedFS == nil {
 			log.Fatal("godom: call SetFS() before Register()")
 		}
 
-		ci := server.BuildComponentInfo(comp, a.componentFS, entryPath)
+		ci := server.BuildIslandInfo(isl, a.sharedFS, entryPath)
 		ci.SlotName = name
-		compField.Set(reflect.ValueOf(Component{TargetName: name, Template: entryPath, ci: ci}))
-		a.comps = append(a.comps, ci)
-		a.compIndex[comp] = len(a.comps) - 1
+		islField.Set(reflect.ValueOf(Island{TargetName: name, Template: entryPath, ci: ci}))
+		a.islands = append(a.islands, ci)
+		a.islIndex[isl] = len(a.islands) - 1
 		a.names[name] = true
 	}
 }
 
-// Run initializes the component lifecycle, registers /ws and /godom.js handlers
+// Run initializes the island lifecycle, registers /ws and /godom.js handlers
 // on the mux set via SetMux, and starts event processors.
 // If GODOM_VALIDATE_ONLY=1 is set, Run() returns immediately after validation
 // succeeds — useful for CI and pre-commit checks.
 func (a *Engine) Run() error {
-	if len(a.comps) == 0 {
-		return fmt.Errorf("godom: no components registered — call Register() before Run()")
+	if len(a.islands) == 0 {
+		return fmt.Errorf("godom: no islands registered — call Register() before Run()")
 	}
 
-	// Validate: every component must have a SlotName.
-	for _, ci := range a.comps {
+	// Validate: every island must have a SlotName.
+	for _, ci := range a.islands {
 		if ci.SlotName == "" {
-			log.Fatal("godom: every component must have a SlotName — use Register() to name components")
+			log.Fatal("godom: every island must have a SlotName — use Register() to name islands")
 		}
 	}
 
@@ -312,9 +315,9 @@ func (a *Engine) ListenAndServe() error {
 	return srv.Serve(ln)
 }
 
-// QuickServe is the convenience path for single-component apps. It registers
-// the component as the root (document.body), creates a minimal page, sets up
-// the mux, and serves. The component must have Template set before calling.
+// QuickServe is the convenience path for single-island apps. It registers
+// the island as the root (document.body), creates a minimal page, sets up
+// the mux, and serves. The island must have Template set before calling.
 //
 // Example:
 //
@@ -323,31 +326,31 @@ func (a *Engine) ListenAndServe() error {
 //	eng := godom.NewEngine()
 //	eng.SetFS(ui)
 //	log.Fatal(eng.QuickServe(app))
-func (a *Engine) QuickServe(comp interface{}) error {
-	// Set Name to "document.body" — a special name that tells the bridge to render
-	// directly into document.body instead of a g-component element.
-	v := reflect.ValueOf(comp)
+func (a *Engine) QuickServe(isl interface{}) error {
+	// Set TargetName to "document.body" — a special name that tells the bridge
+	// to render directly into document.body instead of a g-island element.
+	v := reflect.ValueOf(isl)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
 		log.Fatal("godom: QuickServe requires a pointer to a struct")
 	}
-	v.Elem().FieldByName("Component").FieldByName("TargetName").SetString("document.body")
+	v.Elem().FieldByName("Island").FieldByName("TargetName").SetString("document.body")
 
-	a.Register(comp)
+	a.Register(isl)
 
-	templateFile := v.Elem().FieldByName("Component").FieldByName("Template").String()
+	templateFile := v.Elem().FieldByName("Island").FieldByName("Template").String()
 
-	// Use the component's HTML as the full page, inject godom.js before </body>.
-	idx := a.compIndex[comp]
-	pageHTML := strings.Replace(a.comps[idx].HTMLBody, "</body>", "<script src=\"/godom.js\"></script>\n</body>", 1)
+	// Use the island's HTML as the full page, inject godom.js before </body>.
+	idx := a.islIndex[isl]
+	pageHTML := strings.Replace(a.islands[idx].HTMLBody, "</body>", "<script src=\"/godom.js\"></script>\n</body>", 1)
 
 	// Serve static files from the template's directory.
 	dir := path.Dir(templateFile)
 	var staticFS fs.FS
 	if dir == "." {
-		staticFS = a.componentFS
+		staticFS = a.sharedFS
 	} else {
 		var err error
-		staticFS, err = fs.Sub(a.componentFS, dir)
+		staticFS, err = fs.Sub(a.sharedFS, dir)
 		if err != nil {
 			return fmt.Errorf("godom: invalid template path %q: %w", templateFile, err)
 		}
@@ -379,16 +382,16 @@ func (a *Engine) AuthMiddleware(next http.Handler) http.Handler {
 	return middleware.Wrap(next, a.authFn)
 }
 
-// Cleanup closes event channels so component goroutines exit.
+// Cleanup closes event channels so island goroutines exit.
 // Call this when your server is shutting down.
 func (a *Engine) Cleanup() {
-	server.Cleanup(a.comps)
+	server.Cleanup(a.islands)
 }
 
-// embedsComponent checks if a struct type embeds godom.Component.
-func embedsComponent(t reflect.Type) bool {
+// embedsIsland checks if a struct type embeds godom.Island.
+func embedsIsland(t reflect.Type) bool {
 	for i := 0; i < t.NumField(); i++ {
-		if t.Field(i).Type == reflect.TypeOf(Component{}) {
+		if t.Field(i).Type == reflect.TypeOf(Island{}) {
 			return true
 		}
 	}

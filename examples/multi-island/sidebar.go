@@ -13,7 +13,7 @@ type MenuItem struct {
 
 // Sidebar is a navigation sidebar with menu items.
 type Sidebar struct {
-	godom.Component
+	godom.Island
 	Items      []MenuItem
 	ActiveID   string
 	OnNavigate func(msg, kind string)

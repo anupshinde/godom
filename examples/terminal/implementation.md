@@ -70,7 +70,7 @@ Several reasons:
 
 1. **No browser-to-Go path in plugins.** The plugin API is `{init, update}` — both are Go-to-browser. There's no `send()` or callback mechanism for the plugin to push data back to Go.
 
-2. **State diffing overhead.** godom diffs JSON snapshots of component fields to detect changes. Terminal output is a continuous stream of opaque bytes — diffing it against a previous snapshot is meaningless and wasteful.
+2. **State diffing overhead.** godom diffs JSON snapshots of island fields to detect changes. Terminal output is a continuous stream of opaque bytes — diffing it against a previous snapshot is meaningless and wasteful.
 
 3. **Protobuf encoding overhead.** Each godom message is a `ServerMessage` containing `Command` objects with typed values. Wrapping raw terminal bytes in this structure adds serialization cost for no benefit.
 
@@ -96,11 +96,11 @@ The entry point. Does three things in sequence:
 
 2. **Starts the terminal WebSocket server.** Calls `startTerminalServer(token)` which spawns the shell, allocates the PTY, and begins listening on a random port. The port number is returned so it can be passed to the browser.
 
-3. **Sets up godom.** Registers the xterm plugin adapter, creates the root component with the terminal config (port + token), mounts it, and starts serving.
+3. **Sets up godom.** Registers the xterm plugin adapter, creates the root island with the terminal config (port + token), mounts it, and starts serving.
 
 ```go
 type App struct {
-    godom.Component
+    godom.Island
     Terminal TerminalConfig
 }
 

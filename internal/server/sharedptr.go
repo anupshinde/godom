@@ -3,7 +3,7 @@ package server
 import (
 	"reflect"
 
-	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/island"
 )
 
 // sharedPtrMaps holds the pointer-sharing relationships between components.
@@ -12,13 +12,13 @@ import (
 type sharedPtrMaps struct {
 	ptrToCompIdx map[uintptr][]int // pointer address → component indices sharing it
 	compIdxToPtr map[int][]uintptr // component index → pointer addresses it holds
-	comps        []*component.Info
+	comps        []*island.Info
 	pool         *connPool
 }
 
 // buildSharedPtrMaps walks all component structs to find embedded pointer fields
 // and groups components that share the same pointer address.
-func buildSharedPtrMaps(comps []*component.Info) *sharedPtrMaps {
+func buildSharedPtrMaps(comps []*island.Info) *sharedPtrMaps {
 	sm := &sharedPtrMaps{
 		ptrToCompIdx: make(map[uintptr][]int),
 		compIdxToPtr: make(map[int][]uintptr),
@@ -66,10 +66,10 @@ func removePtr(ptrs []uintptr, target uintptr) []uintptr {
 	return result
 }
 
-// refreshSharedComponents triggers surgical refresh on all other components
+// refreshSharedIslands triggers surgical refresh on all other components
 // that share an embedded pointer with the given component, using the changed
 // field names extracted from the original component's patches.
-func (sm *sharedPtrMaps) refreshSharedComponents(compIdx int, changedFields []string) {
+func (sm *sharedPtrMaps) refreshSharedIslands(compIdx int, changedFields []string) {
 	if sm == nil || len(changedFields) == 0 {
 		return
 	}

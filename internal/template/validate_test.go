@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/island"
 )
 
 type valTestComp struct {
-	Component struct{} // dummy — matches the field name check in component.Info
+	Component struct{} // dummy — matches the field name check in island.Info
 	Name      string
 	Count     int
 	Visible   bool
@@ -33,10 +33,10 @@ func (v *valTestComp) Add(color string)                        {}
 func (v *valTestComp) Drop(from, to float64, position string)  {}
 func (v *valTestComp) Computed() string                        { return "" }
 
-func newValTestCI() *component.Info {
+func newValTestCI() *island.Info {
 	comp := &valTestComp{}
 	v := reflect.ValueOf(comp)
-	return &component.Info{
+	return &island.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
 	}
@@ -261,7 +261,7 @@ func TestValidateDirectives_NestedFor(t *testing.T) {
 	html := `<div g-for="group in Groups"><span g-text="group.Name"></span><li g-for="opt in group.Options"><span g-text="opt"></span></li></div>`
 	comp := &valNestedComp{}
 	v := reflect.ValueOf(comp)
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
 	}
@@ -274,7 +274,7 @@ func TestValidateDirectives_NestedForUnknownPath(t *testing.T) {
 	html := `<div g-for="group in Groups"><li g-for="opt in group.Missing"></li></div>`
 	comp := &valNestedComp{}
 	v := reflect.ValueOf(comp)
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
 	}
@@ -492,10 +492,10 @@ type valSubStruct struct {
 
 func (v *valPtrComp) Save() {}
 
-func newValPtrCI() *component.Info {
+func newValPtrCI() *island.Info {
 	comp := &valPtrComp{}
 	v := reflect.ValueOf(comp)
-	return &component.Info{
+	return &island.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
 	}
@@ -525,10 +525,10 @@ type valMapComp struct {
 
 func (v *valMapComp) Save() {}
 
-func newValMapCI() *component.Info {
+func newValMapCI() *island.Info {
 	comp := &valMapComp{}
 	v := reflect.ValueOf(comp)
-	return &component.Info{
+	return &island.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
 	}
@@ -572,7 +572,7 @@ func TestValidateDirectives_NestedForNonStructIntermediate(t *testing.T) {
 	// Since resolved is nil, the inner loop var "opt" gets itemType nil
 	comp := &valMapListComp{}
 	v := reflect.ValueOf(comp)
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
 	}
@@ -600,7 +600,7 @@ func TestValidateDirectives_ForDottedPathLoopVar(t *testing.T) {
 	html := `<div g-for="group in Groups"><li g-for="opt in group.Options"><span g-text="opt"></span></li></div>`
 	comp := &valNestedComp{}
 	v := reflect.ValueOf(comp)
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
 	}
@@ -754,7 +754,7 @@ func TestValidateDirectives_LoopVarNonStructDottedAccess(t *testing.T) {
 	html := `<div g-for="group in Groups"><li g-for="opt in group.Options"><span g-text="opt.Length"></span></li></div>`
 	comp := &valNestedComp{}
 	v := reflect.ValueOf(comp)
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
 	}
@@ -773,7 +773,7 @@ func TestValidateDirectives_LoopVarNilItemTypeDottedAccess(t *testing.T) {
 	// Instead, use a nested for through a map (which gives nil resolved type):
 	comp := &valMapListComp{}
 	v := reflect.ValueOf(comp)
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:    v,
 		Typ:      v.Elem().Type(),
 	}

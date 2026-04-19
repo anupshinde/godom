@@ -34,7 +34,7 @@ var coreColors = []string{
 type M = map[string]interface{}
 
 type App struct {
-	godom.Component
+	godom.Island
 	Hostname     string
 	OS           string
 	Platform     string
