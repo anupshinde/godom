@@ -1,0 +1,23 @@
+{{define "base"}}<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{.Title}} — multi-page-v2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans">
+    <nav class="bg-gray-900 text-gray-100 px-6 py-3 flex gap-4 items-center">
+        <span class="font-bold mr-2">multi-page-v2</span>
+        <a href="/"        class="px-3 py-1 rounded text-sm {{if eq .Page "dashboard"}}text-white bg-white/10{{else}}text-gray-400 hover:text-white hover:bg-white/5{{end}}">Dashboard</a>
+        <a href="/counter" class="px-3 py-1 rounded text-sm {{if eq .Page "counter"}}text-white bg-white/10{{else}}text-gray-400 hover:text-white hover:bg-white/5{{end}}">Counter</a>
+        <a href="/clock"   class="px-3 py-1 rounded text-sm {{if eq .Page "clock"}}text-white bg-white/10{{else}}text-gray-400 hover:text-white hover:bg-white/5{{end}}">Clock</a>
+        <a href="/monitor" class="px-3 py-1 rounded text-sm {{if eq .Page "monitor"}}text-white bg-white/10{{else}}text-gray-400 hover:text-white hover:bg-white/5{{end}}">Monitor</a>
+        <a href="/solar"   class="px-3 py-1 rounded text-sm {{if eq .Page "solar"}}text-white bg-white/10{{else}}text-gray-400 hover:text-white hover:bg-white/5{{end}}">Solar System</a>
+    </nav>
+    <main class="px-6 py-6">
+        <h1 class="text-xl font-semibold mb-4">{{.Title}}</h1>
+        {{template "body" .}}
+    </main>
+    <script src="/godom.js"></script>
+</body>
+</html>{{end}}
