@@ -26,4 +26,28 @@
         <span class="text-lg font-medium text-blue-600" g-text="Count">0</span>
     </div>
     <div class="text-xs text-gray-400 text-right w-full">Step: <span g-text="Step">1</span></div>
+
+    <info-note>
+        <p class="font-medium mb-1 text-left">What this demo shows</p>
+        <ul class="text-left space-y-1 list-disc ml-4">
+            <li>
+                <b>Per-island <code class="bg-blue-100 px-1 rounded">AssetsFS</code></b>
+                — the clock package embeds its own HTML via
+                <code class="bg-blue-100 px-1 rounded">//go:embed clock.html</code>.
+                No <code class="bg-blue-100 px-1 rounded">SetFS</code> on the engine
+                for this island.
+            </li>
+            <li>
+                <b>Shared pointer state</b> — the counter block at the bottom reads
+                a <code class="bg-blue-100 px-1 rounded">*counter.State</code>
+                embedded into the clock's Go struct. When Counter mutates it, godom
+                auto-refreshes the clock too (shared-pointer refresh).
+            </li>
+            <li>
+                <b><code class="bg-blue-100 px-1 rounded">&lt;info-note&gt;</code></b>
+                — same shared partial as on the counter page, reused here via
+                <code class="bg-blue-100 px-1 rounded">&lt;g-slot/&gt;</code>.
+            </li>
+        </ul>
+    </info-note>
 </div>

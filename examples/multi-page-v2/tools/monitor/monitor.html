@@ -7,3 +7,32 @@
     <span class="text-lg font-medium text-blue-600" g-text="Count">0</span>
 </div>
 <div class="text-xs text-gray-400 text-right">Step: <span g-text="Step">1</span></div>
+
+<info-note>
+    <p class="font-medium mb-1 text-left">What this demo shows</p>
+    <ul class="text-left space-y-1 list-disc ml-4">
+        <li>
+            <b>Per-island <code class="bg-blue-100 px-1 rounded">AssetsFS</code></b>
+            — monitor embeds its single HTML file
+            (<code class="bg-blue-100 px-1 rounded">//go:embed monitor.html</code>)
+            alongside the Go code.
+        </li>
+        <li>
+            <b>Plugin system</b> — Chart.js is wired in via godom's plugin
+            mechanism. <code class="bg-blue-100 px-1 rounded">eng.Use(chartjs.Plugin)</code>
+            registers a named JS bridge; <code class="bg-blue-100 px-1 rounded">g-plugin:chartjs="CPUChart"</code>
+            hands Go-side data to that bridge on mount and on each patch.
+        </li>
+        <li>
+            <b>Shared pointer state</b> — same
+            <code class="bg-blue-100 px-1 rounded">*counter.State</code> as
+            clock; the Count/Step at the bottom reflects the counter tile
+            automatically.
+        </li>
+        <li>
+            <b><code class="bg-blue-100 px-1 rounded">&lt;info-note&gt;</code></b>
+            — shared partial, slotted content — same pattern as counter and
+            clock.
+        </li>
+    </ul>
+</info-note>

@@ -30,3 +30,37 @@
     </div>
     <p class="text-gray-600 text-[0.7rem] mt-2 text-center">Arrow keys to pan/rotate, +/− to zoom, drag to orbit, scroll to zoom</p>
 </div>
+
+<info-note>
+    <p class="font-medium mb-1 text-left">What this demo shows</p>
+    <ul class="text-left space-y-1 list-disc ml-4">
+        <li>
+            <b>Fully self-contained tool package</b> — Go code, HTML (via
+            <code class="bg-blue-100 px-1 rounded">AssetsFS</code>), AND the
+            plugin JS all live in <code class="bg-blue-100 px-1 rounded">tools/solar/</code>.
+            The package exports <code class="bg-blue-100 px-1 rounded">solar.Plugin</code>
+            so main only has to <code class="bg-blue-100 px-1 rounded">eng.Use(solar.Plugin)</code>
+            and <code class="bg-blue-100 px-1 rounded">eng.Register(solar.New())</code>
+            — no paths, no FS layout knowledge from main.
+        </li>
+        <li>
+            <b>Custom plugin</b> —
+            <code class="bg-blue-100 px-1 rounded">canvas-bridge.js</code> is
+            embedded with <code class="bg-blue-100 px-1 rounded">//go:embed canvas-bridge.js</code>
+            and registered via
+            <code class="bg-blue-100 px-1 rounded">RegisterPlugin("canvas3d", js)</code>.
+            The template uses
+            <code class="bg-blue-100 px-1 rounded">g-plugin:canvas3d="SolarSystem"</code>
+            to hand Go-computed draw commands to the canvas bridge every frame.
+        </li>
+        <li>
+            <b>All 3D math in Go</b> — camera projection, body positions,
+            diffuse lighting. The bridge just paints the commands.
+        </li>
+        <li>
+            <b><code class="bg-blue-100 px-1 rounded">&lt;info-note&gt;</code></b>
+            — same shared partial, same <code class="bg-blue-100 px-1 rounded">&lt;g-slot/&gt;</code>
+            pattern as the other tools.
+        </li>
+    </ul>
+</info-note>

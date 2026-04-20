@@ -8,16 +8,18 @@ import (
 	"time"
 
 	"github.com/anupshinde/godom"
+	"github.com/anupshinde/godom/examples/multi-page-v2/tools/counter"
 )
 
 // Inline template. Because this is all we need, there's no .html file and
 // no embed.FS — just a string literal. Shared partials (RegisterPartial /
 // UsePartials) still work; local sibling partials do not (no FS).
-const tmpl = `<span class="font-mono text-blue-600 font-medium" g-text="Time">--:--:--</span>`
+const tmpl = `<span class="font-mono text-blue-600 font-medium"><span g-text="Time">--:--:--</span>, with count <span g-text="Count">0</span></span>`
 
 type DigiClock struct {
 	godom.Island
-	Time string
+	*counter.State // shared counter — auto-refreshed when Counter increments
+	Time           string
 }
 
 func (c *DigiClock) tick() {
@@ -35,12 +37,13 @@ func (c *DigiClock) Run() {
 	}
 }
 
-func New() *DigiClock {
+func New(s *counter.State) *DigiClock {
 	c := &DigiClock{
 		Island: godom.Island{
 			TargetName:   "digiclock",
 			TemplateHTML: tmpl,
 		},
+		State: s,
 	}
 	c.tick()
 	return c

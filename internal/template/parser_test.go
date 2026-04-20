@@ -479,6 +479,94 @@ func TestExpandPartialsLayered_NilFSLayerSkipped(t *testing.T) {
 	}
 }
 
+// --- <g-slot> children-substitution tests ---
+
+func TestExpandPartials_SlotSubstitution(t *testing.T) {
+	fsys := fstest.MapFS{
+		"my-note.html": &fstest.MapFile{Data: []byte(`<div class="note"><g-slot/></div>`)},
+	}
+	got, err := ExpandPartials(`<my-note><p>hello</p></my-note>`, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `<div class="note"><p>hello</p></div>`
+	if got != want {
+		t.Errorf("slot substitution failed\nwant: %s\ngot:  %s", want, got)
+	}
+}
+
+func TestExpandPartials_SlotPairedTag(t *testing.T) {
+	// <g-slot></g-slot> should also work (with whitespace tolerance).
+	fsys := fstest.MapFS{
+		"my-note.html": &fstest.MapFile{Data: []byte(`<div><g-slot></g-slot></div>`)},
+	}
+	got, err := ExpandPartials(`<my-note><span>child</span></my-note>`, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, `<span>child</span>`) {
+		t.Errorf("expected children in slot, got: %s", got)
+	}
+}
+
+func TestExpandPartials_NoSlot_ChildrenDiscarded(t *testing.T) {
+	// Backward-compat: partials without <g-slot/> drop children silently.
+	fsys := fstest.MapFS{
+		"my-note.html": &fstest.MapFile{Data: []byte(`<div class="static">only this</div>`)},
+	}
+	got, err := ExpandPartials(`<my-note><p>dropped</p></my-note>`, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "dropped") {
+		t.Errorf("expected children to be discarded, got: %s", got)
+	}
+}
+
+func TestExpandPartials_SlotWithSelfClosingCustomTag(t *testing.T) {
+	// Self-closing custom tag has empty children — slot gets empty string.
+	fsys := fstest.MapFS{
+		"my-note.html": &fstest.MapFile{Data: []byte(`<div class="empty"><g-slot/></div>`)},
+	}
+	got, err := ExpandPartials(`<my-note/>`, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `<div class="empty"></div>`
+	if got != want {
+		t.Errorf("want: %s\ngot:  %s", want, got)
+	}
+}
+
+func TestExpandPartials_MultipleSlots_SameContent(t *testing.T) {
+	// If a partial uses <g-slot/> more than once, each gets the same children.
+	fsys := fstest.MapFS{
+		"my-note.html": &fstest.MapFile{Data: []byte(`<div><g-slot/><hr/><g-slot/></div>`)},
+	}
+	got, err := ExpandPartials(`<my-note>hi</my-note>`, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(got, "hi") != 2 {
+		t.Errorf("expected children inserted into both slots, got: %s", got)
+	}
+}
+
+func TestExpandPartials_SlotContentCanContainPartials(t *testing.T) {
+	// Children with a nested partial get expanded in the outer iteration loop.
+	fsys := fstest.MapFS{
+		"my-note.html":  &fstest.MapFile{Data: []byte(`<div class="note"><g-slot/></div>`)},
+		"my-inner.html": &fstest.MapFile{Data: []byte(`<span>INNER</span>`)},
+	}
+	got, err := ExpandPartials(`<my-note><my-inner/></my-note>`, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "INNER") {
+		t.Errorf("expected nested partial to expand, got: %s", got)
+	}
+}
+
 func TestExpandPartialsLayered_Recursive_ResolvesViaLayers(t *testing.T) {
 	// An outer-tag from local FS references <inner-tag> that only exists in the shared layer.
 	local := fstest.MapFS{

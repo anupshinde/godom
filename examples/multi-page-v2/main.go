@@ -25,6 +25,9 @@ import (
 //go:embed pages
 var pagesFS embed.FS
 
+//go:embed partials
+var partialsFS embed.FS
+
 type PageData struct {
 	Title string
 	Page  string
@@ -42,6 +45,10 @@ func main() {
 	// No SetFS needed — each tool brings its own AssetsFS.
 	eng.Use(chartjs.Plugin, solar.Plugin)
 
+	// Register shared partials from the partials/ directory. Any *.html in
+	// there becomes a tag name: info-note.html → <info-note>.
+	eng.UsePartials(partialsFS, "partials")
+
 	// Build tool islands. Counter, clock, and monitor all share one
 	// *counter.State pointer — mutating Count/Step in Counter auto-refreshes
 	// the clock and monitor views via godom's shared-pointer refresh.
@@ -52,8 +59,9 @@ func main() {
 	solarI := solar.New()
 
 	// digiclock demonstrates Island.TemplateHTML — the tool carries no HTML
-	// file at all, just an inline string. Used as inline prose on the dashboard.
-	digiClockI := digiclock.New()
+	// file at all, just an inline string. Shares the same *counter.State so
+	// the inline prose on the dashboard shows the live count too.
+	digiClockI := digiclock.New(sharedCounter)
 
 	eng.Register(counterI, clockI, monitorI, solarI, digiClockI)
 

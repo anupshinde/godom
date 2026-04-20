@@ -6,7 +6,7 @@ import (
 	"github.com/anupshinde/godom"
 )
 
-//go:embed counter.html
+//go:embed ui
 var fsys embed.FS
 
 // State is the shared counter state. Multiple islands embed *State to observe
@@ -33,7 +33,7 @@ func New(s *State) *Counter {
 	return &Counter{
 		Island: godom.Island{
 			TargetName: "counter",
-			Template:   "counter.html",
+			Template:   "ui/counter.html",
 			AssetsFS:   fsys,
 		},
 		State: s,

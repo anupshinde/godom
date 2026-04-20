@@ -17,6 +17,11 @@ var openTagRe = regexp.MustCompile(`<([a-z][a-z0-9]*-[a-z0-9-]*)(\s[^>]*?)?\s*/?
 // gAttrRe matches g-* attributes (including g-class:done etc.) in an attribute string.
 var gAttrRe = regexp.MustCompile(`(g-[a-z]+(?::[a-z-]+)?)\s*=\s*"([^"]*)"`)
 
+// slotRe matches the <g-slot> marker inside a partial — both <g-slot/> and
+// <g-slot></g-slot> (with optional whitespace). Replaced with the children
+// content from the partial's consumer.
+var slotRe = regexp.MustCompile(`<g-slot\s*/>|<g-slot\s*>\s*</g-slot\s*>`)
+
 // FSLayer is one filesystem search location for partial resolution.
 // Layers are consulted in order; the first hit wins.
 type FSLayer struct {
@@ -72,6 +77,7 @@ func ExpandPartialsLayered(htmlStr string, layers []FSLayer, registry map[string
 
 		openTag := htmlStr[loc[0]:loc[1]]
 		var end int
+		var children string
 		if strings.HasSuffix(openTag, "/>") {
 			end = loc[1]
 		} else {
@@ -81,6 +87,7 @@ func ExpandPartialsLayered(htmlStr string, layers []FSLayer, registry map[string
 				return "", fmt.Errorf("partial %q: missing closing tag", tagName)
 			}
 			end = loc[1] + closeIdx + len(closeTag)
+			children = strings.TrimSpace(htmlStr[loc[1] : end-len(closeTag)])
 		}
 
 		compHTML, err := lookupPartial(tagName, layers, registry)
@@ -89,6 +96,9 @@ func ExpandPartialsLayered(htmlStr string, layers []FSLayer, registry map[string
 		}
 
 		expanded := strings.TrimSpace(string(compHTML))
+		// Substitute <g-slot/> markers with the children content. If the partial
+		// has no slot, children are silently discarded (the current default).
+		expanded = slotRe.ReplaceAllString(expanded, children)
 		if attrs != "" {
 			gAttrs := ExtractGAttrs(attrs)
 			if gAttrs != "" {
