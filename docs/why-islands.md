@@ -60,6 +60,24 @@ The browser extension injecting stateful units into arbitrary host pages is lite
 
 The protobuf field `BrowserMessage.component` was renamed to `island`. Wire format is unchanged (protobuf uses field numbers, not names — field 40 still carries the init-request target name).
 
+## What Phase B added (on top of the rename)
+
+Phase B landed alongside the rename and is **purely additive** — nothing was removed or altered. Every pre-Phase-B app (one `SetFS(fs)` plus `Template: "ui/counter.html"` on each island) continues to work unchanged.
+
+New surface:
+
+| Addition | Purpose |
+|---|---|
+| `Island.AssetsFS fs.FS` | Per-island filesystem. Lets a tool package ship its own `//go:embed` instead of relying on the engine-wide `SetFS`. |
+| `Island.TemplateHTML string` | Inline HTML — skips the filesystem entirely. For tiny islands with one template and no sibling partials. |
+| `Engine.RegisterPartial(name, html)` | Register a shared partial by name from a raw Go string. Looked up when a template uses `<name>`. |
+| `Engine.UsePartials(fs, baseDir)` | Bulk-register every `*.html` in a directory as a named partial. |
+| `<g-slot/>` marker in partials | Partials can carry a `<g-slot/>`; any content between a consumer's custom-element tags replaces it. Partials without a slot discard children (the prior behavior). |
+
+`Engine.SetFS(fs)` is now optional — an island with `AssetsFS` or `TemplateHTML` doesn't need the engine-wide default.
+
+See [docs/guide.md#partials](guide.md#partials) and [examples/multi-page-v2](../examples/multi-page-v2) for walkthroughs.
+
 ## Where "component" still appears in docs
 
 Intentionally, when referring to external frameworks and standards:

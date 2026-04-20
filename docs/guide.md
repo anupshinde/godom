@@ -365,6 +365,8 @@ The class is removed on cleanup (e.g. when an island is re-initialized after rec
 
 ## Partials
 
+> **Migration note.** Phase B (per-island `AssetsFS`, `TemplateHTML`, `RegisterPartial`, `UsePartials`, `<g-slot/>`) is **purely additive**. Existing apps that use `SetFS(fs)` + `Template: "ui/..."` keep working without any change — reach for the new features only when the old pattern feels constraining.
+
 Partials are stateless HTML fragments included by custom-element tag name. Three ways to supply them:
 
 ### Local sibling files
@@ -404,6 +406,18 @@ eng.UsePartials(partialsFS, "partials")   // partials/*.html → <tag>
 ```
 
 Lookup order: island's own FS first, then the registry.
+
+### When a partial isn't found
+
+If a tag can't be resolved, godom errors at startup (`Register()`) with a structured message listing every location it searched:
+
+```
+partial "my-button": not found; searched:
+  - ui/counter/my-button.html (island "counter" AssetsFS)
+  - my-button.html (registry["my-button"])
+```
+
+This is a startup-time error, not a runtime one. Typo in a tag name or a missing file surfaces before any browser connects.
 
 ### `<g-slot/>` children
 

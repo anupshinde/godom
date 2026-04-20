@@ -498,6 +498,16 @@ eng.UsePartials(partialsFS, "partials")   // each partials/*.html becomes <tag-n
 
 Inline-HTML islands skip step 1 and go directly to the registry.
 
+A failed lookup produces a multi-line error at `Register()` (startup, not runtime):
+
+```
+partial "my-button": not found; searched:
+  - ui/counter/my-button.html (island "counter" AssetsFS)
+  - my-button.html (registry["my-button"])
+```
+
+Every FS layer consulted gets listed; the final registry miss is also shown.
+
 ### Passing children via `<g-slot/>`
 
 Partials can slot children from their consumer with a `<g-slot/>` or `<g-slot></g-slot>` marker.
