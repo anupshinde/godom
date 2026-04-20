@@ -48,7 +48,7 @@ type stockState struct {
 }
 
 type App struct {
-	godom.Component
+	godom.Island
 	Stocks       []Stock
 	MarketStatus string
 	TotalStocks  string

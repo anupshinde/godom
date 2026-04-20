@@ -21,7 +21,7 @@ type Card struct {
 }
 
 type Demo struct {
-	godom.Component
+	godom.Island
 	Palette []PaletteColor
 	Canvas  []Card
 }

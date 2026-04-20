@@ -125,20 +125,20 @@ Change the global namespace the bridge registers on. Default is `"godom"` (`wind
 
 ### GODOM_INJECT_ALLOW_ROOT
 
-Controls whether the bridge allows rendering a root component into `document.body` when godom.js is injected into a page not owned by godom (e.g. via the browser extension). Defaults to `true` when not set, so normal godom apps are unaffected.
+Controls whether the bridge allows rendering a root island into `document.body` when godom.js is injected into a page not owned by godom (e.g. via the browser extension). Defaults to `true` when not set, so normal godom apps are unaffected.
 
 ```html
 <script>window.GODOM_INJECT_ALLOW_ROOT = false;</script>
 <script src="http://localhost:9091/godom.js"></script>
 ```
 
-When `false`, the bridge skips `document.body` rendering on `SERVER_INIT`, preventing the injected script from replacing the host page's content. Named components (`g-component`) still work normally.
+When `false`, the bridge skips `document.body` rendering on `SERVER_INIT`, preventing the injected script from replacing the host page's content. Named islands (`g-island`) still work normally.
 
 The godom browser extension sets this to `false` by default and provides an "Allow root mode" toggle per rule.
 
 ### GODOM_DEBUG
 
-Automatically injected by the server when `GODOM_DEBUG` is set. Accepts `1`, `true`, `0`, or `false`. Enables debug-level warnings in the bridge console (e.g. missing component targets during init). Not set manually — controlled via the server-side env var.
+Automatically injected by the server when `GODOM_DEBUG` is set. Accepts `1`, `true`, `0`, or `false`. Enables debug-level warnings in the bridge console (e.g. missing island targets during init). Not set manually — controlled via the server-side env var.
 
 ### DisconnectHTML
 
@@ -176,18 +176,18 @@ godom.ondisconnect = function(err) { /* disconnected */ };
 </script>
 ```
 
-### Component readiness (`.g-ready` class)
+### Island readiness (`.g-ready` class)
 
-The bridge adds a `.g-ready` CSS class to elements after their component tree is initialized:
+The bridge adds a `.g-ready` CSS class to elements after their island tree is initialized:
 
 - **Root mode**: added to `document.body`
-- **Embedded mode**: added to each `[g-component]` element
+- **Embedded mode**: added to each `[g-island]` element
 
-This lets you hide raw template content (e.g. `{{Count}}`) until the component is live:
+This lets you hide raw template content (e.g. `{{Count}}`) until the island is live:
 
 ```css
 body:not(.g-ready) { visibility: hidden; }
-[g-component]:not(.g-ready) { visibility: hidden; }
+[g-island]:not(.g-ready) { visibility: hidden; }
 ```
 
 The class is removed on cleanup (re-init after reconnect). This is purely a CSS hook — no configuration needed.

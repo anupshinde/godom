@@ -29,11 +29,11 @@ In the journey I have found some interesting use cases.
 
 > Why multipage and routing
 
-Sometimes we don't want all components shown on a view. So it makes no sense to load those up on the browser - because components that are loaded will receive updates from their VDOM on the server. If a component is not shown, those updates will still be received, but ignored, reducing browser processing.
+Sometimes we don't want all islands shown on a view. So it makes no sense to load those up on the browser - because islands that are loaded will receive updates from their VDOM on the server. If an island is not shown, those updates will still be received, but ignored, reducing browser processing.
 
-A godom component is self-contained. It has its own VDOM (view-state) and it will sync across multiple real views - like multiple browsers or multiple windows or multiple pages.
+A godom island is self-contained. It has its own VDOM (view-state) and it will sync across multiple real views - like multiple browsers or multiple windows or multiple pages.
 
-I still do not like the idea that the VDOM component is loaded in Go regardless of the browser using it - but that is a problem which creates conflict - not about "how to solve it", but more about "should it be solved" and "is that really a problem". For now, I have not found a use case which says "it must be solved by the framework."
+I still do not like the idea that the VDOM island is loaded in Go regardless of the browser using it - but that is a problem which creates conflict - not about "how to solve it", but more about "should it be solved" and "is that really a problem". For now, I have not found a use case which says "it must be solved by the framework."
 
 Multi-pages allow me to scope the browser-side views. And this has helped me integrate multiple tools under a single large Go program.
 

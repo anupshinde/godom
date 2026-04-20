@@ -11,7 +11,7 @@ import (
 var ui embed.FS
 
 type App struct {
-	godom.Component
+	godom.Island
 	Count int
 	Step  int
 }

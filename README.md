@@ -37,7 +37,7 @@ import (
 var ui embed.FS
 
 type App struct {
-    godom.Component
+    godom.Island
     Count int
     Step  int
 }
@@ -116,7 +116,7 @@ Requires Go 1.25+ and a web browser.
 | `g-attr:name` | `g-attr:transform="Rotation"` | Set any HTML/SVG attribute from a field |
 | `g-style:prop` | `g-style:width="BarWidth"` | Set an inline CSS property from a field |
 | `g-plugin:name` | `g-plugin:chartjs="MyChart"` | Send field data to a registered JS plugin |
-| `g-shadow` | `g-shadow` | Render component inside a Shadow DOM for CSS isolation |
+| `g-shadow` | `g-shadow` | Render island inside a Shadow DOM for CSS isolation |
 
 ### Events
 
@@ -205,9 +205,11 @@ Directives support:
 
 All expressions are resolved in Go (the browser-side bridge is a pure command executor).
 
-## Components
+## Composition
 
-### Template includes
+godom has two composition tiers: **partials** (stateless HTML includes) and **islands** (stateful, goroutine-backed runtime units). Reach for a partial when you just want shared HTML; reach for an island when you want isolated state and behavior. See [docs/why-islands.md](docs/why-islands.md) for the full explanation.
+
+### Partials (template includes)
 
 Split HTML into reusable files. Any HTML file in your embedded filesystem can be used as a custom element:
 
@@ -227,35 +229,74 @@ Split HTML into reusable files. Any HTML file in your embedded filesystem can be
 </ul>
 ```
 
-Custom elements are expanded inline at registration time — directives resolve against the parent component's state. Loop variables (`todo`, `i`) are available inside the included template.
+Partials are expanded inline at registration time — directives resolve against the enclosing island's state. Loop variables (`todo`, `i`) are available inside the included template. Partials carry no state, no goroutine, no lifecycle.
 
-### Multiple components
+#### Shared partials via the registry
 
-For apps with multiple independent pieces of state, register separate components. Each gets its own Go struct, HTML template, VDOM tree, and refresh cycle. The parent declares insertion points with `g-component`, and children render into them.
+Partials can also be registered by name, independent of any filesystem — useful for reusable snippets shared across islands.
+
+```go
+// Register a raw HTML string as a shared partial:
+eng.RegisterPartial("my-badge", `<span class="badge"><g-slot/></span>`)
+
+// Or bulk-register every *.html file from a directory:
+//go:embed partials
+var partialsFS embed.FS
+eng.UsePartials(partialsFS, "partials")   // partials/my-badge.html → <my-badge>
+```
+
+Partial lookup order for `<my-tag>`:
+1. Island's own FS at the entry template's directory (sibling file).
+2. Engine's partial registry (populated via `RegisterPartial` / `UsePartials`).
+3. If neither has it, startup errors with every location searched.
+
+#### Slotting children with `<g-slot/>`
+
+A partial can contain a `<g-slot/>` marker. Whatever sits between a consumer's custom-element tags replaces the slot:
+
+```html
+<!-- info-note.html -->
+<div class="callout">
+    <svg>...icon...</svg>
+    <div><g-slot/></div>
+</div>
+```
+
+```html
+<info-note>
+    <p>This content lands inside the callout.</p>
+</info-note>
+```
+
+Partials without a `<g-slot/>` discard any inner content (the default).
+
+### Islands
+
+For apps with multiple independent pieces of state, register separate **islands**. Each gets its own Go struct, HTML template, VDOM tree, goroutine, and refresh cycle. The parent declares insertion points with `g-island`, and child islands render into them.
 
 ```go
 eng.SetFS(ui)
 
-// Child components — set TargetName and Template, then register
+// Child islands — set TargetName and Template, then register
 counter := &Counter{Step: 1}
 counter.TargetName = "counter"
 counter.Template = "ui/counter/index.html"
 eng.Register(counter)
 
-// Root component owns the page layout (QuickServe auto-sets TargetName to "document.body")
+// Root island owns the page layout (QuickServe auto-sets TargetName to "document.body")
 layout := &Layout{}
 layout.Template = "ui/layout/index.html"
 log.Fatal(eng.QuickServe(layout))
 ```
 
-The parent template declares targets with the `g-component` attribute:
+The parent template declares targets with the `g-island` attribute:
 
 ```html
 <!-- ui/layout/index.html -->
 <body>
     <h1>My App</h1>
-    <div class="sidebar" g-component="sidebar"></div>
-    <div class="main" g-component="counter"></div>
+    <div class="sidebar" g-island="sidebar"></div>
+    <div class="main" g-island="counter"></div>
 </body>
 ```
 
@@ -275,13 +316,52 @@ Register is variadic, so you can register all children in one call:
 eng.Register(navbar, toast, sidebar, counter, clock, monitor, ticker, tips)
 ```
 
-Cross-component communication uses Go callbacks:
+Cross-island communication uses Go callbacks:
 
 ```go
 sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
 ```
 
-See [examples/multi-component/](examples/multi-component/) for a full 9-component demo.
+#### Per-island filesystem (`AssetsFS`)
+
+For portable tool packages, each island can bring its own filesystem — Go code and HTML colocate in one folder:
+
+```go
+// tools/counter/counter.go
+//go:embed *.html
+var fsys embed.FS
+
+func New() *Counter {
+    return &Counter{Island: godom.Island{
+        TargetName: "counter",
+        Template:   "counter.html",   // path inside counter's own fs
+        AssetsFS:   fsys,
+    }}
+}
+```
+
+Main no longer needs `SetFS` if every island brings its own. Local sibling partials still work — the lookup searches the island's own FS first.
+
+`AssetsFS` is `fs.FS`, so `os.DirFS(".")` also works for dev-mode edits without rebuilding.
+
+#### Inline HTML (`TemplateHTML`)
+
+For tiny one-off islands, skip the filesystem entirely:
+
+```go
+const tmpl = `<span class="font-mono" g-text="Time">--:--:--</span>`
+
+func New() *DigiClock {
+    return &DigiClock{Island: godom.Island{
+        TargetName:   "digiclock",
+        TemplateHTML: tmpl,   // no Template, no AssetsFS
+    }}
+}
+```
+
+Inline-HTML islands can still use shared partials from the registry; they just don't have sibling-file lookup.
+
+See [examples/multi-island/](examples/multi-island/) for a full 9-island demo.
 
 ## API
 
@@ -298,13 +378,18 @@ eng.Quiet = true                                  // Suppress startup output
 eng.DisableExecJS = true                          // Disable ExecJS server-side
 eng.Use(chartjs.Plugin, plotly.Plugin)            // Register plugins (Chart.js, Plotly, ECharts, etc.)
 eng.RegisterPlugin("myplugin", bridgeJS)          // Register a custom plugin with one or more JS scripts
-eng.SetFS(fsys)                                   // Set the shared UI filesystem for templates
+eng.SetFS(fsys)                                   // Default UI filesystem; optional if every island has AssetsFS
+eng.RegisterPartial("my-badge", html)             // Register a shared partial by name (raw string)
+eng.UsePartials(fsys, "partials")                 // Bulk-register partials from a directory (scans *.html)
 eng.DisconnectHTML = "<div>Custom overlay</div>"  // Custom disconnect overlay (root mode)
 eng.DisconnectBadgeHTML = "<span>Offline</span>"  // Custom disconnect badge (embedded mode)
 
-child.TargetName = "name"                         // Matches g-component="name" in parent template
-child.Template = "ui/child.html"                  // Template path relative to SetFS filesystem
-eng.Register(child)                               // Register one or more components (variadic)
+child.TargetName = "name"                         // Matches g-island="name" in parent template
+child.Template = "ui/child.html"                  // Template path (resolved against AssetsFS or engine SetFS)
+child.AssetsFS = childFS                          // Optional per-island filesystem (overrides SetFS for this island)
+// or:
+child.TemplateHTML = "<div>...</div>"             // Inline HTML — no filesystem at all
+eng.Register(child)                               // Register one or more islands (variadic)
 
 app.Template = "ui/index.html"
 log.Fatal(eng.QuickServe(app))                    // Auto-sets TargetName to "document.body", registers, serves, blocks
@@ -330,7 +415,7 @@ if err := eng.Run(); err != nil {
 log.Fatal(eng.ListenAndServe())
 ```
 
-`Run()` validates templates, registers godom handlers on the mux from `SetMux()`, and starts component event processors. `ListenAndServe()` binds the configured host/port, wraps the mux with auth middleware, opens the browser unless disabled, and blocks serving requests. If you manage shutdown yourself, call `Cleanup()` before exit to stop component goroutines cleanly.
+`Run()` validates templates, registers godom handlers on the mux from `SetMux()`, and starts island event processors. `ListenAndServe()` binds the configured host/port, wraps the mux with auth middleware, opens the browser unless disabled, and blocks serving requests. If you manage shutdown yourself, call `Cleanup()` before exit to stop island goroutines cleanly.
 
 Settings can also be set via environment variables before `NewEngine()` runs:
 
@@ -342,7 +427,7 @@ Boolean env vars (`GODOM_DEBUG`, `GODOM_NO_AUTH`, `GODOM_NO_BROWSER`, `GODOM_QUI
 
 `NewEngine()` reads env vars into the engine's initial state; any field you set in code after `NewEngine()` overrides the env-derived value. `GODOM_DEBUG` is server-side only: it enables debug logging and bridge warnings, but it is not an `Engine` field. godom does not parse CLI flags, so your binary owns its flags entirely.
 
-For external hosting (embedding godom components in pages not served by godom), set browser-side variables before loading the bundle:
+For external hosting (embedding godom islands in pages not served by godom), set browser-side variables before loading the bundle:
 
 ```html
 <script>
@@ -354,13 +439,21 @@ window.GODOM_NS = "myApp";                        // Rename window.godom to wind
 
 See [docs/configuration.md](docs/configuration.md) for the full reference on settings, environment variables, authentication, and precedence rules.
 
-### Component
+### Island
 
-Embed `godom.Component` in your struct. The `TargetName` field matches `g-component="name"` attributes in parent templates. The `Template` field is the path to the HTML template relative to the filesystem set via `SetFS`.
+Embed `godom.Island` in your struct. `TargetName` matches `g-island="name"` attributes in parent templates. The island's HTML comes from one of three sources:
+
+| Field | Use when |
+|---|---|
+| `Template` + engine's `SetFS(fs)` | Flat single-FS apps. `Template` is resolved against the engine-wide FS. |
+| `Template` + `AssetsFS` (per-island) | Tool packages that ship HTML colocated with Go code. Each island brings its own `//go:embed`. Local sibling partials resolve from this FS automatically. |
+| `TemplateHTML` (inline) | Tiny islands with no partials — the template is a plain Go string literal. |
+
+`AssetsFS` is `fs.FS` — so `embed.FS`, `os.DirFS` (runtime edits), `fstest.MapFS`, or any custom filesystem all work.
 
 ```go
 type MyApp struct {
-    godom.Component            // TargetName, Template fields come from here
+    godom.Island            // TargetName, Template, TemplateHTML, AssetsFS all live here
     Name string        // exported fields = state
     Items []Item       // slices work with g-for
 }
@@ -453,9 +546,10 @@ See [docs/plugins.md](docs/plugins.md) for the full list and [docs/javascript-li
 - [examples/stock-ticker/](examples/stock-ticker/) — live stock ticker dashboard with 30 simulated stocks, per-stock tick intervals, table with color-coded gainers/losers, and external CSS via static file serving
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
-- [examples/multi-component/](examples/multi-component/) — 9-component dashboard with `g-component` composition, cross-component callbacks, Chart.js plugin, drag-and-drop reorder, goroutine-driven updates
-- [examples/embedded-widget/](examples/embedded-widget/) — godom components embedded in an external HTML page (separate static server, `GODOM_WS_URL`, `/godom.js` script tag, `g-component` targets, `g-shadow` for CSS isolation)
-- [examples/same-component-repeated/](examples/same-component-repeated/) — same component type rendered into multiple `g-component` targets simultaneously
+- [examples/multi-page-v2/](examples/multi-page-v2/) — **reference for Phase B features** — tool packages with `//go:embed` + `AssetsFS`, inline `TemplateHTML`, shared partials via `UsePartials` / `RegisterPartial`, `<g-slot/>` children substitution, `os.DirFS` dev mode, multi-page routing with Go html/template chrome
+- [examples/multi-island/](examples/multi-island/) — 9-island dashboard with `g-island` composition, cross-island callbacks, Chart.js plugin, drag-and-drop reorder, goroutine-driven updates
+- [examples/embedded-widget/](examples/embedded-widget/) — godom islands embedded in an external HTML page (separate static server, `GODOM_WS_URL`, `/godom.js` script tag, `g-island` targets, `g-shadow` for CSS isolation)
+- [examples/same-island-repeated/](examples/same-island-repeated/) — same island type rendered into multiple `g-island` targets simultaneously
 - [examples/video-player/](examples/video-player/) — video player with Go decoding frames via ffmpeg and rendering on canvas
 - [examples/breakout-game/](examples/breakout-game/) — breakout game with Go-side physics, canvas rendering, keyboard input, and collision detection
 - [examples/chart-plugins/](examples/chart-plugins/) — Plotly and ECharts plugins side by side with live-updating charts
@@ -463,8 +557,8 @@ See [docs/plugins.md](docs/plugins.md) for the full list and [docs/javascript-li
 - [examples/markdown-editor/](examples/markdown-editor/) — two-pane markdown editor with live preview and plain JS scroll sync
 - [examples/multi-page/](examples/multi-page/) — multi-page app with developer-owned mux and routing between pages
 - [examples/select-test/](examples/select-test/) — focused repro app for select/input sync behavior
-- [examples/shared-state/](examples/shared-state/) — shared state between components via embedded struct pointers
-- [examples/dynamic-mount/](examples/dynamic-mount/) — dynamic component mounting and unmounting via `godom.mount()`
+- [examples/shared-state/](examples/shared-state/) — shared state between islands via embedded struct pointers
+- [examples/dynamic-mount/](examples/dynamic-mount/) — dynamic island mounting and unmounting via `godom.mount()`
 - [examples/exec-and-call/](examples/exec-and-call/) — ExecJS (Go→browser) and `godom.call()` (browser→Go) demo
 - [examples/ws-lifecycle/](examples/ws-lifecycle/) — WebSocket lifecycle hooks (`onconnect`, `ondisconnect`, `onerror`)
 
@@ -491,12 +585,12 @@ go build -o counter ./examples/counter
 
 ## Browser extension
 
-godom includes a Chrome extension that injects `godom.js` into any website, letting your Go app enhance pages you don't control. Configure URL patterns to decide which pages get injection, and a sidebar panel renders your godom component alongside the host page.
+godom includes a Chrome extension that injects `godom.js` into any website, letting your Go app enhance pages you don't control. Configure URL patterns to decide which pages get injection, and a sidebar panel renders your godom island alongside the host page.
 
 - Configurable include/exclude URL patterns per rule with enable/disable toggles
 - Resizable sidebar panel with CSS isolation (`g-shadow`), maximize/restore, and page-split layout
 - Sidebar state persists across page navigations within the same site
-- Works with named components — the sidebar renders a `g-component` of your choice (default: `extension`)
+- Works with named islands — the sidebar renders a `g-island` of your choice (default: `extension`)
 - Root mode (`document.body`) is blocked by default to prevent replacing the host page
 - Hide badge per rule for screen recordings and demos
 - Export/import rules as JSON for sharing across machines
@@ -531,7 +625,8 @@ See [docs/AI_USAGE.md](docs/AI_USAGE.md) for the full philosophy on how AI was u
 - [docs/plugins.md](docs/plugins.md) — plugin system overview
 - [docs/javascript-libraries.md](docs/javascript-libraries.md) — using JS libraries with godom
 - [docs/drag-drop.md](docs/drag-drop.md) — drag and drop design and implementation
-- [docs/nested-components.md](docs/nested-components.md) — nested component composition in embedded mode
+- [docs/why-islands.md](docs/why-islands.md) — why godom calls its stateful units "islands", not "components"
+- [docs/nested-islands.md](docs/nested-islands.md) — nested island composition in embedded mode
 - [docs/planning/next.md](docs/planning/next.md) — prioritized roadmap
 
 ## License

@@ -34,7 +34,7 @@ type FrameData struct {
 }
 
 type App struct {
-	godom.Component
+	godom.Island
 	Player   FrameData
 	Playing  bool
 	FrameNum int

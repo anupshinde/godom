@@ -18,7 +18,7 @@ type HeatmapTile struct {
 }
 
 type Heatmap struct {
-	godom.Component
+	godom.Island
 	Row1 []HeatmapTile
 	Row2 []HeatmapTile
 }

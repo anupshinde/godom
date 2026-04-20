@@ -19,7 +19,7 @@ type Tile struct {
 }
 
 type TileGrid struct {
-	godom.Component
+	godom.Island
 	Tiles []Tile
 }
 

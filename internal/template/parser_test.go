@@ -50,13 +50,13 @@ func TestTransferAttrsToRoot_SelfClosing(t *testing.T) {
 	}
 }
 
-func TestExpandComponents(t *testing.T) {
+func TestExpandPartials(t *testing.T) {
 	fsys := fstest.MapFS{
 		"index.html":   {Data: []byte(`<div><my-comp></my-comp></div>`)},
 		"my-comp.html": {Data: []byte(`<span>hello</span>`)},
 	}
 
-	result, err := ExpandComponents(`<div><my-comp></my-comp></div>`, fsys, ".")
+	result, err := ExpandPartials(`<div><my-comp></my-comp></div>`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,12 +69,12 @@ func TestExpandComponents(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_WithGAttrs(t *testing.T) {
+func TestExpandPartials_WithGAttrs(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-item.html": {Data: []byte(`<li>item</li>`)},
 	}
 
-	result, err := ExpandComponents(`<my-item g-for="x in Items"></my-item>`, fsys, ".")
+	result, err := ExpandPartials(`<my-item g-for="x in Items"></my-item>`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,12 +84,12 @@ func TestExpandComponents_WithGAttrs(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_SelfClosing(t *testing.T) {
+func TestExpandPartials_SelfClosing(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-tag.html": {Data: []byte(`<div>content</div>`)},
 	}
 
-	result, err := ExpandComponents(`<my-tag />`, fsys, ".")
+	result, err := ExpandPartials(`<my-tag />`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,10 +99,10 @@ func TestExpandComponents_SelfClosing(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_MissingFile(t *testing.T) {
+func TestExpandPartials_MissingFile(t *testing.T) {
 	fsys := fstest.MapFS{}
 
-	_, err := ExpandComponents(`<my-tag></my-tag>`, fsys, ".")
+	_, err := ExpandPartials(`<my-tag></my-tag>`, fsys, ".")
 	if err == nil {
 		t.Error("expected error for missing component file")
 	}
@@ -118,11 +118,11 @@ func TestTransferAttrsToRoot_NoClosingBracket(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_MissingClosingTag(t *testing.T) {
+func TestExpandPartials_MissingClosingTag(t *testing.T) {
 	fsys := fstest.MapFS{
 		"my-comp.html": {Data: []byte(`<span>hello</span>`)},
 	}
-	_, err := ExpandComponents(`<div><my-comp>content</div>`, fsys, ".")
+	_, err := ExpandPartials(`<div><my-comp>content</div>`, fsys, ".")
 	if err == nil {
 		t.Error("expected error for missing closing tag")
 	}
@@ -131,12 +131,12 @@ func TestExpandComponents_MissingClosingTag(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_Recursive(t *testing.T) {
+func TestExpandPartials_Recursive(t *testing.T) {
 	fsys := fstest.MapFS{
 		"outer-comp.html": {Data: []byte(`<div><inner-comp></inner-comp></div>`)},
 		"inner-comp.html": {Data: []byte(`<span>inner</span>`)},
 	}
-	result, err := ExpandComponents(`<outer-comp></outer-comp>`, fsys, ".")
+	result, err := ExpandPartials(`<outer-comp></outer-comp>`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,11 +148,11 @@ func TestExpandComponents_Recursive(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_NoCustomElements(t *testing.T) {
+func TestExpandPartials_NoCustomElements(t *testing.T) {
 	// Plain HTML with no custom elements should pass through unchanged
 	fsys := fstest.MapFS{}
 	input := `<div><span>hello</span></div>`
-	result, err := ExpandComponents(input, fsys, ".")
+	result, err := ExpandPartials(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,13 +161,13 @@ func TestExpandComponents_NoCustomElements(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_AttrsNoGAttrsNoProps(t *testing.T) {
+func TestExpandPartials_AttrsNoGAttrsNoProps(t *testing.T) {
 	// Custom element with only plain attrs (no g-* or :prop) — attrs string is non-empty
 	// but extractGAttrs and extractProps return empty
 	fsys := fstest.MapFS{
 		"my-tag.html": {Data: []byte(`<div>content</div>`)},
 	}
-	result, err := ExpandComponents(`<my-tag class="foo" id="bar"></my-tag>`, fsys, ".")
+	result, err := ExpandPartials(`<my-tag class="foo" id="bar"></my-tag>`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,12 +180,12 @@ func TestExpandComponents_AttrsNoGAttrsNoProps(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_SkipsGTags(t *testing.T) {
+func TestExpandPartials_SkipsGTags(t *testing.T) {
 	// g-* tags are framework directives, not custom components — they should
 	// be left in place and not trigger a file lookup.
 	fsys := fstest.MapFS{}
 	input := `<div><g-debug instance="sidebar"></g-debug><span>after</span></div>`
-	result, err := ExpandComponents(input, fsys, ".")
+	result, err := ExpandPartials(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,14 +197,14 @@ func TestExpandComponents_SkipsGTags(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_GTagBeforeCustomElement(t *testing.T) {
+func TestExpandPartials_GTagBeforeCustomElement(t *testing.T) {
 	// g-* tag appears before a real custom element — g-* tag is skipped,
 	// custom element is expanded.
 	fsys := fstest.MapFS{
 		"my-comp.html": {Data: []byte(`<span>expanded</span>`)},
 	}
 	input := `<div><g-debug instance="x"></g-debug><my-comp></my-comp></div>`
-	result, err := ExpandComponents(input, fsys, ".")
+	result, err := ExpandPartials(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,11 +216,11 @@ func TestExpandComponents_GTagBeforeCustomElement(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_SkipsGTagSelfClosing(t *testing.T) {
+func TestExpandPartials_SkipsGTagSelfClosing(t *testing.T) {
 	// Self-closing g-* tags should also be skipped.
 	fsys := fstest.MapFS{}
 	input := `<div><g-debug instance="x"/><span>ok</span></div>`
-	result, err := ExpandComponents(input, fsys, ".")
+	result, err := ExpandPartials(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,13 +232,13 @@ func TestExpandComponents_SkipsGTagSelfClosing(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_MultipleGTagsBeforeCustomElement(t *testing.T) {
+func TestExpandPartials_MultipleGTagsBeforeCustomElement(t *testing.T) {
 	// Multiple g-* tags should all be skipped without consuming the expansion budget.
 	fsys := fstest.MapFS{
 		"my-comp.html": {Data: []byte(`<b>hi</b>`)},
 	}
 	input := `<g-debug instance="a"></g-debug><g-debug instance="b"></g-debug><g-debug instance="c"></g-debug><my-comp></my-comp>`
-	result, err := ExpandComponents(input, fsys, ".")
+	result, err := ExpandPartials(input, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestExpandComponents_MultipleGTagsBeforeCustomElement(t *testing.T) {
 	}
 }
 
-func TestExpandComponents_GTagDoesNotConsumeExpansionBudget(t *testing.T) {
+func TestExpandPartials_GTagDoesNotConsumeExpansionBudget(t *testing.T) {
 	// g-* tags use `expansions--` to avoid consuming the budget.
 	// Verify that 10 g-* tags + 1 custom element still works (budget = 10 expansions).
 	fsys := fstest.MapFS{
@@ -263,7 +263,7 @@ func TestExpandComponents_GTagDoesNotConsumeExpansionBudget(t *testing.T) {
 		sb.WriteString(fmt.Sprintf(`<g-debug instance="s%d"></g-debug>`, i))
 	}
 	sb.WriteString(`<my-comp></my-comp>`)
-	result, err := ExpandComponents(sb.String(), fsys, ".")
+	result, err := ExpandPartials(sb.String(), fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestExpandComponents_GTagDoesNotConsumeExpansionBudget(t *testing.T) {
 
 // === Negative tests and edge cases ===
 
-func TestExpandComponents_MaxDepthExhaustion(t *testing.T) {
+func TestExpandPartials_MaxDepthExhaustion(t *testing.T) {
 	// After 10 iterations, remaining custom elements are left in place (no error)
 	// Build a chain deeper than 10
 	fsys := fstest.MapFS{}
@@ -287,7 +287,7 @@ func TestExpandComponents_MaxDepthExhaustion(t *testing.T) {
 	// The last level just has content
 	fsys["level-12.html"] = &fstest.MapFile{Data: []byte(`<span>bottom</span>`)}
 
-	result, err := ExpandComponents(`<level-0></level-0>`, fsys, ".")
+	result, err := ExpandPartials(`<level-0></level-0>`, fsys, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,6 +352,239 @@ func TestExtractGAttrs_Empty(t *testing.T) {
 	got := ExtractGAttrs("")
 	if got != "" {
 		t.Errorf("expected empty string for empty attrs, got: %q", got)
+	}
+}
+
+// --- Layered + registry resolution tests ---
+
+func TestExpandPartialsLayered_LocalFirst(t *testing.T) {
+	local := fstest.MapFS{"my-tag.html": &fstest.MapFile{Data: []byte("<span>local</span>")}}
+	shared := fstest.MapFS{"my-tag.html": &fstest.MapFile{Data: []byte("<span>shared</span>")}}
+
+	got, err := ExpandPartialsLayered(
+		`<my-tag></my-tag>`,
+		[]FSLayer{{FS: local, BaseDir: "."}, {FS: shared, BaseDir: "."}},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "local") || strings.Contains(got, "shared") {
+		t.Errorf("expected local layer to win, got: %s", got)
+	}
+}
+
+func TestExpandPartialsLayered_FallsBackToSharedFS(t *testing.T) {
+	local := fstest.MapFS{} // empty
+	shared := fstest.MapFS{"my-tag.html": &fstest.MapFile{Data: []byte("<span>shared</span>")}}
+
+	got, err := ExpandPartialsLayered(
+		`<my-tag></my-tag>`,
+		[]FSLayer{{FS: local, BaseDir: "."}, {FS: shared, BaseDir: "."}},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "shared") {
+		t.Errorf("expected fallback to shared layer, got: %s", got)
+	}
+}
+
+func TestExpandPartialsLayered_RegistryFallback(t *testing.T) {
+	local := fstest.MapFS{}
+	registry := map[string]string{"my-tag": "<span>registry</span>"}
+
+	got, err := ExpandPartialsLayered(
+		`<my-tag></my-tag>`,
+		[]FSLayer{{FS: local, BaseDir: "."}},
+		registry,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "registry") {
+		t.Errorf("expected registry lookup, got: %s", got)
+	}
+}
+
+func TestExpandPartialsLayered_FSLayerBeatsRegistry(t *testing.T) {
+	local := fstest.MapFS{"my-tag.html": &fstest.MapFile{Data: []byte("<span>fs</span>")}}
+	registry := map[string]string{"my-tag": "<span>registry</span>"}
+
+	got, err := ExpandPartialsLayered(
+		`<my-tag></my-tag>`,
+		[]FSLayer{{FS: local, BaseDir: "."}},
+		registry,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "fs") || strings.Contains(got, "registry") {
+		t.Errorf("expected FS layer to win over registry, got: %s", got)
+	}
+}
+
+func TestExpandPartialsLayered_NotFound_ErrorListsLayers(t *testing.T) {
+	local := fstest.MapFS{}
+	shared := fstest.MapFS{}
+
+	_, err := ExpandPartialsLayered(
+		`<my-tag></my-tag>`,
+		[]FSLayer{
+			{FS: local, BaseDir: ".", Label: "solar FS"},
+			{FS: shared, BaseDir: "partials", Label: "shared"},
+		},
+		map[string]string{},
+	)
+	if err == nil {
+		t.Fatal("expected not-found error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "solar FS") {
+		t.Errorf("expected error to mention 'solar FS' layer, got: %s", msg)
+	}
+	if !strings.Contains(msg, "shared") {
+		t.Errorf("expected error to mention 'shared' layer, got: %s", msg)
+	}
+	if !strings.Contains(msg, `registry["my-tag"]`) {
+		t.Errorf("expected error to mention registry, got: %s", msg)
+	}
+}
+
+func TestExpandPartialsLayered_NoSourcesConfigured(t *testing.T) {
+	// No layers, no registry — concise error.
+	_, err := ExpandPartialsLayered(`<my-tag></my-tag>`, nil, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "no FS layers or registry") {
+		t.Errorf("expected concise error, got: %s", err.Error())
+	}
+}
+
+func TestExpandPartialsLayered_NilFSLayerSkipped(t *testing.T) {
+	// A layer with nil FS should be skipped, not crash.
+	shared := fstest.MapFS{"my-tag.html": &fstest.MapFile{Data: []byte("<span>shared</span>")}}
+	got, err := ExpandPartialsLayered(
+		`<my-tag></my-tag>`,
+		[]FSLayer{{FS: nil, BaseDir: "."}, {FS: shared, BaseDir: "."}},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "shared") {
+		t.Errorf("expected shared layer used after nil skipped, got: %s", got)
+	}
+}
+
+// --- <g-slot> children-substitution tests ---
+
+func TestExpandPartials_SlotSubstitution(t *testing.T) {
+	fsys := fstest.MapFS{
+		"my-note.html": &fstest.MapFile{Data: []byte(`<div class="note"><g-slot/></div>`)},
+	}
+	got, err := ExpandPartials(`<my-note><p>hello</p></my-note>`, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `<div class="note"><p>hello</p></div>`
+	if got != want {
+		t.Errorf("slot substitution failed\nwant: %s\ngot:  %s", want, got)
+	}
+}
+
+func TestExpandPartials_SlotPairedTag(t *testing.T) {
+	// <g-slot></g-slot> should also work (with whitespace tolerance).
+	fsys := fstest.MapFS{
+		"my-note.html": &fstest.MapFile{Data: []byte(`<div><g-slot></g-slot></div>`)},
+	}
+	got, err := ExpandPartials(`<my-note><span>child</span></my-note>`, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, `<span>child</span>`) {
+		t.Errorf("expected children in slot, got: %s", got)
+	}
+}
+
+func TestExpandPartials_NoSlot_ChildrenDiscarded(t *testing.T) {
+	// Backward-compat: partials without <g-slot/> drop children silently.
+	fsys := fstest.MapFS{
+		"my-note.html": &fstest.MapFile{Data: []byte(`<div class="static">only this</div>`)},
+	}
+	got, err := ExpandPartials(`<my-note><p>dropped</p></my-note>`, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "dropped") {
+		t.Errorf("expected children to be discarded, got: %s", got)
+	}
+}
+
+func TestExpandPartials_SlotWithSelfClosingCustomTag(t *testing.T) {
+	// Self-closing custom tag has empty children — slot gets empty string.
+	fsys := fstest.MapFS{
+		"my-note.html": &fstest.MapFile{Data: []byte(`<div class="empty"><g-slot/></div>`)},
+	}
+	got, err := ExpandPartials(`<my-note/>`, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `<div class="empty"></div>`
+	if got != want {
+		t.Errorf("want: %s\ngot:  %s", want, got)
+	}
+}
+
+func TestExpandPartials_MultipleSlots_SameContent(t *testing.T) {
+	// If a partial uses <g-slot/> more than once, each gets the same children.
+	fsys := fstest.MapFS{
+		"my-note.html": &fstest.MapFile{Data: []byte(`<div><g-slot/><hr/><g-slot/></div>`)},
+	}
+	got, err := ExpandPartials(`<my-note>hi</my-note>`, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(got, "hi") != 2 {
+		t.Errorf("expected children inserted into both slots, got: %s", got)
+	}
+}
+
+func TestExpandPartials_SlotContentCanContainPartials(t *testing.T) {
+	// Children with a nested partial get expanded in the outer iteration loop.
+	fsys := fstest.MapFS{
+		"my-note.html":  &fstest.MapFile{Data: []byte(`<div class="note"><g-slot/></div>`)},
+		"my-inner.html": &fstest.MapFile{Data: []byte(`<span>INNER</span>`)},
+	}
+	got, err := ExpandPartials(`<my-note><my-inner/></my-note>`, fsys, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "INNER") {
+		t.Errorf("expected nested partial to expand, got: %s", got)
+	}
+}
+
+func TestExpandPartialsLayered_Recursive_ResolvesViaLayers(t *testing.T) {
+	// An outer-tag from local FS references <inner-tag> that only exists in the shared layer.
+	local := fstest.MapFS{
+		"outer-tag.html": &fstest.MapFile{Data: []byte(`<div><inner-tag></inner-tag></div>`)},
+	}
+	shared := fstest.MapFS{
+		"inner-tag.html": &fstest.MapFile{Data: []byte(`<span>inner</span>`)},
+	}
+	got, err := ExpandPartialsLayered(
+		`<outer-tag></outer-tag>`,
+		[]FSLayer{{FS: local, BaseDir: "."}, {FS: shared, BaseDir: "."}},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "inner") {
+		t.Errorf("expected recursive expansion to use shared layer, got: %s", got)
 	}
 }
 

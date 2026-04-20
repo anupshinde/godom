@@ -13,7 +13,7 @@ import (
 var ui embed.FS
 
 type App struct {
-	godom.Component
+	godom.Island
 	Percent  int
 	Width    string
 	Label    string

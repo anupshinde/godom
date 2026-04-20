@@ -17,7 +17,7 @@ var xtermAdapterJS string
 
 // App is the root godom component.
 type App struct {
-	godom.Component
+	godom.Island
 	Terminal TerminalConfig
 }
 

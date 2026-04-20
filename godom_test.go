@@ -10,14 +10,14 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/middleware"
 )
 
 // --- test app structs ---
 
 type testApp struct {
-	Component
+	Island
 	Name  string
 	Count int
 }
@@ -26,13 +26,13 @@ func (a *testApp) Increment() {
 	a.Count++
 }
 
-// noComponentApp does NOT embed godom.Component
-type noComponentApp struct {
+// noIslandApp does NOT embed godom.Island
+type noIslandApp struct {
 	Name string
 }
 
 type childApp struct {
-	Component
+	Island
 	Value string
 }
 
@@ -62,13 +62,13 @@ func TestNewEngine(t *testing.T) {
 	if e.plugins == nil {
 		t.Error("expected non-nil plugins map")
 	}
-	if e.compIndex == nil {
+	if e.islIndex == nil {
 		t.Error("expected non-nil compIndex map")
 	}
 	if e.names == nil {
 		t.Error("expected non-nil names map")
 	}
-	if len(e.comps) != 0 {
+	if len(e.islands) != 0 {
 		t.Error("expected empty comps before Register")
 	}
 }
@@ -202,41 +202,41 @@ func TestUse_Multiple(t *testing.T) {
 	}
 }
 
-// --- embedsComponent ---
+// --- embedsIsland ---
 
 func TestEmbedsComponent_True(t *testing.T) {
 	typ := reflect.TypeOf(testApp{})
-	if !embedsComponent(typ) {
-		t.Error("expected testApp to embed Component")
+	if !embedsIsland(typ) {
+		t.Error("expected testApp to embed Island")
 	}
 }
 
 func TestEmbedsComponent_False(t *testing.T) {
-	typ := reflect.TypeOf(noComponentApp{})
-	if embedsComponent(typ) {
-		t.Error("expected noComponentApp to NOT embed Component")
+	typ := reflect.TypeOf(noIslandApp{})
+	if embedsIsland(typ) {
+		t.Error("expected noIslandApp to NOT embed Island")
 	}
 }
 
 func TestEmbedsComponent_EmptyStruct(t *testing.T) {
 	type empty struct{}
 	typ := reflect.TypeOf(empty{})
-	if embedsComponent(typ) {
-		t.Error("expected empty struct to NOT embed Component")
+	if embedsIsland(typ) {
+		t.Error("expected empty struct to NOT embed Island")
 	}
 }
 
-// --- Component.MarkRefresh ---
+// --- Island.MarkRefresh ---
 
 func TestMarkRefresh_NilCI(t *testing.T) {
-	c := Component{ci: nil}
+	c := Island{ci: nil}
 	// Should not panic
 	c.MarkRefresh("Name")
 }
 
 func TestMarkRefresh_Accumulates(t *testing.T) {
-	ci := &component.Info{}
-	c := Component{ci: ci}
+	ci := &island.Info{}
+	c := Island{ci: ci}
 
 	c.MarkRefresh("Name")
 	c.MarkRefresh("Count")
@@ -253,29 +253,29 @@ func TestMarkRefresh_Accumulates(t *testing.T) {
 	}
 }
 
-// --- Component.Refresh ---
+// --- Island.Refresh ---
 
 func TestRefresh_NilCI(t *testing.T) {
-	c := Component{ci: nil}
+	c := Island{ci: nil}
 	// Should not panic
 	c.Refresh()
 }
 
 func TestRefresh_NilEventCh(t *testing.T) {
-	c := Component{ci: &component.Info{}}
+	c := Island{ci: &island.Info{}}
 	// EventCh is nil — should not panic
 	c.Refresh()
 }
 
 func TestRefresh_SendsToEventChannel(t *testing.T) {
-	ch := make(chan component.Event, 1)
-	c := Component{ci: &component.Info{EventCh: ch}}
+	ch := make(chan island.Event, 1)
+	c := Island{ci: &island.Info{EventCh: ch}}
 
 	c.Refresh()
 
 	select {
 	case evt := <-ch:
-		if evt.Kind != component.RefreshKind {
+		if evt.Kind != island.RefreshKind {
 			t.Errorf("expected RefreshKind, got %v", evt.Kind)
 		}
 	default:
@@ -290,7 +290,7 @@ func TestSetFS(t *testing.T) {
 	fsys := makeTestFS()
 	e.SetFS(fsys)
 
-	if e.componentFS == nil {
+	if e.sharedFS == nil {
 		t.Error("expected componentFS to be set")
 	}
 }
@@ -383,10 +383,10 @@ func TestRegister_Valid(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Register(app)
 
-	if len(e.comps) != 1 {
+	if len(e.islands) != 1 {
 		t.Fatal("expected one component after Register")
 	}
-	ci := e.comps[0]
+	ci := e.islands[0]
 	if ci.HTMLBody == "" {
 		t.Error("expected HTMLBody to be set")
 	}
@@ -403,11 +403,11 @@ func TestRegister_WiresComponentField(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Register(app)
 
-	if app.Component.ci == nil {
-		t.Fatal("expected Component.ci to be wired after Register")
+	if app.Island.ci == nil {
+		t.Fatal("expected Island.ci to be wired after Register")
 	}
-	if app.Component.ci != e.comps[0] {
-		t.Error("expected Component.ci to point to the same Info as Engine.comps[0]")
+	if app.Island.ci != e.islands[0] {
+		t.Error("expected Island.ci to point to the same Info as Engine.islands[0]")
 	}
 }
 
@@ -419,7 +419,7 @@ func TestRegister_SetsHTMLBodyFromTemplate(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Register(app)
 
-	ci := e.comps[0]
+	ci := e.islands[0]
 	if !strings.Contains(ci.HTMLBody, "g-text") {
 		t.Error("expected HTMLBody to contain template directives")
 	}
@@ -436,7 +436,7 @@ func TestRegister_SetsValueAndType(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Register(app)
 
-	ci := e.comps[0]
+	ci := e.islands[0]
 	if ci.Value.Pointer() != reflect.ValueOf(app).Pointer() {
 		t.Error("expected ci.Value to point to the original app")
 	}
@@ -465,13 +465,13 @@ func TestRegister_DocumentBody(t *testing.T) {
 	e.SetFS(makeTestFS())
 	e.Register(app)
 
-	if len(e.comps) != 1 {
+	if len(e.islands) != 1 {
 		t.Fatal("expected one component")
 	}
 
 	// SlotName is set directly by Register.
-	if e.comps[0].SlotName != "document.body" {
-		t.Errorf("expected SlotName 'document.body', got %q", e.comps[0].SlotName)
+	if e.islands[0].SlotName != "document.body" {
+		t.Errorf("expected SlotName 'document.body', got %q", e.islands[0].SlotName)
 	}
 }
 
@@ -506,12 +506,12 @@ func TestRegister_NoEmbed(t *testing.T) {
 	if os.Getenv("TEST_FATAL_REGISTER_NOEMBED") == "1" {
 		e := NewEngine()
 		e.SetFS(makeTestFS())
-		e.Register(&noComponentApp{})
+		e.Register(&noIslandApp{})
 		return
 	}
 	out := runSubprocess(t, "TestRegister_NoEmbed", "TEST_FATAL_REGISTER_NOEMBED")
-	if !strings.Contains(out, "must embed godom.Component") {
-		t.Errorf("expected error about embedding Component, got: %s", out)
+	if !strings.Contains(out, "must embed godom.Island") {
+		t.Errorf("expected error about embedding Island, got: %s", out)
 	}
 }
 
@@ -525,7 +525,7 @@ func TestRegister_EmptyName(t *testing.T) {
 		return
 	}
 	out := runSubprocess(t, "TestRegister_EmptyName", "TEST_FATAL_REGISTER_EMPTY")
-	if !strings.Contains(out, "Component.TargetName to be set") {
+	if !strings.Contains(out, "Island.TargetName to be set") {
 		t.Errorf("expected TargetName error, got: %s", out)
 	}
 }
@@ -556,8 +556,8 @@ func TestRegister_NoFS(t *testing.T) {
 		return
 	}
 	out := runSubprocess(t, "TestRegister_NoFS", "TEST_FATAL_REGISTER_NOFS")
-	if !strings.Contains(out, "call SetFS() before Register()") {
-		t.Errorf("expected SetFS error, got: %s", out)
+	if !strings.Contains(out, "has no filesystem") {
+		t.Errorf("expected no-filesystem error, got: %s", out)
 	}
 }
 
@@ -651,8 +651,8 @@ func TestRegister_SetsSlotName(t *testing.T) {
 	child.Template = "child/index.html"
 	e.Register(child)
 
-	if e.comps[0].SlotName != "sidebar" {
-		t.Errorf("expected SlotName='sidebar', got %q", e.comps[0].SlotName)
+	if e.islands[0].SlotName != "sidebar" {
+		t.Errorf("expected SlotName='sidebar', got %q", e.islands[0].SlotName)
 	}
 }
 
@@ -670,11 +670,11 @@ func TestRegister_SetsSlotNameMultiple(t *testing.T) {
 
 	e.Register(child1, child2)
 
-	if e.comps[0].SlotName != "sidebar" {
-		t.Errorf("sidebar: expected SlotName='sidebar', got %q", e.comps[0].SlotName)
+	if e.islands[0].SlotName != "sidebar" {
+		t.Errorf("sidebar: expected SlotName='sidebar', got %q", e.islands[0].SlotName)
 	}
-	if e.comps[1].SlotName != "footer" {
-		t.Errorf("footer: expected SlotName='footer', got %q", e.comps[1].SlotName)
+	if e.islands[1].SlotName != "footer" {
+		t.Errorf("footer: expected SlotName='footer', got %q", e.islands[1].SlotName)
 	}
 }
 
@@ -689,8 +689,8 @@ func TestRun_NoComponents(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when calling Run without Register")
 	}
-	if !strings.Contains(err.Error(), "no components registered") {
-		t.Errorf("expected 'no components registered' error, got: %v", err)
+	if !strings.Contains(err.Error(), "no islands registered") {
+		t.Errorf("expected 'no islands registered' error, got: %v", err)
 	}
 }
 
@@ -754,7 +754,7 @@ func TestRun_DisableExecJS(t *testing.T) {
 	}
 
 	// The registered component's ci should have ExecJSDisabled set
-	if !e.comps[0].ExecJSDisabled {
+	if !e.islands[0].ExecJSDisabled {
 		t.Error("expected ExecJSDisabled to be set on component after Run with DisableExecJS")
 	}
 }
@@ -877,11 +877,11 @@ func TestQuickServe_RegistersDocumentBody(t *testing.T) {
 	app.Template = "index.html"
 	e.Register(app)
 
-	if len(e.comps) != 1 {
+	if len(e.islands) != 1 {
 		t.Fatal("expected one component")
 	}
-	if e.comps[0].SlotName != "document.body" {
-		t.Errorf("expected SlotName='document.body', got %q", e.comps[0].SlotName)
+	if e.islands[0].SlotName != "document.body" {
+		t.Errorf("expected SlotName='document.body', got %q", e.islands[0].SlotName)
 	}
 }
 
@@ -986,7 +986,7 @@ func TestListenAndServe_InvalidHostReturnsWrappedError(t *testing.T) {
 var simpleHTML = `<!DOCTYPE html><html><head></head><body><span g-text="Name">placeholder</span></body></html>`
 
 type cleanableApp struct {
-	Component
+	Island
 	Name    string
 	cleaned bool
 }
@@ -1006,7 +1006,7 @@ func TestCleanup_CallsComponentCleanup(t *testing.T) {
 	e.Register(app)
 
 	// Wire up event channel (normally done by Run/server)
-	e.comps[0].EventCh = make(chan component.Event, 1)
+	e.islands[0].EventCh = make(chan island.Event, 1)
 
 	e.Cleanup()
 
@@ -1023,8 +1023,8 @@ func TestCleanup_ClosesEventChannels(t *testing.T) {
 	app.Template = "index.html"
 	e.Register(app)
 
-	ch := make(chan component.Event, 1)
-	e.comps[0].EventCh = ch
+	ch := make(chan island.Event, 1)
+	e.islands[0].EventCh = ch
 
 	e.Cleanup()
 
@@ -1043,7 +1043,7 @@ func TestCleanup_SkipsComponentWithoutCleanupMethod(t *testing.T) {
 	app.Template = "index.html"
 	e.Register(app)
 
-	e.comps[0].EventCh = make(chan component.Event, 1)
+	e.islands[0].EventCh = make(chan island.Event, 1)
 
 	// Should not panic — testApp has no Cleanup method
 	e.Cleanup()
@@ -1052,7 +1052,7 @@ func TestCleanup_SkipsComponentWithoutCleanupMethod(t *testing.T) {
 // --- ExecJS ---
 
 func TestExecJS_NilCI(t *testing.T) {
-	c := Component{ci: nil}
+	c := Island{ci: nil}
 	// Should not panic
 	c.ExecJS("test", func(result []byte, err string) {
 		t.Error("callback should not be called when ci is nil")
@@ -1060,7 +1060,7 @@ func TestExecJS_NilCI(t *testing.T) {
 }
 
 func TestExecJS_DelegatesToInfo(t *testing.T) {
-	ci := &component.Info{}
+	ci := &island.Info{}
 	called := false
 	ci.ExecJSFn = func(id int32, expr string) {
 		called = true
@@ -1069,7 +1069,7 @@ func TestExecJS_DelegatesToInfo(t *testing.T) {
 		}
 	}
 
-	c := Component{ci: ci}
+	c := Island{ci: ci}
 	c.ExecJS("location.href", func(result []byte, err string) {})
 
 	if !called {
@@ -1078,8 +1078,8 @@ func TestExecJS_DelegatesToInfo(t *testing.T) {
 }
 
 func TestExecJS_DisabledReturnsError(t *testing.T) {
-	ci := &component.Info{ExecJSDisabled: true}
-	c := Component{ci: ci}
+	ci := &island.Info{ExecJSDisabled: true}
+	c := Island{ci: ci}
 
 	var gotErr string
 	c.ExecJS("test", func(result []byte, err string) {
@@ -1102,7 +1102,7 @@ func TestComponents_ReturnsRegisteredComps(t *testing.T) {
 	app.Template = "index.html"
 	e.Register(app)
 
-	comps := e.Components()
+	comps := e.Islands()
 	if len(comps) != 1 {
 		t.Fatalf("expected 1 component, got %d", len(comps))
 	}
@@ -1113,8 +1113,8 @@ func TestComponents_ReturnsRegisteredComps(t *testing.T) {
 
 func TestComponents_EmptyBeforeRegister(t *testing.T) {
 	e := NewEngine()
-	if len(e.Components()) != 0 {
-		t.Errorf("expected 0 components before register, got %d", len(e.Components()))
+	if len(e.Islands()) != 0 {
+		t.Errorf("expected 0 components before register, got %d", len(e.Islands()))
 	}
 }
 
@@ -1272,3 +1272,280 @@ func runSubprocess(t *testing.T, testName, envVar string) string {
 
 // Ensure middleware.AuthFunc is usable (compile check).
 var _ middleware.AuthFunc = func(w http.ResponseWriter, r *http.Request) bool { return true }
+
+// =============================================================================
+// Phase B — AssetsFS, TemplateHTML, RegisterPartial, UsePartials
+// =============================================================================
+
+func TestRegister_PerIslandAssetsFS(t *testing.T) {
+	// Island carries its own FS — no SetFS on the engine.
+	e := NewEngine()
+	islFS := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(`<div g-text="Name">x</div>`)},
+	}
+	app := &testApp{Name: "hello"}
+	app.TargetName = "solo"
+	app.Template = "index.html"
+	app.AssetsFS = islFS
+
+	e.Register(app)
+
+	if len(e.islands) != 1 {
+		t.Fatalf("expected 1 island, got %d", len(e.islands))
+	}
+	if !strings.Contains(e.islands[0].HTMLBody, `g-text="Name"`) {
+		t.Error("expected HTMLBody to come from per-island FS")
+	}
+}
+
+func TestRegister_TemplateHTMLInline(t *testing.T) {
+	// Island uses inline HTML — no FS at all.
+	e := NewEngine()
+	app := &testApp{Name: "hello"}
+	app.TargetName = "inline"
+	app.TemplateHTML = `<div g-text="Name">x</div>`
+
+	e.Register(app)
+
+	if len(e.islands) != 1 {
+		t.Fatalf("expected 1 island, got %d", len(e.islands))
+	}
+	if !strings.Contains(e.islands[0].HTMLBody, `g-text="Name"`) {
+		t.Error("expected HTMLBody to come from inline TemplateHTML")
+	}
+}
+
+func TestRegister_TemplateHTMLAndTemplate_Rejected(t *testing.T) {
+	if os.Getenv("TEST_FATAL_BOTH") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		app := &testApp{}
+		app.TargetName = "both"
+		app.Template = "index.html"
+		app.TemplateHTML = "<div></div>"
+		e.Register(app)
+		return
+	}
+	out := runSubprocess(t, "TestRegister_TemplateHTMLAndTemplate_Rejected", "TEST_FATAL_BOTH")
+	if !strings.Contains(out, "mutually exclusive") {
+		t.Errorf("expected mutual-exclusion error, got: %s", out)
+	}
+}
+
+func TestRegister_NeitherTemplate_Rejected(t *testing.T) {
+	if os.Getenv("TEST_FATAL_NEITHER") == "1" {
+		e := NewEngine()
+		app := &testApp{}
+		app.TargetName = "neither"
+		// no Template, no TemplateHTML
+		e.Register(app)
+		return
+	}
+	out := runSubprocess(t, "TestRegister_NeitherTemplate_Rejected", "TEST_FATAL_NEITHER")
+	if !strings.Contains(out, "Template") && !strings.Contains(out, "TemplateHTML") {
+		t.Errorf("expected template-required error, got: %s", out)
+	}
+}
+
+func TestRegisterPartial_ResolvedInTemplate(t *testing.T) {
+	// A shared partial registered by name; an island references it.
+	e := NewEngine()
+	e.RegisterPartial("my-badge", `<span class="badge" g-text="Name">?</span>`)
+
+	app := &testApp{Name: "ok"}
+	app.TargetName = "app"
+	app.TemplateHTML = `<div><my-badge></my-badge></div>`
+
+	e.Register(app)
+
+	if !strings.Contains(e.islands[0].HTMLBody, `class="badge"`) {
+		t.Errorf("expected partial expansion, got: %s", e.islands[0].HTMLBody)
+	}
+}
+
+func TestUsePartials_BulkRegister(t *testing.T) {
+	partialsFS := fstest.MapFS{
+		"partials/my-badge.html": &fstest.MapFile{Data: []byte(`<span class="badge">badge</span>`)},
+		"partials/my-card.html":  &fstest.MapFile{Data: []byte(`<div class="card">card</div>`)},
+	}
+	e := NewEngine()
+	e.UsePartials(partialsFS, "partials")
+
+	if e.partials["my-badge"] == "" {
+		t.Error("expected my-badge to be registered")
+	}
+	if e.partials["my-card"] == "" {
+		t.Error("expected my-card to be registered")
+	}
+	if !strings.Contains(e.partials["my-badge"], `class="badge"`) {
+		t.Errorf("expected my-badge content, got: %s", e.partials["my-badge"])
+	}
+}
+
+func TestRegisterPartial_LocalFSBeatsRegistry(t *testing.T) {
+	// An island with a local sibling my-tag.html should win over a registered partial of the same name.
+	e := NewEngine()
+	e.RegisterPartial("my-tag", `<span>registry</span>`)
+
+	islFS := fstest.MapFS{
+		"index.html":  &fstest.MapFile{Data: []byte(`<div><my-tag></my-tag></div>`)},
+		"my-tag.html": &fstest.MapFile{Data: []byte(`<span>local</span>`)},
+	}
+	app := &testApp{}
+	app.TargetName = "app"
+	app.Template = "index.html"
+	app.AssetsFS = islFS
+
+	e.Register(app)
+
+	if !strings.Contains(e.islands[0].HTMLBody, "local") || strings.Contains(e.islands[0].HTMLBody, "registry") {
+		t.Errorf("expected local FS to win over registry, got: %s", e.islands[0].HTMLBody)
+	}
+}
+
+func TestTemplateHTML_UsesPartialRegistry(t *testing.T) {
+	// Inline-HTML islands have no FS; partial resolution must use the registry.
+	e := NewEngine()
+	e.RegisterPartial("my-tag", `<span>from-registry</span>`)
+
+	app := &testApp{}
+	app.TargetName = "inline"
+	app.TemplateHTML = `<div><my-tag></my-tag></div>`
+
+	e.Register(app)
+
+	if !strings.Contains(e.islands[0].HTMLBody, "from-registry") {
+		t.Errorf("expected registry lookup for inline island, got: %s", e.islands[0].HTMLBody)
+	}
+}
+
+func TestRegisterPartial_LazyInitOnBareEngine(t *testing.T) {
+	// Using &Engine{} directly (skipping NewEngine) leaves partials == nil.
+	// RegisterPartial must lazily initialize the map.
+	e := &Engine{}
+	e.RegisterPartial("x", "<span>ok</span>")
+	if e.partials == nil {
+		t.Fatal("partials map not lazily initialized")
+	}
+	if e.partials["x"] != "<span>ok</span>" {
+		t.Errorf("expected partial stored, got: %v", e.partials)
+	}
+}
+
+func TestUsePartials_SkipsSubdirsAndNonHTML(t *testing.T) {
+	fsys := fstest.MapFS{
+		"partials/my-badge.html":     &fstest.MapFile{Data: []byte(`<span class="badge">x</span>`)},
+		"partials/README.md":         &fstest.MapFile{Data: []byte(`not a partial`)},
+		"partials/notes.txt":         &fstest.MapFile{Data: []byte(`not a partial`)},
+		"partials/sub/nested.html":   &fstest.MapFile{Data: []byte(`<span>nested</span>`)},
+	}
+	e := NewEngine()
+	e.UsePartials(fsys, "partials")
+
+	// Only my-badge.html should register; README.md and notes.txt are skipped
+	// by suffix, and sub/ is a directory (ReadDir sees "sub", IsDir returns true).
+	if _, ok := e.partials["my-badge"]; !ok {
+		t.Error("expected my-badge to register")
+	}
+	if _, ok := e.partials["README"]; ok {
+		t.Error("README.md should not have registered (non-html suffix)")
+	}
+	if _, ok := e.partials["notes"]; ok {
+		t.Error("notes.txt should not have registered (non-html suffix)")
+	}
+	if _, ok := e.partials["sub"]; ok {
+		t.Error("sub/ directory should not have registered (IsDir)")
+	}
+	if len(e.partials) != 1 {
+		t.Errorf("expected exactly 1 partial registered, got %d: %v", len(e.partials), e.partials)
+	}
+}
+
+func TestUsePartials_NilFS_Rejected(t *testing.T) {
+	if os.Getenv("TEST_FATAL_USEPARTIALS_NIL") == "1" {
+		e := NewEngine()
+		e.UsePartials(nil, "partials")
+		return
+	}
+	out := runSubprocess(t, "TestUsePartials_NilFS_Rejected", "TEST_FATAL_USEPARTIALS_NIL")
+	if !strings.Contains(out, "non-nil fs.FS") {
+		t.Errorf("expected nil-fs error, got: %s", out)
+	}
+}
+
+func TestUsePartials_MissingDir_Rejected(t *testing.T) {
+	if os.Getenv("TEST_FATAL_USEPARTIALS_NODIR") == "1" {
+		e := NewEngine()
+		e.UsePartials(fstest.MapFS{}, "does-not-exist")
+		return
+	}
+	out := runSubprocess(t, "TestUsePartials_MissingDir_Rejected", "TEST_FATAL_USEPARTIALS_NODIR")
+	if !strings.Contains(out, "failed to read") {
+		t.Errorf("expected ReadDir-failed error, got: %s", out)
+	}
+}
+
+func TestRegister_PerIslandAssetsFS_OverridesSetFS(t *testing.T) {
+	// Engine has SetFS, but a particular island has AssetsFS — the island's
+	// AssetsFS must win for that island's template resolution.
+	engineFS := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(`<div g-text="Name">engine</div>`)},
+	}
+	islandFS := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(`<div g-text="Name">island</div>`)},
+	}
+	e := NewEngine()
+	e.SetFS(engineFS)
+
+	app := &testApp{Name: "hi"}
+	app.TargetName = "app"
+	app.Template = "index.html"
+	app.AssetsFS = islandFS
+
+	e.Register(app)
+
+	if !strings.Contains(e.islands[0].HTMLBody, ">island<") {
+		t.Errorf("expected AssetsFS to win over SetFS, got: %s", e.islands[0].HTMLBody)
+	}
+	if strings.Contains(e.islands[0].HTMLBody, ">engine<") {
+		t.Error("engine FS should not have been read when AssetsFS is set")
+	}
+}
+
+func TestRegister_TemplateHTMLIgnoresEngineSetFS(t *testing.T) {
+	// When TemplateHTML is set, the engine's SetFS should not be consulted —
+	// even if SetFS points at a filesystem, the inline HTML wins.
+	e := NewEngine()
+	e.SetFS(fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(`<div>engine</div>`)},
+	})
+
+	app := &testApp{Name: "hi"}
+	app.TargetName = "inline"
+	app.TemplateHTML = `<div g-text="Name">inline</div>`
+
+	e.Register(app)
+
+	if !strings.Contains(e.islands[0].HTMLBody, `g-text="Name"`) {
+		t.Errorf("expected inline TemplateHTML used, got: %s", e.islands[0].HTMLBody)
+	}
+	if strings.Contains(e.islands[0].HTMLBody, "engine") {
+		t.Error("engine FS should not have been read when TemplateHTML is set")
+	}
+}
+
+func TestRegister_AssetsFS_ReadFileFailure(t *testing.T) {
+	if os.Getenv("TEST_FATAL_BAD_ASSETSFS_PATH") == "1" {
+		e := NewEngine()
+		app := &testApp{}
+		app.TargetName = "bad"
+		app.Template = "missing.html"
+		app.AssetsFS = fstest.MapFS{} // empty — no missing.html
+		e.Register(app)
+		return
+	}
+	out := runSubprocess(t, "TestRegister_AssetsFS_ReadFileFailure", "TEST_FATAL_BAD_ASSETSFS_PATH")
+	if !strings.Contains(out, "failed to read") {
+		t.Errorf("expected read-failure error, got: %s", out)
+	}
+}

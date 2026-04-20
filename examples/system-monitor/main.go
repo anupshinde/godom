@@ -25,7 +25,7 @@ type Stat struct {
 }
 
 type App struct {
-	godom.Component
+	godom.Island
 	Stats  []Stat
 	Uptime string
 }

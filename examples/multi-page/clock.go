@@ -7,7 +7,7 @@ import (
 )
 
 type Clock struct {
-	godom.Component
+	godom.Island
 	Time   string
 	Date   string
 	ticker *time.Ticker

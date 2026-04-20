@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/island"
 )
 
 // --- buildSharedPtrMaps tests ---
@@ -40,9 +40,9 @@ type compNilPtr struct {
 	*sharedState
 }
 
-func makeCI(app interface{}) *component.Info {
+func makeCI(app interface{}) *island.Info {
 	v := reflect.ValueOf(app)
-	return &component.Info{
+	return &island.Info{
 		Value: v,
 		Typ:   v.Elem().Type(),
 	}
@@ -55,7 +55,7 @@ func TestBuildSharedPtrMaps_TwoComponentsSharingPointer(t *testing.T) {
 
 	ciA := makeCI(a)
 	ciB := makeCI(b)
-	comps := []*component.Info{ciA, ciB}
+	comps := []*island.Info{ciA, ciB}
 
 	sm := buildSharedPtrMaps(comps)
 
@@ -80,7 +80,7 @@ func TestBuildSharedPtrMaps_NoSharing(t *testing.T) {
 
 	ciA := makeCI(a)
 	ciB := makeCI(b)
-	comps := []*component.Info{ciA, ciB}
+	comps := []*island.Info{ciA, ciB}
 
 	sm := buildSharedPtrMaps(comps)
 
@@ -96,7 +96,7 @@ func TestBuildSharedPtrMaps_NoSharing(t *testing.T) {
 func TestBuildSharedPtrMaps_NoEmbeddedPointers(t *testing.T) {
 	a := &compNoShared{Title: "hello"}
 	ci := makeCI(a)
-	comps := []*component.Info{ci}
+	comps := []*island.Info{ci}
 
 	sm := buildSharedPtrMaps(comps)
 
@@ -108,7 +108,7 @@ func TestBuildSharedPtrMaps_NoEmbeddedPointers(t *testing.T) {
 func TestBuildSharedPtrMaps_NilEmbeddedPointer(t *testing.T) {
 	a := &compNilPtr{} // sharedState is nil
 	ci := makeCI(a)
-	comps := []*component.Info{ci}
+	comps := []*island.Info{ci}
 
 	sm := buildSharedPtrMaps(comps)
 
@@ -161,7 +161,7 @@ func TestRefreshSharedComponents_PropagatesRefresh(t *testing.T) {
 
 	ciA := makeCI(a)
 	ciB := makeCI(b)
-	comps := []*component.Info{ciA, ciB}
+	comps := []*island.Info{ciA, ciB}
 
 	sm := buildSharedPtrMaps(comps)
 	sm.pool = &connPool{}
@@ -171,7 +171,7 @@ func TestRefreshSharedComponents_PropagatesRefresh(t *testing.T) {
 	ciB.RefreshFn = func() { refreshedB = true }
 	ciA.RefreshFn = func() {} // shouldn't be called (self is skipped)
 
-	sm.refreshSharedComponents(0, []string{"Score"})
+	sm.refreshSharedIslands(0, []string{"Score"})
 
 	if !refreshedB {
 		t.Error("expected RefreshFn to be called on sibling component B")
@@ -181,14 +181,14 @@ func TestRefreshSharedComponents_PropagatesRefresh(t *testing.T) {
 func TestRefreshSharedComponents_NilSM(t *testing.T) {
 	// Should not panic with nil receiver.
 	var sm *sharedPtrMaps
-	sm.refreshSharedComponents(0, []string{"X"})
+	sm.refreshSharedIslands(0, []string{"X"})
 }
 
 func TestRefreshSharedComponents_EmptyChangedFields(t *testing.T) {
 	sm := &sharedPtrMaps{}
 	// Should return early without panic.
-	sm.refreshSharedComponents(0, nil)
-	sm.refreshSharedComponents(0, []string{})
+	sm.refreshSharedIslands(0, nil)
+	sm.refreshSharedIslands(0, []string{})
 }
 
 func TestRefreshSharedComponents_NoSharedPtrs(t *testing.T) {
@@ -197,7 +197,7 @@ func TestRefreshSharedComponents_NoSharedPtrs(t *testing.T) {
 		compIdxToPtr: make(map[int][]uintptr),
 	}
 	// Component 0 has no shared pointers → should return early.
-	sm.refreshSharedComponents(0, []string{"X"})
+	sm.refreshSharedIslands(0, []string{"X"})
 }
 
 func TestRefreshSharedComponents_SkipsSelf(t *testing.T) {
@@ -207,7 +207,7 @@ func TestRefreshSharedComponents_SkipsSelf(t *testing.T) {
 
 	ciA := makeCI(a)
 	ciB := makeCI(b)
-	comps := []*component.Info{ciA, ciB}
+	comps := []*island.Info{ciA, ciB}
 
 	sm := buildSharedPtrMaps(comps)
 	sm.pool = &connPool{}
@@ -217,7 +217,7 @@ func TestRefreshSharedComponents_SkipsSelf(t *testing.T) {
 	ciB.RefreshFn = func() { calledB = true }
 
 	// Refresh from comp 0 (A) should only call B's RefreshFn, not A's.
-	sm.refreshSharedComponents(0, []string{"Score"})
+	sm.refreshSharedIslands(0, []string{"Score"})
 
 	if calledA {
 		t.Error("RefreshFn should not be called on the originating component")

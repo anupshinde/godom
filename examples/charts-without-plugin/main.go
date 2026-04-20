@@ -18,7 +18,7 @@ var ui embed.FS
 var apexBridgeJS string
 
 type App struct {
-	godom.Component
+	godom.Island
 	TempChart  Chart
 	StockChart Chart
 }

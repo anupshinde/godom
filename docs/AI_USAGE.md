@@ -13,7 +13,7 @@ This project was built with heavy AI assistance (primarily Claude Opus 4.6). Thi
 - **Architecture and direction**: The idea, design constraints, and technical decisions are human-driven
 - **Steering**: AI was redirected, corrected, and had wrong turns rejected throughout development
 - **Review and cleanup**: The codebase has gone through multiple rounds of manual review — unused code removed, dead abstractions cleaned up, documentation kept in sync with reality
-- **Testing**: Test coverage has been examined and improved. Core packages (`template`, `vdom`, `render`, `component`) have 95–100% coverage. Tests for removed features have been cleaned up rather than left as dead weight
+- **Testing**: Test coverage has been examined and improved. Core packages (`template`, `vdom`, `render`, `island`) have 95–100% coverage. Tests for removed features have been cleaned up rather than left as dead weight
 - **Quality control**: Code paths are verified for correctness, not just for passing tests
 
 ## Current state

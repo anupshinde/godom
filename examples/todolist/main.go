@@ -16,7 +16,7 @@ type Todo struct {
 }
 
 type TodoApp struct {
-	godom.Component
+	godom.Island
 	InputText string
 	Todos     []Todo
 }

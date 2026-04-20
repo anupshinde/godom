@@ -10,14 +10,14 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 
 | # | Issue | Type |
 |---|-------|------|
-| 3 | COR-86: Multi-app isolation (scope bridges, components, plugins per instance) | Feature |
+| 3 | COR-86: Multi-app isolation (scope bridges, islands, plugins per instance) | Feature |
 
 ## Deferred
 
 | # | Issue | Type |
 |---|-------|------|
 | 5 | COR-85: Coalesce multiple queued Refresh events into a single render | Improvement |
-| 6 | COR-45: Inactive component pausing — skip patches when no DOM targets | Improvement |
+| 6 | COR-45: Inactive island pausing — skip patches when no DOM targets | Improvement |
 | 7 | COR-51: Nested field binding (Fields[Selected].Label) | Improvement |
 | 8 | COR-52: Virtual scrolling for large lists | Feature |
 | 9 | COR-53: Streaming / append-only updates (bypass VDOM) | Feature |
@@ -26,6 +26,6 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 | 12 | COR-63: Full-scale application (accounting/CRM/spreadsheet) | Example |
 | 13 | COR-67: Example with a well-known JS library | Example |
 | 14 | COR-69: Alternative transport implementations (SSE+POST, REST API, WebTransport) | Feature |
-| 15 | COR-75: Allow CSS selectors as component targets (RegisterAt) | Feature |
+| 15 | COR-75: Allow CSS selectors as island targets (RegisterAt) | Feature |
 | 16 | COR-77: Showcase multi-page dashboard example | Example |
 | 17 | Template compiler (compile HTML + directives to Go render functions) | Feature |

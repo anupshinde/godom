@@ -3,17 +3,17 @@ package server
 import (
 	"sync"
 
-	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/vdom"
 )
 
 // lookupEntry holds a node lookup result.
 type lookupEntry struct {
 	Node vdom.Node
-	Comp *component.Info
+	Comp *island.Info
 }
 
-// nodeLookup provides O(1) lookups for nodeID → node and nodeID → component.
+// nodeLookup provides O(1) lookups for nodeID → node and nodeID → island.
 // Lazily populated on first access via tree traversal, then serves subsequent
 // lookups directly. Stale entries (removed nodes/components) are evicted on
 // access and swept after BuildUpdate.
@@ -45,7 +45,7 @@ func (nc *nodeLookup) get(nodeID int) *lookupEntry {
 }
 
 // put stores a node and its owning component in the cache.
-func (nc *nodeLookup) put(nodeID int, node vdom.Node, comp *component.Info) {
+func (nc *nodeLookup) put(nodeID int, node vdom.Node, comp *island.Info) {
 	nc.mu.Lock()
 	nc.entries[nodeID] = &lookupEntry{
 		Node: node,
@@ -69,7 +69,7 @@ func (nc *nodeLookup) evictRemoved() {
 
 // findNode looks up a node by ID. Checks the cache first, falls back to
 // tree traversal on the given component, then caches the result.
-func findNode(nodeID int, ci *component.Info, cache *nodeLookup) vdom.Node {
+func findNode(nodeID int, ci *island.Info, cache *nodeLookup) vdom.Node {
 	if e := cache.get(nodeID); e != nil {
 		return e.Node
 	}
@@ -80,9 +80,9 @@ func findNode(nodeID int, ci *component.Info, cache *nodeLookup) vdom.Node {
 	return node
 }
 
-// findComponent looks up which component owns a nodeID. Checks the cache
+// findIsland looks up which component owns a nodeID. Checks the cache
 // first, falls back to searching all components' trees, then caches the result.
-func findComponent(nodeID int, comps []*component.Info, cache *nodeLookup) *component.Info {
+func findIsland(nodeID int, comps []*island.Info, cache *nodeLookup) *island.Info {
 	if e := cache.get(nodeID); e != nil {
 		return e.Comp
 	}

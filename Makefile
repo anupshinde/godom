@@ -1,30 +1,69 @@
 .PHONY: build build-examples test test-v cover cover-check cover-html vet clean
 
+# --- Example lists ---
+# Main-module examples (share the root go.mod)
+MAIN_EXAMPLES := \
+	basic-form-builder \
+	breakout-game \
+	chart-plugins \
+	charts-without-plugin \
+	clock \
+	counter \
+	crash-test \
+	drag-demo \
+	drag-tiles \
+	dynamic-mount \
+	embedded-widget \
+	exec-and-call \
+	multi-island \
+	multi-page \
+	multi-page-v2 \
+	progress-bar \
+	same-island-repeated \
+	select-test \
+	shared-state \
+	solar-system \
+	stock-ticker \
+	sync-demo \
+	todolist \
+	video-player \
+	ws-lifecycle
+
+# Sub-module examples (have their own go.mod — must cd into each)
+SUBMODULE_EXAMPLES := \
+	markdown-editor \
+	system-monitor \
+	system-monitor-chartjs \
+	terminal
+
 # Build the library
 build:
 	go build ./...
 
 # Build examples (compile check only)
-# Some examples have their own go.mod, so they're built separately
 build-examples:
-	go build ./examples/counter ./examples/clock ./examples/todolist ./examples/charts-without-plugin ./examples/solar-system ./examples/drag-demo ./examples/drag-tiles ./examples/progress-bar ./examples/stock-ticker ./examples/sync-demo ./examples/basic-form-builder ./examples/video-player ./examples/breakout-game ./examples/multi-component ./examples/select-test
-	cd examples/system-monitor && go build .
-	cd examples/system-monitor-chartjs && go build .
-	cd examples/markdown-editor && go build .
-	cd examples/terminal && go build .
-
-# Validate all examples (Mount + directive validation, no server)
-validate-examples:
-	@for d in examples/counter examples/clock examples/todolist examples/charts-without-plugin examples/solar-system examples/drag-demo examples/drag-tiles examples/progress-bar examples/stock-ticker examples/sync-demo examples/basic-form-builder examples/breakout-game examples/multi-component examples/select-test; do \
-		printf "%-25s " "$$(basename $$d)"; \
-		GODOM_VALIDATE_ONLY=1 go run ./$$d 2>&1 && echo "OK" || echo "FAIL"; \
+	@for d in $(MAIN_EXAMPLES); do \
+		printf "%-25s " "$$d"; \
+		go build -o /dev/null ./examples/$$d && echo "OK" || exit 1; \
 	done
-	@printf "%-25s " "video-player"; \
-	GODOM_VALIDATE_ONLY=1 go run ./examples/video-player -video /dev/null 2>&1 && echo "OK" || echo "FAIL"
-	@for d in examples/system-monitor examples/system-monitor-chartjs examples/markdown-editor examples/terminal; do \
-		printf "%-25s " "$$(basename $$d)"; \
-		cd $$d && GODOM_VALIDATE_ONLY=1 go run . 2>&1 && echo "OK" || echo "FAIL"; \
-		cd ../..; \
+	@for d in $(SUBMODULE_EXAMPLES); do \
+		printf "%-25s " "$$d"; \
+		(cd examples/$$d && go build -o /dev/null .) && echo "OK" || exit 1; \
+	done
+
+# Validate all examples (Register + directive validation, no server)
+validate-examples:
+	@for d in $(MAIN_EXAMPLES); do \
+		printf "%-25s " "$$d"; \
+		if [ "$$d" = "video-player" ]; then \
+			GODOM_VALIDATE_ONLY=1 GODOM_NO_BROWSER=1 go run ./examples/$$d -video /dev/null >/dev/null 2>&1 && echo "OK" || { echo "FAIL"; exit 1; }; \
+		else \
+			GODOM_VALIDATE_ONLY=1 GODOM_NO_BROWSER=1 go run ./examples/$$d >/dev/null 2>&1 && echo "OK" || { echo "FAIL"; exit 1; }; \
+		fi; \
+	done
+	@for d in $(SUBMODULE_EXAMPLES); do \
+		printf "%-25s " "$$d"; \
+		(cd examples/$$d && GODOM_VALIDATE_ONLY=1 GODOM_NO_BROWSER=1 go run . >/dev/null 2>&1) && echo "OK" || { echo "FAIL"; exit 1; }; \
 	done
 
 # Run all tests
@@ -36,7 +75,7 @@ test-v:
 	go test -v ./...
 
 COVERAGE_MIN := 90
-COVERAGE_PKGS := ./ ./internal/component ./internal/render ./internal/server ./internal/template ./internal/vdom ./plugins/...
+COVERAGE_PKGS := ./ ./internal/island ./internal/render ./internal/server ./internal/template ./internal/vdom ./plugins/...
 
 # Run tests with coverage and print summary
 cover:

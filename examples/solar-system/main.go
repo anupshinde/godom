@@ -29,7 +29,7 @@ type Scene struct {
 }
 
 type App struct {
-	godom.Component
+	godom.Island
 	SolarSystem Scene
 	cam         *Camera
 	bodies      []*Body

@@ -9,7 +9,7 @@ import (
 // PlayView is the game view component. It embeds *GameState so all shared
 // state (score, lives, bricks, ball, paddle) is visible and synced.
 type PlayView struct {
-	godom.Component
+	godom.Island
 	*GameState
 }
 

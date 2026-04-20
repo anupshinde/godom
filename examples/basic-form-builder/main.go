@@ -39,7 +39,7 @@ type PaletteItem struct {
 }
 
 type FormBuilder struct {
-	godom.Component
+	godom.Island
 
 	Title   string
 	Palette []PaletteItem

@@ -1,0 +1,66 @@
+<div class="bg-[#050510] text-gray-300 rounded-lg p-4 outline-none" tabindex="0"
+     g-keydown="ArrowUp:PanUp;ArrowDown:PanDown;ArrowLeft:RotateLeft;ArrowRight:RotateRight;+:ZoomIn;-:ZoomOut">
+    <div class="flex gap-3 items-stretch">
+        <div class="flex flex-col gap-1">
+            <div class="text-[0.65rem] uppercase tracking-wider text-gray-600 py-1">View from</div>
+            <button g-click="Follow('Free')"    class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-2 py-1 rounded text-xs text-left">Free Camera</button>
+            <button g-click="Follow('Sun')"     class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-2 py-1 rounded text-xs text-left">Sun</button>
+            <button g-click="Follow('Mercury')" class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-2 py-1 rounded text-xs text-left">Mercury</button>
+            <button g-click="Follow('Venus')"   class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-2 py-1 rounded text-xs text-left">Venus</button>
+            <button g-click="Follow('Earth')"   class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-2 py-1 rounded text-xs text-left">Earth</button>
+            <button g-click="Follow('Moon')"    class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-2 py-1 rounded text-xs text-left">Moon</button>
+            <button g-click="Follow('Mars')"    class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-2 py-1 rounded text-xs text-left">Mars</button>
+            <button g-click="Follow('Jupiter')" class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-2 py-1 rounded text-xs text-left">Jupiter</button>
+            <button g-click="Follow('Io')"      class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-2 py-1 rounded text-xs text-left">Io</button>
+            <button g-click="Follow('Europa')"  class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-2 py-1 rounded text-xs text-left">Europa</button>
+            <button g-click="Follow('Saturn')"  class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-2 py-1 rounded text-xs text-left">Saturn</button>
+            <button g-click="Follow('Titan')"   class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-2 py-1 rounded text-xs text-left">Titan</button>
+        </div>
+        <canvas g-plugin:canvas3d="SolarSystem"
+                g-mousedown="MouseDown" g-mousemove="MouseMove" g-mouseup="MouseUp" g-wheel="Wheel"
+                class="rounded-lg border border-white/5 max-w-full h-auto"></canvas>
+    </div>
+    <div class="flex gap-2 mt-4 flex-wrap justify-center">
+        <button g-click="ZoomIn"      class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-3 py-1 rounded text-xs">+ Zoom In</button>
+        <button g-click="ZoomOut"     class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-3 py-1 rounded text-xs">− Zoom Out</button>
+        <button g-click="PanUp"       class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-3 py-1 rounded text-xs">↑ Tilt Up</button>
+        <button g-click="PanDown"     class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-3 py-1 rounded text-xs">↓ Tilt Down</button>
+        <button g-click="RotateLeft"  class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-3 py-1 rounded text-xs">← Rotate</button>
+        <button g-click="RotateRight" class="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 px-3 py-1 rounded text-xs">→ Rotate</button>
+    </div>
+    <p class="text-gray-600 text-[0.7rem] mt-2 text-center">Arrow keys to pan/rotate, +/− to zoom, drag to orbit, scroll to zoom</p>
+</div>
+
+<info-note>
+    <p class="font-medium mb-1 text-left">What this demo shows</p>
+    <ul class="text-left space-y-1 list-disc ml-4">
+        <li>
+            <b>Fully self-contained tool package</b> — Go code, HTML (via
+            <code class="bg-blue-100 px-1 rounded">AssetsFS</code>), AND the
+            plugin JS all live in <code class="bg-blue-100 px-1 rounded">tools/solar/</code>.
+            The package exports <code class="bg-blue-100 px-1 rounded">solar.Plugin</code>
+            so main only has to <code class="bg-blue-100 px-1 rounded">eng.Use(solar.Plugin)</code>
+            and <code class="bg-blue-100 px-1 rounded">eng.Register(solar.New())</code>
+            — no paths, no FS layout knowledge from main.
+        </li>
+        <li>
+            <b>Custom plugin</b> —
+            <code class="bg-blue-100 px-1 rounded">canvas-bridge.js</code> is
+            embedded with <code class="bg-blue-100 px-1 rounded">//go:embed canvas-bridge.js</code>
+            and registered via
+            <code class="bg-blue-100 px-1 rounded">RegisterPlugin("canvas3d", js)</code>.
+            The template uses
+            <code class="bg-blue-100 px-1 rounded">g-plugin:canvas3d="SolarSystem"</code>
+            to hand Go-computed draw commands to the canvas bridge every frame.
+        </li>
+        <li>
+            <b>All 3D math in Go</b> — camera projection, body positions,
+            diffuse lighting. The bridge just paints the commands.
+        </li>
+        <li>
+            <b><code class="bg-blue-100 px-1 rounded">&lt;info-note&gt;</code></b>
+            — same shared partial, same <code class="bg-blue-100 px-1 rounded">&lt;g-slot/&gt;</code>
+            pattern as the other tools.
+        </li>
+    </ul>
+</info-note>

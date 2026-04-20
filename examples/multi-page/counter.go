@@ -3,7 +3,7 @@ package main
 import "github.com/anupshinde/godom"
 
 type Counter struct {
-	godom.Component
+	godom.Island
 	Count int
 	Step  int
 }

@@ -9,7 +9,7 @@ import (
 
 // BrowserInfo displays browser state fetched via ExecJS.
 type BrowserInfo struct {
-	godom.Component
+	godom.Island
 	URL       string
 	Path      string
 	UserAgent string

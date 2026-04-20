@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/anupshinde/godom/internal/component"
+	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/middleware"
 	gproto "github.com/anupshinde/godom/internal/proto"
@@ -28,7 +28,7 @@ import (
 // It replaces the old Config struct, eliminating field duplication
 // between the public Engine and the internal server package.
 type EngineConfig interface {
-	Components() []*component.Info
+	Islands() []*island.Info
 	PluginScripts() map[string][]string
 	EmbeddedJS() (bridge, protobufMin, protocol string)
 	Mux() *http.ServeMux
@@ -41,24 +41,24 @@ type EngineConfig interface {
 	GetFaviconSVG() string
 }
 
-// BuildComponentInfo reads a template, expands nested components, validates
-// directives, and parses the VDOM templates. Returns a ready-to-use Info
-// (caller still needs to wire the godom.Component embed and add it to the slice).
-func BuildComponentInfo(comp interface{}, fsys fs.FS, entryPath string) *component.Info {
+// BuildIslandInfo takes pre-read entry HTML, expands custom-element partials
+// via the provided layers and registry, validates directives, and parses the
+// VDOM templates. Returns a ready-to-use Info (caller still needs to wire the
+// godom.Island embed and add it to the slice).
+//
+// entryHTML is the raw HTML (already read from disk, or supplied inline).
+// layers are consulted in order for sibling-file partial lookup.
+// registry is the engine-wide named-partial map (may be nil).
+func BuildIslandInfo(comp interface{}, entryHTML string, layers []template.FSLayer, registry map[string]string) *island.Info {
 	v := reflect.ValueOf(comp)
 	t := v.Elem().Type()
 
-	indexHTML, err := fs.ReadFile(fsys, entryPath)
+	composed, err := template.ExpandPartialsLayered(entryHTML, layers, registry)
 	if err != nil {
-		log.Fatalf("godom: failed to read %s: %v", entryPath, err)
+		log.Fatalf("godom: failed to expand partials: %v", err)
 	}
 
-	composed, err := template.ExpandComponents(string(indexHTML), fsys, path.Dir(entryPath))
-	if err != nil {
-		log.Fatalf("godom: failed to expand components: %v", err)
-	}
-
-	ci := &component.Info{
+	ci := &island.Info{
 		Value:    v,
 		Typ:      t,
 		HTMLBody: composed,
@@ -77,13 +77,25 @@ func BuildComponentInfo(comp interface{}, fsys fs.FS, entryPath string) *compone
 	return ci
 }
 
+// BuildIslandInfoFromFS is a convenience for the common case where an island's
+// entry HTML lives in a single filesystem with siblings as partials. Reads the
+// entry file and sets up a single FSLayer at the entry's directory.
+func BuildIslandInfoFromFS(comp interface{}, fsys fs.FS, entryPath string) *island.Info {
+	indexHTML, err := fs.ReadFile(fsys, entryPath)
+	if err != nil {
+		log.Fatalf("godom: failed to read %s: %v", entryPath, err)
+	}
+	layers := []template.FSLayer{{FS: fsys, BaseDir: path.Dir(entryPath)}}
+	return BuildIslandInfo(comp, string(indexHTML), layers, nil)
+}
+
 // serverCtx holds shared state used by event processors and handlers.
 // Avoids threading pool, sm, lookup, and comps through every function.
 type serverCtx struct {
 	pool   *connPool
 	sm     *sharedPtrMaps
 	lookup *nodeLookup
-	comps  []*component.Info
+	comps  []*island.Info
 }
 
 // stripSourceMapLines removes //# sourceMappingURL= lines from JS source.
@@ -104,7 +116,7 @@ func Run(cfg EngineConfig) error {
 		log.Fatal("godom: SetMux() must be called before Run()")
 	}
 
-	comps := cfg.Components()
+	comps := cfg.Islands()
 	plugins := cfg.PluginScripts()
 	bridgeJS, protobufMinJS, protocolJS := cfg.EmbeddedJS()
 	wsPath := cfg.WebSocketPath()
@@ -123,7 +135,7 @@ func Run(cfg EngineConfig) error {
 		ci.IDCounter = sharedIDCounter
 	}
 
-	// Wire up Refresh for each component.
+	// Wire up Refresh for each island.
 	for _, ci := range comps {
 		ci := ci // capture for closure
 		wireRefresh(ci)
@@ -135,7 +147,7 @@ func Run(cfg EngineConfig) error {
 		ci.ExecJSDisabled = disableExecJS
 		if disableExecJS {
 			if env.Debug {
-				log.Printf("godom: ExecJS disabled for component %q", ci.SlotName)
+				log.Printf("godom: ExecJS disabled for island %q", ci.SlotName)
 			}
 			continue
 		}
@@ -164,9 +176,9 @@ func Run(cfg EngineConfig) error {
 		comps:  comps,
 	}
 
-	// Start event queue processor for each component.
+	// Start event queue processor for each island.
 	for idx, ci := range comps {
-		ci.EventCh = make(chan component.Event, 64)
+		ci.EventCh = make(chan island.Event, 64)
 		idx, ci := idx, ci // capture for closure
 		go ctx.processEvents(ci, idx)
 	}
@@ -256,7 +268,7 @@ func Run(cfg EngineConfig) error {
 
 		// Send init only for document.body — the bridge will request
 		// child components via BROWSER_INIT_REQUEST after scanning for
-		// g-component targets in the rendered DOM.
+		// g-island targets in the rendered DOM.
 		for _, ci := range comps {
 			if ci.SlotName == "document.body" {
 				if err := handleInit(wc, ci, ci.SlotName); err != nil {
@@ -301,8 +313,8 @@ func Run(cfg EngineConfig) error {
 
 			switch msg.Kind {
 			case gproto.BrowserKind_BROWSER_INPUT:
-				if ci := findComponent(int(msg.NodeId), ctx.comps, ctx.lookup); ci != nil {
-					e := component.Event{Kind: component.NodeEventKind, NodeID: msg.NodeId, Value: msg.Value}
+				if ci := findIsland(int(msg.NodeId), ctx.comps, ctx.lookup); ci != nil {
+					e := island.Event{Kind: island.NodeEventKind, NodeID: msg.NodeId, Value: msg.Value}
 					if shouldEnqueue(e) {
 						ci.EventCh <- e
 					}
@@ -313,7 +325,7 @@ func Run(cfg EngineConfig) error {
 					// nodeId=0 means godom.call() from JS — find the component that has this method.
 					for _, ci := range ctx.comps {
 						if ci.HasMethod(msg.Method) {
-							e := component.Event{Kind: component.MethodCallKind, Msg: msg}
+							e := island.Event{Kind: island.MethodCallKind, Msg: msg}
 							if shouldEnqueue(e) {
 								ci.EventCh <- e
 							}
@@ -321,9 +333,9 @@ func Run(cfg EngineConfig) error {
 						}
 					}
 				} else {
-					ci := findComponent(int(msg.NodeId), ctx.comps, ctx.lookup)
+					ci := findIsland(int(msg.NodeId), ctx.comps, ctx.lookup)
 					if ci != nil {
-						e := component.Event{Kind: component.MethodCallKind, Msg: msg}
+						e := island.Event{Kind: island.MethodCallKind, Msg: msg}
 						if shouldEnqueue(e) {
 							ci.EventCh <- e
 						}
@@ -331,12 +343,12 @@ func Run(cfg EngineConfig) error {
 				}
 
 			case gproto.BrowserKind_BROWSER_INIT_REQUEST:
-				name := msg.Component
+				name := msg.Island
 				if name == "" {
-					log.Printf("godom: INIT_REQUEST with empty component name")
+					log.Printf("godom: INIT_REQUEST with empty island name")
 					continue
 				}
-				var target *component.Info
+				var target *island.Info
 				for _, ci := range ctx.comps {
 					if ci.SlotName == name {
 						target = ci
@@ -344,7 +356,7 @@ func Run(cfg EngineConfig) error {
 					}
 				}
 				if target == nil {
-					log.Printf("godom: INIT_REQUEST for unknown component %q", name)
+					log.Printf("godom: INIT_REQUEST for unknown island %q", name)
 					continue
 				}
 				if err := handleInit(wc, target, name); err != nil {
@@ -367,7 +379,7 @@ func Run(cfg EngineConfig) error {
 
 // Cleanup calls Cleanup() on any component that implements it,
 // then closes event channels so processor goroutines exit cleanly.
-func Cleanup(comps []*component.Info) {
+func Cleanup(comps []*island.Info) {
 	for _, ci := range comps {
 		if c, ok := ci.Value.Interface().(interface{ Cleanup() }); ok {
 			c.Cleanup()
@@ -378,14 +390,14 @@ func Cleanup(comps []*component.Info) {
 	}
 }
 
-// wireRefresh sets up the RefreshFn for a mounted component.
+// wireRefresh sets up the RefreshFn for a mounted island.
 // RefreshFn sends a RefreshKind event to the component's event queue,
 // ensuring all refreshes are serialized through the processor goroutine.
 // The actual refresh logic lives in executeRefresh.
-func wireRefresh(ci *component.Info) {
+func wireRefresh(ci *island.Info) {
 	ci.RefreshFn = func() {
 		if ci.EventCh != nil {
-			ci.EventCh <- component.Event{Kind: component.RefreshKind}
+			ci.EventCh <- island.Event{Kind: island.RefreshKind}
 		}
 	}
 }
@@ -393,7 +405,7 @@ func wireRefresh(ci *component.Info) {
 // executeRefresh performs the actual refresh: drain marked fields for surgical
 // patches, or fall back to a full BuildUpdate + diff. Called only from
 // processEvents to ensure serialized access — no lock needed.
-func (s *serverCtx) executeRefresh(ci *component.Info) {
+func (s *serverCtx) executeRefresh(ci *island.Info) {
 	fields := ci.DrainMarkedFields()
 	if len(fields) > 0 {
 		patches := s.buildSurgicalPatches(ci, fields)
@@ -417,13 +429,13 @@ func (s *serverCtx) executeRefresh(ci *component.Info) {
 
 // shouldEnqueue decides whether an event should be placed on the channel.
 // Returns true to enqueue, false to drop. Currently allows all events.
-func shouldEnqueue(_ component.Event) bool {
+func shouldEnqueue(_ island.Event) bool {
 	return true
 }
 
 // shouldProcess decides whether an event should be processed after being
 // dequeued. Returns true to process, false to skip. Currently allows all events.
-func shouldProcess(_ component.Event) bool {
+func shouldProcess(_ island.Event) bool {
 	return true
 }
 
@@ -431,7 +443,7 @@ func shouldProcess(_ component.Event) bool {
 // sequentially from the component's event queue. This eliminates race
 // conditions between concurrent event sources (multiple WS connections,
 // background goroutines).
-func (s *serverCtx) processEvents(ci *component.Info, compIdx int) {
+func (s *serverCtx) processEvents(ci *island.Info, compIdx int) {
 	defer func() {
 		if r := recover(); r != nil {
 			msg := fmt.Sprintf("panic: %v", r)
@@ -450,11 +462,11 @@ func (s *serverCtx) processEvents(ci *component.Info, compIdx int) {
 			continue
 		}
 		switch evt.Kind {
-		case component.NodeEventKind:
+		case island.NodeEventKind:
 			s.handleNodeEvent(ci, compIdx, evt.NodeID, evt.Value)
-		case component.MethodCallKind:
+		case island.MethodCallKind:
 			s.handleMethodCall(ci, compIdx, evt.Msg)
-		case component.RefreshKind:
+		case island.RefreshKind:
 			s.executeRefresh(ci)
 		}
 	}
@@ -466,7 +478,7 @@ func (s *serverCtx) processEvents(ci *component.Info, compIdx int) {
 // On first call (no tree yet), it builds from scratch.
 // On subsequent calls (reconnect), it re-resolves from the live struct and
 // merges into the existing tree to preserve node IDs for other connections.
-func BuildInit(ci *component.Info) *gproto.ServerMessage {
+func BuildInit(ci *island.Info) *gproto.ServerMessage {
 	if ci.Tree == nil {
 		// First connection: build from scratch. We must not rebuild ci.Tree
 		// from scratch after this point — node IDs are baked into the bridge's
@@ -491,7 +503,7 @@ func BuildInit(ci *component.Info) *gproto.ServerMessage {
 
 // BuildUpdate rebuilds the tree from templates, diffs against Tree, and
 // returns a patch message. Returns nil if no changes.
-func BuildUpdate(ci *component.Info) (*gproto.ServerMessage, []string) {
+func BuildUpdate(ci *island.Info) (*gproto.ServerMessage, []string) {
 	// Keep the IDCounter alive across renders so IDs only increase.
 	// Resetting to zero would cause new subtrees (from g-if transitions)
 	// to get IDs that collide with existing nodes elsewhere in the tree,
@@ -579,7 +591,7 @@ func changedFieldsFromPatches(patches []vdom.Patch, bindings map[string][]vdom.B
 	return fields
 }
 
-func buildTree(ci *component.Info) *vdom.ElementNode {
+func buildTree(ci *island.Info) *vdom.ElementNode {
 	if ci.IDCounter == nil {
 		ci.IDCounter = &vdom.IDCounter{}
 	}
@@ -607,7 +619,7 @@ func buildTree(ci *component.Info) *vdom.ElementNode {
 
 // buildSurgicalPatches reads the current field values and produces targeted
 // patches for only the nodes bound to those fields. No tree rebuild, no diff.
-func (s *serverCtx) buildSurgicalPatches(ci *component.Info, fields []string) []vdom.Patch {
+func (s *serverCtx) buildSurgicalPatches(ci *island.Info, fields []string) []vdom.Patch {
 	var patches []vdom.Patch
 
 	for _, field := range fields {
@@ -776,11 +788,11 @@ func (s *serverCtx) buildSurgicalPatches(ci *component.Info, fields []string) []
 // handleInit builds and sends the init tree to a specific connection.
 // Not routed through the event queue because init must be synchronous —
 // the browser needs the root DOM before child components can render into
-// their g-component targets (mount order). Even if we sent this through
+// their g-island targets (mount order). Even if we sent this through
 // the channel, we'd need to block until it completes — so a lock is
 // the simpler and more direct way to achieve the same thing. Uses ci.Mu
 // to prevent races with the processor goroutine that writes ci.Tree.
-func handleInit(wc *wsConn, ci *component.Info, targetName string) error {
+func handleInit(wc *wsConn, ci *island.Info, targetName string) error {
 	ci.Mu.Lock()
 	msg := BuildInit(ci)
 	msg.Target = targetName
@@ -795,7 +807,7 @@ func handleInit(wc *wsConn, ci *component.Info, targetName string) error {
 // handleNodeEvent processes a Layer 1 node event: find the node in the live
 // tree by ID, update its Props["value"] (or Props["checked"] for checkboxes),
 // and broadcast a facts patch to all clients.
-func (s *serverCtx) handleNodeEvent(ci *component.Info, compIdx int, nodeID int32, value string) {
+func (s *serverCtx) handleNodeEvent(ci *island.Info, compIdx int, nodeID int32, value string) {
 	// No lock needed — called only from processEvents (serialized).
 
 	node := findNode(int(nodeID), ci, s.lookup)
@@ -836,7 +848,7 @@ func (s *serverCtx) handleNodeEvent(ci *component.Info, compIdx int, nodeID int3
 		s.executeRefresh(ci)
 		changedFields := ci.LastChangedFields
 		ci.LastChangedFields = nil
-		s.sm.refreshSharedComponents(compIdx, changedFields)
+		s.sm.refreshSharedIslands(compIdx, changedFields)
 		return
 	}
 
@@ -871,7 +883,7 @@ func (s *serverCtx) handleNodeEvent(ci *component.Info, compIdx int, nodeID int3
 // component, then rebuild the tree and broadcast to all clients.
 // If the component shares embedded pointers with siblings, their changed
 // fields are surgically refreshed via MarkRefresh.
-func (s *serverCtx) handleMethodCall(ci *component.Info, compIdx int, call *gproto.BrowserMessage) {
+func (s *serverCtx) handleMethodCall(ci *island.Info, compIdx int, call *gproto.BrowserMessage) {
 	// No lock needed — called only from processEvents (serialized).
 
 	// Convert protobuf [][]byte to []json.RawMessage
@@ -939,7 +951,7 @@ func (s *serverCtx) handleMethodCall(ci *component.Info, compIdx int, call *gpro
 	// using the changed fields captured during BuildUpdate above.
 	changedFields := ci.LastChangedFields
 	ci.LastChangedFields = nil
-	s.sm.refreshSharedComponents(compIdx, changedFields)
+	s.sm.refreshSharedIslands(compIdx, changedFields)
 }
 
 // --- Helpers ---

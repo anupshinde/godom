@@ -44,7 +44,7 @@ import (
 var ui embed.FS
 
 type App struct {
-    godom.Component
+    godom.Island
     Count int
 }
 
@@ -84,13 +84,13 @@ You never touch the DOM. You change struct fields, and the UI updates.
 
 ---
 
-## Components
+## Composition
 
-A component is a Go struct that embeds `godom.Component`:
+An **island** is a Go struct that embeds `godom.Island`. It is a stateful runtime unit with its own goroutine, event queue, and state. A **partial** is a pure HTML include — stateless, zero runtime cost. See [why-islands.md](why-islands.md).
 
 ```go
 type App struct {
-    godom.Component
+    godom.Island
     Name     string
     Items    []Item
     Selected int
@@ -308,7 +308,7 @@ Use goroutines for live data (clocks, tickers, monitors). Call `Refresh()` to pu
 
 ```go
 type App struct {
-    godom.Component
+    godom.Island
     Time string
 }
 
@@ -344,10 +344,10 @@ func (a *App) onMouseMove(x, y float64) {
 
 ## Hiding Raw Templates (`.g-ready`)
 
-When a page loads, there's a brief moment before godom initializes where raw template content (`{{Count}}`, placeholder text) is visible. The bridge adds a `.g-ready` CSS class to signal when a component is initialized:
+When a page loads, there's a brief moment before godom initializes where raw template content (`{{Count}}`, placeholder text) is visible. The bridge adds a `.g-ready` CSS class to signal when an island is initialized:
 
 - **Root mode** (`QuickServe`): added to `document.body` after the init tree renders
-- **Embedded mode** (`g-component`): added to each `[g-component]` element after its init tree renders
+- **Embedded mode** (`g-island`): added to each `[g-island]` element after its init tree renders
 
 Use this in your CSS to hide content until it's ready:
 
@@ -356,16 +356,22 @@ Use this in your CSS to hide content until it's ready:
 body:not(.g-ready) { visibility: hidden; }
 
 /* Embedded mode */
-[g-component]:not(.g-ready) { visibility: hidden; }
+[g-island]:not(.g-ready) { visibility: hidden; }
 ```
 
-The class is removed on cleanup (e.g. when a component is re-initialized after reconnect).
+The class is removed on cleanup (e.g. when an island is re-initialized after reconnect).
 
 ---
 
-## Custom Elements
+## Partials
 
-Split large templates by creating HTML files for sub-components:
+> **Migration note.** Phase B (per-island `AssetsFS`, `TemplateHTML`, `RegisterPartial`, `UsePartials`, `<g-slot/>`) is **purely additive**. Existing apps that use `SetFS(fs)` + `Template: "ui/..."` keep working without any change — reach for the new features only when the old pattern feels constraining.
+
+Partials are stateless HTML fragments included by custom-element tag name. Three ways to supply them:
+
+### Local sibling files
+
+Any `*.html` next to the island's entry template is usable by its filename:
 
 **`ui/todo-item.html`:**
 ```html
@@ -383,29 +389,117 @@ Split large templates by creating HTML files for sub-components:
 </ul>
 ```
 
-Custom elements are template includes — directives inside the child HTML resolve against the parent component's state. Loop variables (`todo`, `i`) are available inside the child template.
+Directives inside the partial resolve against the enclosing island's state. Loop variables (`todo`, `i`) are in scope.
+
+### Shared partials (registry)
+
+Partials reused across islands live in a named registry on the engine:
+
+```go
+// Raw string:
+eng.RegisterPartial("my-badge", `<span class="badge"><g-slot/></span>`)
+
+// Or bulk from a directory:
+//go:embed partials
+var partialsFS embed.FS
+eng.UsePartials(partialsFS, "partials")   // partials/*.html → <tag>
+```
+
+Lookup order: island's own FS first, then the registry.
+
+### When a partial isn't found
+
+If a tag can't be resolved, godom errors at startup (`Register()`) with a structured message listing every location it searched:
+
+```
+partial "my-button": not found; searched:
+  - ui/counter/my-button.html (island "counter" AssetsFS)
+  - my-button.html (registry["my-button"])
+```
+
+This is a startup-time error, not a runtime one. Typo in a tag name or a missing file surfaces before any browser connects.
+
+### `<g-slot/>` children
+
+Partials can slot children from their consumer:
+
+```html
+<!-- partials/info-note.html -->
+<div class="callout">
+    <svg>...icon...</svg>
+    <div><g-slot/></div>
+</div>
+```
+
+```html
+<info-note>
+    <p>This content lands inside the callout.</p>
+</info-note>
+```
+
+Partials without `<g-slot/>` silently discard children.
 
 ---
 
-## Multiple Components
+## Template sources (three patterns)
 
-When your app has independent pieces of state, split them into separate components. Each component is its own Go struct with its own HTML template and its own render cycle.
+Islands pick one way to declare their HTML:
+
+**1. Engine-wide FS** — one `SetFS` on the engine, every island uses it:
+```go
+eng.SetFS(ui)
+counter.Template = "counter/index.html"
+```
+
+**2. Per-island `AssetsFS`** — each package ships its own HTML:
+```go
+//go:embed *.html
+var fsys embed.FS
+
+func New() *Counter {
+    return &Counter{Island: godom.Island{
+        TargetName: "counter",
+        Template:   "counter.html",
+        AssetsFS:   fsys,
+    }}
+}
+```
+
+**3. Inline `TemplateHTML`** — for tiny islands with no partials:
+```go
+const tmpl = `<span g-text="Time">--:--:--</span>`
+
+func New() *Clock {
+    return &Clock{Island: godom.Island{
+        TargetName:   "clock",
+        TemplateHTML: tmpl,
+    }}
+}
+```
+
+`AssetsFS` is `fs.FS`, so `embed.FS`, `os.DirFS("./local")` (runtime edits), or any custom implementation works. Switching between embedded and disk based on a DEV env var is a one-line change.
+
+---
+
+## Multiple islands
+
+When your app has independent pieces of state, split them into separate islands. Each island is its own Go struct with its own HTML template and its own render cycle.
 
 ```go
 type Counter struct {
-    godom.Component
+    godom.Island
     Count int
 }
 
 func (c *Counter) Increment() { c.Count++ }
 
 type Clock struct {
-    godom.Component
+    godom.Island
     Time string
 }
 ```
 
-Set each component's target name and template, then register them:
+Set each island's target name and template, then register them:
 
 ```go
 counter := &Counter{}
@@ -424,18 +518,18 @@ eng.Register(counter, clock)
 log.Fatal(eng.QuickServe(layout))
 ```
 
-The layout template declares where each component renders using the `g-component` attribute:
+The layout template declares where each island renders using the `g-island` attribute:
 
 ```html
 <!-- ui/layout/index.html -->
 <body>
     <h1>Dashboard</h1>
-    <div g-component="counter"></div>
-    <div g-component="clock"></div>
+    <div g-island="counter"></div>
+    <div g-island="clock"></div>
 </body>
 ```
 
-Component templates are HTML fragments — no `<html>` or `<body>`:
+Island templates are HTML fragments — no `<html>` or `<body>`:
 
 ```html
 <!-- ui/counter/index.html -->
@@ -445,15 +539,15 @@ Component templates are HTML fragments — no `<html>` or `<body>`:
 </div>
 ```
 
-Each component diffs and patches independently. Updating the clock doesn't re-render the counter.
+Each island diffs and patches independently. Updating the clock doesn't re-render the counter.
 
-Components can communicate through Go callbacks wired in `main.go`:
+Islands can communicate through Go callbacks wired in `main.go`:
 
 ```go
 counter.OnChange = func(n int) { status.SetCount(n) }
 ```
 
-Components can also share state by embedding a shared struct:
+Islands can also share state by embedding a shared struct:
 
 ```go
 type SharedState struct {
@@ -461,12 +555,12 @@ type SharedState struct {
 }
 
 type CounterA struct {
-    godom.Component
+    godom.Island
     *SharedState
 }
 
 type CounterB struct {
-    godom.Component
+    godom.Island
     *SharedState
 }
 
@@ -482,13 +576,13 @@ b.Template = "ui/b/index.html"
 eng.Register(a, b)
 ```
 
-When one component modifies the shared state and calls `Refresh()`, both components update. See `examples/shared-state/` and `examples/breakout-game/` for working examples.
+When one island modifies the shared state and calls `Refresh()`, both islands update. See `examples/shared-state/` and `examples/breakout-game/` for working examples.
 
-> **Note:** Each component instance can only be registered once. The same pointer cannot be passed to `Register()` twice — each instance holds its own VDOM tree and bindings. To share state between components with different templates, use the embedded pointer pattern above.
+> **Note:** Each island instance can only be registered once. The same pointer cannot be passed to `Register()` twice — each instance holds its own VDOM tree and bindings. To share state between islands with different templates, use the embedded pointer pattern above.
 
 ### Without a layout (external hosting)
 
-You can use only `Register()` without a root component. This is useful when the HTML page is served by something else (your own server, a CDN, a third-party site):
+You can use only `Register()` without a root island. This is useful when the HTML page is served by something else (your own server, a CDN, a third-party site):
 
 ```go
 stock.TargetName = "stock"
@@ -513,7 +607,7 @@ The external page loads godom's JS bundle and declares the target:
 <script>window.GODOM_WS_URL = "ws://localhost:9091/ws";</script>
 <script src="http://localhost:9091/godom.js"></script>
 
-<div g-component="stock"></div>
+<div g-island="stock"></div>
 ```
 
 See `examples/embedded-widget/` and [configuration.md](configuration.md#browser-side-settings) for details.
@@ -588,7 +682,7 @@ See [plugins.md](plugins.md) for writing your own plugins, and [javascript-libra
 
 ## Executing JavaScript from Go (ExecJS)
 
-Go components can execute arbitrary JavaScript in connected browsers and receive results back.
+Islands can execute arbitrary JavaScript in connected browsers and receive results back.
 
 ### Querying browser state
 
@@ -649,7 +743,7 @@ When disabled, ExecJS callbacks receive `err = "ExecJS is disabled"`. See [confi
 
 ## Calling Go from JavaScript (godom.call)
 
-JavaScript running in the browser — plugin code, inline scripts, third-party widgets — can call Go methods on components.
+JavaScript running in the browser — plugin code, inline scripts, third-party widgets — can call Go methods on islands.
 
 ### From a plugin
 
@@ -669,7 +763,7 @@ tree.addEventListener("sl-selection-change", function(e) {
 
 ### Go side
 
-The method is a normal exported method on the component struct:
+The method is a normal exported method on the island struct:
 
 ```go
 func (a *App) SelectCategory(id string) {
@@ -678,11 +772,11 @@ func (a *App) SelectCategory(id string) {
 }
 ```
 
-Arguments are JSON-encoded. The server finds the component that has the method and dispatches the call. After the method runs, godom automatically refreshes all connected browsers.
+Arguments are JSON-encoded. The server finds the island that has the method and dispatches the call. After the method runs, godom automatically refreshes all connected browsers.
 
-### How godom.call finds the component
+### How godom.call finds the island
 
-When `godom.call("MethodName", args...)` is sent, the server searches all registered components for one that has `MethodName` as an exported method. The first match wins. If no component has the method, an error is logged.
+When `godom.call("MethodName", args...)` is sent, the server searches all registered islands for one that has `MethodName` as an exported method. The first match wins. If no island has the method, an error is logged.
 
 See the `examples/exec-and-call/` example for a working demo of both features.
 
@@ -712,7 +806,7 @@ godom.onerror = function(evt) {
 - **`ondisconnect(errorMsg)`** — fires when the WebSocket closes. `errorMsg` is null for clean disconnects (server will auto-reconnect). Non-null means a fatal error.
 - **`onerror(evt)`** — fires on WebSocket error, before the connection closes.
 
-These hooks work even on pages with no `g-component` elements — useful for monitoring connection state or implementing heartbeat patterns. See `examples/ws-lifecycle/` for a working demo.
+These hooks work even on pages with no `g-island` elements — useful for monitoring connection state or implementing heartbeat patterns. See `examples/ws-lifecycle/` for a working demo.
 
 ---
 
@@ -765,14 +859,14 @@ Then run `air` instead of `go run .`. When you save a `.go` or `.html` file, Air
 | `video-player` | Canvas rendering, ffmpeg integration |
 | `markdown-editor` | Two-pane editor, plain JS for scroll sync |
 | `terminal` | Terminal emulation in the browser |
-| `multi-component` | Multiple components, `g-component`, cross-component callbacks |
+| `multi-island` | Multiple islands, `g-island`, cross-island callbacks |
 | `multi-page` | Multi-page app with developer-owned mux and routing |
 | `embedded-widget` | External hosting, `/godom.js`, `GODOM_WS_URL` |
-| `same-component-repeated` | Same component in multiple DOM targets |
-| `shared-state` | Shared state between components via embedded struct |
+| `same-island-repeated` | Same island in multiple DOM targets |
+| `shared-state` | Shared state between islands via embedded struct |
 | `select-test` | Select/dropdown binding |
 | `chart-plugins` | Plotly and ECharts plugins side by side |
-| `dynamic-mount` | Dynamic component mounting via `godom.mount()` |
+| `dynamic-mount` | Dynamic island mounting via `godom.mount()` |
 | `exec-and-call` | ExecJS (Go→browser) and `godom.call()` (browser→Go) |
 | `ws-lifecycle` | WebSocket lifecycle hooks (`onconnect`, `ondisconnect`, `onerror`) |
 

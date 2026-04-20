@@ -11,7 +11,7 @@ type CounterState struct {
 // Counter is a click-driven component. Multiple instances can share the same
 // CounterState and each can have a different template.
 type Counter struct {
-	godom.Component
+	godom.Island
 	*CounterState
 }
 
@@ -26,6 +26,6 @@ func (c *Counter) Decrement() {
 // CounterDisplay is a read-only view of counter state — a different type
 // sharing the same CounterState pointer.
 type CounterDisplay struct {
-	godom.Component
+	godom.Island
 	*CounterState
 }

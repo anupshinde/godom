@@ -30,7 +30,7 @@ The bridge never evaluates expressions, resolves data, or makes decisions. It re
 
 ```go
 eng := godom.NewEngine()
-eng.SetFS(ui)                                              // set component filesystem
+eng.SetFS(ui)                                              // set island filesystem
 todo := &TodoApp{}
 todo.Template = "ui/index.html"                            // set template path
 log.Fatal(eng.QuickServe(todo))                            // register, serve, block
@@ -40,9 +40,9 @@ log.Fatal(eng.QuickServe(todo))                            // register, serve, b
 
 ```go
 eng := godom.NewEngine()
-eng.SetFS(components)
-counter.TargetName = "counter"                              // name used in g-component attribute
-counter.Template = "components/counter/index.html"          // template path
+eng.SetFS(islands)
+counter.TargetName = "counter"                              // name used in g-island attribute
+counter.Template = "islands/counter/index.html"          // template path
 eng.Register(counter)                                       // variadic: eng.Register(counter, clock, monitor)
 
 mux := http.NewServeMux()
@@ -54,21 +54,23 @@ log.Fatal(eng.ListenAndServe())                             // bind port, open b
 
 `Register()` does the heavy lifting before any HTTP traffic:
 
-1. **Read the entry HTML** from the embedded filesystem at the component's `Template` path (e.g., `"ui/index.html"`)
-2. **Expand components** — custom element tags like `<todo-item>` are replaced with the contents of `todo-item.html`. `g-*` attributes from the custom tag are transferred to the component's root element
-3. **Validate directives** — every `g-*` attribute is checked against the component struct via reflection. Unknown fields or methods cause `log.Fatal`. This happens at startup, not at runtime
-4. **Parse templates** — the expanded HTML is parsed into a reusable `[]*vdom.TemplateNode` tree. Directives, text interpolations (`{{expr}}`), `g-for` loops, and plugin bindings are all extracted into structured template nodes. This tree is parsed once and reused on every render
+1. **Resolve the entry HTML**:
+   - If `Island.TemplateHTML` is set, use it directly (no filesystem read).
+   - Otherwise read `Island.Template` from `Island.AssetsFS` (per-island FS) or, if absent, from the engine's `SetFS` default.
+2. **Expand partials** — custom element tags like `<todo-item>` are resolved by looking up, in order: (a) a sibling file in the island's FS at `path.Dir(Template)`, (b) the engine's shared partial registry (populated via `RegisterPartial` / `UsePartials`). The first hit wins; `<g-slot/>` markers inside the partial receive the consumer's children; `g-*` attributes on the custom tag transfer to the partial's root element.
+3. **Validate directives** — every `g-*` attribute is checked against the island struct via reflection. Unknown fields or methods cause `log.Fatal`. This happens at startup, not at runtime.
+4. **Parse templates** — the expanded HTML is parsed into a reusable `[]*vdom.TemplateNode` tree. Directives, text interpolations (`{{expr}}`), `g-for` loops, and plugin bindings are all extracted into structured template nodes. This tree is parsed once and reused on every render.
 
-`Register()` also wires up the embedded `Component` struct's internal pointer (`ci`) so that `Refresh()` and `MarkRefresh()` work even if a goroutine starts before `Run()` is called.
+`Register()` also wires up the embedded `Island` struct's internal pointer (`ci`) so that `Refresh()` and `MarkRefresh()` work even if a goroutine starts before `Run()` is called.
 
 `Run()` then:
 
-1. Auto-wires registered components to their slot names
+1. Auto-wires registered islands to their slot names
 2. Sets up pluggable auth (token auth by default, or custom via `SetAuth()`)
 3. Wires the `Refresh()` callback (needs the connection pool, which only exists at run time)
 4. Builds a JS bundle (protobuf + protocol + plugin bootstrap + plugin scripts + bridge), served at `/godom.js`
 5. Registers `/ws` and `/godom.js` handlers on the user's mux
-6. Starts event processor goroutines for each component
+6. Starts event processor goroutines for each island
 
 `ListenAndServe()` then:
 
@@ -83,10 +85,10 @@ log.Fatal(eng.ListenAndServe())                             // bind port, open b
 |---------|----------------|
 | `godom.go` | Engine, SetFS, SetMux, Register, Run, QuickServe, ListenAndServe — the public API |
 | `internal/vdom/` | Virtual DOM: node types, template parsing, tree resolution, diffing, merging, patch types |
-| `internal/component/` | Component struct, Info, method dispatch, field access |
+| `internal/island/` | Island struct, Info, method dispatch, field access |
 | `internal/server/` | WebSocket handling, connection pool, init/update pipeline, surgical refresh |
 | `internal/render/` | Encode patches to protobuf `DomPatch`, encode VDOM trees to JSON wire format |
-| `internal/template/` | HTML parsing, component expansion, directive validation |
+| `internal/template/` | HTML parsing, partial expansion, directive validation |
 | `internal/bridge/` | `bridge.js` — browser-side DOM construction, patch execution, event handling |
 | `internal/proto/` | `protocol.proto`, generated Go types, `protocol.js`, `protobuf.min.js` |
 | `internal/env/` | Environment config utilities (`GODOM_*` env var readers) |
@@ -102,21 +104,21 @@ log.Fatal(eng.ListenAndServe())                             // bind port, open b
 
 When a browser tab connects via WebSocket:
 
-**Root mode** (app has a `document.body` component):
-1. The server pushes a `SERVER_INIT` for `document.body` — Go resolves the template tree against the component struct's current state, producing a concrete VDOM node tree where each node gets a unique stable ID from a monotonic counter
+**Root mode** (app has a `document.body` island):
+1. The server pushes a `SERVER_INIT` for `document.body` — Go resolves the template tree against the island struct.s current state, producing a concrete VDOM node tree where each node gets a unique stable ID from a monotonic counter
 2. The tree is encoded as a JSON description — element tags, facts (properties, attributes, styles, events), and children
 3. The bridge builds the entire DOM from the tree description, registering each node's ID in `nodeMap` for O(1) lookup on subsequent patches
 4. Event handlers in the tree are wired up as DOM listeners that send `MethodCall` messages back to Go
-5. The bridge adds `.g-ready` to `document.body`, signaling that the root component is initialized
-6. The bridge scans for `[g-component]` elements in the new DOM and sends a `BROWSER_INIT_REQUEST` for each — the server responds with their init trees (pull-based init)
-7. After each child init renders, the bridge adds `.g-ready` to the target element and scans again to handle nested components
+5. The bridge adds `.g-ready` to `document.body`, signaling that the root island is initialized
+6. The bridge scans for `[g-island]` elements in the new DOM and sends a `BROWSER_INIT_REQUEST` for each — the server responds with their init trees (pull-based init)
+7. After each child init renders, the bridge adds `.g-ready` to the target element and scans again to handle nested islands
 
 **Embedded mode** (no `document.body` — e.g. multi-page apps):
 1. The server sends nothing on connect — the page is already rendered by a traditional HTTP handler
-2. On `ws.onopen`, the bridge scans for `[g-component]` elements and sends `BROWSER_INIT_REQUEST` for each
-3. The server responds with init trees for each requested component. The bridge adds `.g-ready` to each element after its init tree renders
+2. On `ws.onopen`, the bridge scans for `[g-island]` elements and sends `BROWSER_INIT_REQUEST` for each
+3. The server responds with init trees for each requested island. The bridge adds `.g-ready` to each element after its init tree renders
 
-**Dynamic mounting:** When a patch adds a new `[g-component]` element to the DOM (e.g. a `g-for` loop appending a widget), the bridge detects it during `buildDOM` and scans after the patch completes. This also supports `godom.mount(name, element)` for mounting components from JavaScript into arbitrary DOM elements.
+**Dynamic mounting:** When a patch adds a new `[g-island]` element to the DOM (e.g. a `g-for` loop appending a widget), the bridge detects it during `buildDOM` and scans after the patch completes. This also supports `godom.mount(name, element)` for mounting islands from JavaScript into arbitrary DOM elements.
 
 ### User interaction
 
@@ -176,7 +178,7 @@ Inputs without `g-bind` still participate in Layer 1. The bridge sends `BROWSER_
 
 Not all state changes come from user interaction. Background goroutines (timers, sensors, network listeners) can mutate struct fields and call `Refresh()` to push the new state to all browsers:
 
-1. `Refresh()` sends a `RefreshKind` event to the component's event queue
+1. `Refresh()` sends a `RefreshKind` event to the island.s event queue
 2. The processor goroutine picks it up, resolves the template tree, diffs against the old tree, produces patches
 3. Broadcasts the patches to all connected tabs
 
@@ -184,9 +186,9 @@ This uses the same `ServerMessage` patch format as user-triggered changes — th
 
 ### Event queue (concurrency model)
 
-Each component instance has a buffered event channel (`EventCh`) and a single processor goroutine. All browser input changes (`NodeEventKind`), method calls (`MethodCallKind`), background refreshes (`RefreshKind`), and ExecJS results are sent to this channel and processed sequentially.
+Each island instance has a buffered event channel (`EventCh`) and a single processor goroutine. All browser input changes (`NodeEventKind`), method calls (`MethodCallKind`), background refreshes (`RefreshKind`), and ExecJS results are sent to this channel and processed sequentially.
 
-This eliminates race conditions between concurrent sources (multiple browser tabs, background goroutines) without requiring locks on the component's state. Node-to-component routing uses a lazily-populated `nodeLookup` index (O(1) on hit, tree traversal on first miss). One exception uses `ci.Mu` directly: `handleInit` (writes the tree on new connection — must be synchronous so the browser receives the tree before subsequent patches).
+This eliminates race conditions between concurrent sources (multiple browser tabs, background goroutines) without requiring locks on the island.s state. Node-to-island routing uses a lazily-populated `nodeLookup` index (O(1) on hit, tree traversal on first miss). One exception uses `ci.Mu` directly: `handleInit` (writes the tree on new connection — must be synchronous so the browser receives the tree before subsequent patches).
 
 Two filter hooks control event flow:
 - `shouldEnqueue(event)` — called before sending to the channel
@@ -262,11 +264,11 @@ After diffing, `MergeTree(oldTree, newTree)` updates the old tree in place: stru
 The template system is a two-phase pipeline:
 
 1. **Parse once** (`ParseTemplate`) — HTML with `g-*` directives is parsed into `[]*TemplateNode`. This happens at `Register()` time and the result is reused
-2. **Resolve per render** (`ResolveTree`) — the template tree is evaluated against the current component state, producing concrete `[]Node` with resolved values, unrolled loops, evaluated conditionals, and assigned IDs
+2. **Resolve per render** (`ResolveTree`) — the template tree is evaluated against the current island state, producing concrete `[]Node` with resolved values, unrolled loops, evaluated conditionals, and assigned IDs
 
 Expression resolution uses a fast path for simple expressions (field access, dotted paths, loop variables, negation, zero-arg methods) via direct reflection. Complex expressions with comparisons (`==`, `!=`, `<`, `>`, `<=`, `>=`) and logical operators (`and`, `or`, `not`) are evaluated by [expr-lang/expr](https://github.com/expr-lang/expr) with compiled program caching.
 
-## Component model
+## Island model
 
 ### Template includes
 
@@ -277,19 +279,19 @@ Parent struct         ──state──►    Child HTML template
 (state + methods)                   (resolves against parent state)
 ```
 
-### Multiple components
+### Multiple islands
 
-Each component is a self-contained unit: own Go struct, own HTML template, own VDOM tree, own diff cycle. They are like small independent applications that all run inside the same Go process and render through the same bridge.
+Each island is a self-contained unit: own Go struct, own HTML template, own VDOM tree, own diff cycle. They are like small independent applications that all run inside the same Go process and render through the same bridge.
 
 ```
 eng.SetFS(ui)
 counter.TargetName = "counter"
 counter.Template = "ui/counter/index.html"
-eng.Register(counter)                                       // child component
+eng.Register(counter)                                       // child island
 // Then serve via QuickServe (root) or SetMux (multi-page)
 ```
 
-Components compose via `g-component` — the parent declares named insertion points using the `g-component` attribute, children render into them. With `QuickServe`, the root component provides the full HTML page (rendered into `document.body`). Child components provide HTML fragments. Init is pull-based: after the root renders, the bridge discovers `[g-component]` elements in the DOM and requests their trees via `BROWSER_INIT_REQUEST`. Components can also be mounted dynamically from JavaScript via `godom.mount(name, element)`.
+Islands compose via `g-island` — the parent declares named insertion points using the `g-island` attribute, children render into them. With `QuickServe`, the root island provides the full HTML page (rendered into `document.body`). Child islands provide HTML fragments. Init is pull-based: after the root renders, the bridge discovers `[g-island]` elements in the DOM and requests their trees via `BROWSER_INIT_REQUEST`. Islands can also be mounted dynamically from JavaScript via `godom.mount(name, element)`.
 
 ```
 ┌─────────────────── Go process ───────────────────┐
@@ -322,30 +324,30 @@ Components compose via `g-component` — the parent declares named insertion poi
 │                    │                              │
 │    ┌───────────────┼───────────────┐              │
 │    ▼               ▼               ▼              │
-│  [body]     [g-component=    [g-component=        │
+│  [body]     [g-island=    [g-island=        │
 │  (layout)    "counter"]       "clock"]            │
 └───────────────────────────────────────────────────┘
 ```
 
-The bridge doesn't know there are multiple components. It sees one WebSocket and a sequence of init and patch messages — some targeting the body (root), others targeting elements with a matching `g-component` attribute via `targetName`. Each target gets its own encapsulated context (own `nodeMap`, own `pluginState`). All components share a single `IDCounter` so node IDs are globally unique. When a browser event arrives, the server searches each component's tree to find which one owns the target node ID, and dispatches the event to that component.
+The bridge doesn't know there are multiple islands. It sees one WebSocket and a sequence of init and patch messages — some targeting the body (root), others targeting elements with a matching `g-island` attribute via `targetName`. Each target gets its own encapsulated context (own `nodeMap`, own `pluginState`). All islands share a single `IDCounter` so node IDs are globally unique. When a browser event arrives, the server searches each island's tree to find which one owns the target node ID, and dispatches the event to that island.
 
-Cross-component communication uses Go callbacks wired in `main.go`:
+Cross-island communication uses Go callbacks wired in `main.go`:
 
 ```go
 sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
 ```
 
-Components don't know about each other's types — they communicate through function values.
+Islands don.t know about each other's types — they communicate through function values.
 
 ### Shared pointer auto-refresh
 
-When two components embed the same pointer (e.g. `*SharedState`), modifying the shared state in one component and calling `Refresh()` automatically refreshes the sibling component too. The server detects shared embedded pointers at `Run()` time by scanning component struct fields for pointer values that appear in multiple components (`buildSharedPtrMaps`). When a refresh occurs, `refreshSharedComponents()` checks whether any sibling components share a pointer with the refreshing component and triggers their refresh as well.
+When two islands embed the same pointer (e.g. `*SharedState`), modifying the shared state in one island and calling `Refresh()` automatically refreshes the sibling island too. The server detects shared embedded pointers at `Run()` time by scanning island struct fields for pointer values that appear in multiple islands (`buildSharedPtrMaps`). When a refresh occurs, `refreshSharedIslands()` checks whether any sibling islands share a pointer with the refreshing island and triggers their refresh as well.
 
-This means components sharing state via embedded pointers stay in sync without manual cross-component `Refresh()` calls. See `examples/shared-state/` for a working example.
+This means islands sharing state via embedded pointers stay in sync without manual cross-island `Refresh()` calls. See `examples/shared-state/` for a working example.
 
 ### External hosting (Register-only pattern)
 
-Components can render into pages **not served by godom**. The host page includes godom's JS bundle via a script tag and declares `g-component` targets. Only `Register()` is needed — no root component.
+Islands can render into pages **not served by godom**. The host page includes godom's JS bundle via a script tag and declares `g-island` targets. Only `Register()` is needed — no root island.
 
 ```go
 stock.TargetName = "stock"
@@ -367,8 +369,8 @@ The external page loads `/godom.js` from the godom server and sets `GODOM_WS_URL
 <script>window.GODOM_WS_URL = "ws://localhost:9091/ws";</script>
 <script src="http://localhost:9091/godom.js"></script>
 
-<div g-component="stock"></div>
-<div g-component="marquee"></div>
+<div g-island="stock"></div>
+<div g-island="marquee"></div>
 ```
 
 The bridge uses `GODOM_WS_URL` (if set) instead of deriving the WebSocket URL from the current page's host. This allows a static HTML page on one server to connect to a godom instance on another port/host.
@@ -376,12 +378,12 @@ The bridge uses `GODOM_WS_URL` (if set) instead of deriving the WebSocket URL fr
 For CSS isolation in embedded mode, add `g-shadow` to the target element:
 
 ```html
-<div g-component="stock" g-shadow></div>
+<div g-island="stock" g-shadow></div>
 ```
 
-The bridge attaches an open Shadow DOM root and renders the component's DOM into it. Host page styles cannot reach inside, and component styles cannot leak out. CSS custom properties (`var(--name)`) still cross the boundary for theming.
+The bridge attaches an open Shadow DOM root and renders the island.s DOM into it. Host page styles cannot reach inside, and island styles cannot leak out. CSS custom properties (`var(--name)`) still cross the boundary for theming.
 
-See `examples/embedded-widget/` for a working example (the heatmap component uses `g-shadow`). For nested component trees in embedded mode (a layout component whose template contains further `g-component` targets), see [nested-components.md](nested-components.md).
+See `examples/embedded-widget/` for a working example (the heatmap island uses `g-shadow`). For nested island trees in embedded mode (a layout island whose template contains further `g-island` targets), see [nested-islands.md](nested-islands.md).
 
 ### Namespace (GODOM_NS)
 
@@ -406,14 +408,14 @@ The bridge is vanilla JS with no dependencies. It:
 - Layer 1 (input sync): sends `BROWSER_INPUT` — cheap field update, no re-render (see [two layers](#browser--go-two-layers))
 - Layer 2 (method calls): sends `BROWSER_METHOD` — calls Go method, triggers re-render (see [two layers](#browser--go-two-layers))
 - ExecJS: evaluates JavaScript expressions sent by Go (`SERVER_JSCALL`), returns results via `BROWSER_JSRESULT`
-- `godom.call()`: allows JavaScript to invoke Go methods on components via `BROWSER_METHOD` with `node_id: 0`
+- `godom.call()`: allows JavaScript to invoke Go methods on islands via `BROWSER_METHOD` with `node_id: 0`
 - Manages HTML5 drag-and-drop: `draggable` sets up `dragstart`/`dragend` with group-specific MIME types; drop handlers filter by group, apply CSS feedback classes (`.g-dragging`, `.g-drag-over`, `.g-drag-over-above`/`.g-drag-over-below`), and send drop data via `MethodCall`
-- Shadow DOM: when a `[g-component]` element has the `g-shadow` attribute, attaches an open shadow root and renders into it — isolates component CSS from the host page
-- Adds `.g-ready` CSS class to `document.body` (root mode) or `[g-component]` elements (embedded mode) after init, removes on cleanup — consumers use this to hide raw template content with CSS
+- Shadow DOM: when a `[g-island]` element has the `g-shadow` attribute, attaches an open shadow root and renders into it — isolates island CSS from the host page
+- Adds `.g-ready` CSS class to `document.body` (root mode) or `[g-island]` elements (embedded mode) after init, removes on cleanup — consumers use this to hide raw template content with CSS
 - Defers plugin `init` calls until the element is actually in the DOM (for libraries that need to measure dimensions)
 - Preserves focus and selection across patch application
 
-It does not: evaluate expressions, access component state, make timing decisions, batch or debounce anything. Every decision is made in Go.
+It does not: evaluate expressions, access island state, make timing decisions, batch or debounce anything. Every decision is made in Go.
 
 ## Plugin system
 

@@ -1,0 +1,44 @@
+<div class="text-center">
+    <div class="text-5xl mb-4 font-light">{{Count}}</div>
+    <div class="flex gap-3 justify-center mb-4">
+        <decrement-button></decrement-button>
+        <increment-button></increment-button>
+    </div>
+    <div class="text-sm text-gray-500">
+        <label class="mr-2">Step size:</label>
+        <input type="number" min="1" max="100" g-bind="Step" class="w-16 px-2 py-1 text-sm border border-gray-300 rounded"/>
+    </div>
+
+    <info-note>
+        <p class="font-medium mb-1 text-left">What this demo shows</p>
+        <ul class="text-left space-y-1 list-disc ml-4">
+            <li>
+                <b>Per-island <code class="bg-blue-100 px-1 rounded">AssetsFS</code></b> —
+                the counter package embeds its own filesystem via
+                <code class="bg-blue-100 px-1 rounded">//go:embed ui</code>, so the Go
+                code and HTML ship together as a portable unit.
+            </li>
+            <li>
+                <b>Local sibling partials</b> —
+                <code class="bg-blue-100 px-1 rounded">&lt;decrement-button/&gt;</code>
+                and <code class="bg-blue-100 px-1 rounded">&lt;increment-button/&gt;</code>
+                resolve by filename (<code class="bg-blue-100 px-1 rounded">decrement-button.html</code>,
+                <code class="bg-blue-100 px-1 rounded">increment-button.html</code>) from
+                the island's own FS. No registration needed — filesystem lookup.
+            </li>
+            <li>
+                <b>Shared partial</b> — this wrapper is
+                <code class="bg-blue-100 px-1 rounded">&lt;info-note&gt;</code>, registered
+                once via <code class="bg-blue-100 px-1 rounded">eng.UsePartials(partialsFS, "partials")</code>
+                in main.go. Available to every island without per-island setup.
+            </li>
+            <li>
+                <b>Children via <code class="bg-blue-100 px-1 rounded">&lt;g-slot/&gt;</code></b>
+                — the text you're reading right now was passed as children of
+                <code class="bg-blue-100 px-1 rounded">&lt;info-note&gt;</code>; the
+                partial has a <code class="bg-blue-100 px-1 rounded">&lt;g-slot/&gt;</code>
+                marker where it gets inserted.
+            </li>
+        </ul>
+    </info-note>
+</div>

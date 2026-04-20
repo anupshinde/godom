@@ -19,7 +19,7 @@ type StockInfo struct {
 }
 
 type Stock struct {
-	godom.Component
+	godom.Island
 	Stocks  []StockInfo
 	Index   int
 	Symbol  string

@@ -10,10 +10,10 @@ import (
 )
 
 // Ticker is a background component — registered but not rendered on the page.
-// It proves godom is alive even when no g-component target exists in the DOM.
+// It proves godom is alive even when no g-island target exists in the DOM.
 // In the future, dynamic mount (godom.mount) would allow showing it on demand.
 type Ticker struct {
-	godom.Component
+	godom.Island
 	Symbol string
 	Price  float64
 	Change float64

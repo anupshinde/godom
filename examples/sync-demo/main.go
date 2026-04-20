@@ -18,7 +18,7 @@ type Box struct {
 }
 
 type App struct {
-	godom.Component
+	godom.Island
 	Box       Box
 	PingCount int
 	Items     []string

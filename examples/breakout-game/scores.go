@@ -14,7 +14,7 @@ type ScoreEntry struct {
 }
 
 type Scores struct {
-	godom.Component
+	godom.Island
 	Entries []ScoreEntry
 }
 
