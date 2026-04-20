@@ -1418,3 +1418,134 @@ func TestTemplateHTML_UsesPartialRegistry(t *testing.T) {
 		t.Errorf("expected registry lookup for inline island, got: %s", e.islands[0].HTMLBody)
 	}
 }
+
+func TestRegisterPartial_LazyInitOnBareEngine(t *testing.T) {
+	// Using &Engine{} directly (skipping NewEngine) leaves partials == nil.
+	// RegisterPartial must lazily initialize the map.
+	e := &Engine{}
+	e.RegisterPartial("x", "<span>ok</span>")
+	if e.partials == nil {
+		t.Fatal("partials map not lazily initialized")
+	}
+	if e.partials["x"] != "<span>ok</span>" {
+		t.Errorf("expected partial stored, got: %v", e.partials)
+	}
+}
+
+func TestUsePartials_SkipsSubdirsAndNonHTML(t *testing.T) {
+	fsys := fstest.MapFS{
+		"partials/my-badge.html":     &fstest.MapFile{Data: []byte(`<span class="badge">x</span>`)},
+		"partials/README.md":         &fstest.MapFile{Data: []byte(`not a partial`)},
+		"partials/notes.txt":         &fstest.MapFile{Data: []byte(`not a partial`)},
+		"partials/sub/nested.html":   &fstest.MapFile{Data: []byte(`<span>nested</span>`)},
+	}
+	e := NewEngine()
+	e.UsePartials(fsys, "partials")
+
+	// Only my-badge.html should register; README.md and notes.txt are skipped
+	// by suffix, and sub/ is a directory (ReadDir sees "sub", IsDir returns true).
+	if _, ok := e.partials["my-badge"]; !ok {
+		t.Error("expected my-badge to register")
+	}
+	if _, ok := e.partials["README"]; ok {
+		t.Error("README.md should not have registered (non-html suffix)")
+	}
+	if _, ok := e.partials["notes"]; ok {
+		t.Error("notes.txt should not have registered (non-html suffix)")
+	}
+	if _, ok := e.partials["sub"]; ok {
+		t.Error("sub/ directory should not have registered (IsDir)")
+	}
+	if len(e.partials) != 1 {
+		t.Errorf("expected exactly 1 partial registered, got %d: %v", len(e.partials), e.partials)
+	}
+}
+
+func TestUsePartials_NilFS_Rejected(t *testing.T) {
+	if os.Getenv("TEST_FATAL_USEPARTIALS_NIL") == "1" {
+		e := NewEngine()
+		e.UsePartials(nil, "partials")
+		return
+	}
+	out := runSubprocess(t, "TestUsePartials_NilFS_Rejected", "TEST_FATAL_USEPARTIALS_NIL")
+	if !strings.Contains(out, "non-nil fs.FS") {
+		t.Errorf("expected nil-fs error, got: %s", out)
+	}
+}
+
+func TestUsePartials_MissingDir_Rejected(t *testing.T) {
+	if os.Getenv("TEST_FATAL_USEPARTIALS_NODIR") == "1" {
+		e := NewEngine()
+		e.UsePartials(fstest.MapFS{}, "does-not-exist")
+		return
+	}
+	out := runSubprocess(t, "TestUsePartials_MissingDir_Rejected", "TEST_FATAL_USEPARTIALS_NODIR")
+	if !strings.Contains(out, "failed to read") {
+		t.Errorf("expected ReadDir-failed error, got: %s", out)
+	}
+}
+
+func TestRegister_PerIslandAssetsFS_OverridesSetFS(t *testing.T) {
+	// Engine has SetFS, but a particular island has AssetsFS — the island's
+	// AssetsFS must win for that island's template resolution.
+	engineFS := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(`<div g-text="Name">engine</div>`)},
+	}
+	islandFS := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(`<div g-text="Name">island</div>`)},
+	}
+	e := NewEngine()
+	e.SetFS(engineFS)
+
+	app := &testApp{Name: "hi"}
+	app.TargetName = "app"
+	app.Template = "index.html"
+	app.AssetsFS = islandFS
+
+	e.Register(app)
+
+	if !strings.Contains(e.islands[0].HTMLBody, ">island<") {
+		t.Errorf("expected AssetsFS to win over SetFS, got: %s", e.islands[0].HTMLBody)
+	}
+	if strings.Contains(e.islands[0].HTMLBody, ">engine<") {
+		t.Error("engine FS should not have been read when AssetsFS is set")
+	}
+}
+
+func TestRegister_TemplateHTMLIgnoresEngineSetFS(t *testing.T) {
+	// When TemplateHTML is set, the engine's SetFS should not be consulted —
+	// even if SetFS points at a filesystem, the inline HTML wins.
+	e := NewEngine()
+	e.SetFS(fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(`<div>engine</div>`)},
+	})
+
+	app := &testApp{Name: "hi"}
+	app.TargetName = "inline"
+	app.TemplateHTML = `<div g-text="Name">inline</div>`
+
+	e.Register(app)
+
+	if !strings.Contains(e.islands[0].HTMLBody, `g-text="Name"`) {
+		t.Errorf("expected inline TemplateHTML used, got: %s", e.islands[0].HTMLBody)
+	}
+	if strings.Contains(e.islands[0].HTMLBody, "engine") {
+		t.Error("engine FS should not have been read when TemplateHTML is set")
+	}
+}
+
+func TestRegister_AssetsFS_ReadFileFailure(t *testing.T) {
+	if os.Getenv("TEST_FATAL_BAD_ASSETSFS_PATH") == "1" {
+		e := NewEngine()
+		app := &testApp{}
+		app.TargetName = "bad"
+		app.Template = "missing.html"
+		app.AssetsFS = fstest.MapFS{} // empty — no missing.html
+		e.Register(app)
+		return
+	}
+	out := runSubprocess(t, "TestRegister_AssetsFS_ReadFileFailure", "TEST_FATAL_BAD_ASSETSFS_PATH")
+	if !strings.Contains(out, "failed to read") {
+		t.Errorf("expected read-failure error, got: %s", out)
+	}
+}
