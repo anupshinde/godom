@@ -21,7 +21,7 @@ godom is a Go framework for building local GUI apps that use the browser as the 
 - [Loops (g-for)](#loops-g-for)
 - [Conditional Rendering](#conditional-rendering)
 - [Attributes, Classes, Styles](#attributes-classes-styles)
-- [Custom Elements (Template Includes)](#custom-elements-template-includes)
+- [Partials (Custom Elements)](#partials-custom-elements)
 - [Multiple Islands](#multiple-islands)
 - [Background Updates (Refresh)](#background-updates-refresh)
 - [Surgical Updates (MarkRefresh)](#surgical-updates-markrefresh)
@@ -121,10 +121,12 @@ eng := godom.NewEngine()
 
 | Method | Description |
 |--------|-------------|
-| `SetFS(fs.FS)` | Set shared filesystem for templates (typically `embed.FS`) |
+| `SetFS(fs.FS)` | Set default filesystem for island templates. Optional — islands with `AssetsFS` or `TemplateHTML` don't need it |
 | `SetMux(mux *http.ServeMux, opts *MuxOptions)` | Register godom handlers on a custom mux |
 | `SetAuth(middleware.AuthFunc)` | Set custom auth function |
 | `Register(islands ...interface{})` | Register one or more islands (variadic) |
+| `RegisterPartial(name, html string)` | Register a shared partial by name — referenced as `<name>` in templates |
+| `UsePartials(fs.FS, baseDir string)` | Bulk-register: scans `baseDir` for `*.html` and calls `RegisterPartial(basename, content)` for each |
 | `Use(plugins ...PluginFunc)` | Register plugin functions |
 | `RegisterPlugin(name string, scripts ...string)` | Register custom plugin with JS scripts |
 | `Run() error` | Validate templates, register handlers, start event processors |
@@ -162,7 +164,24 @@ type MyApp struct {
 | Field | Type | Description |
 |-------|------|-------------|
 | `TargetName` | `string` | Matches `g-island="name"` in parent template. Set to `"document.body"` for root (QuickServe does this automatically) |
-| `Template` | `string` | Path to HTML template relative to SetFS filesystem |
+| `Template` | `string` | Path to HTML template — resolved against `AssetsFS` if set, else the engine's `SetFS` default |
+| `TemplateHTML` | `string` | Inline HTML — the island's template as a Go string. Mutually exclusive with `Template`/`AssetsFS` |
+| `AssetsFS` | `fs.FS` | Per-island filesystem for `Template` and its local sibling partials. Optional — overrides `SetFS` for this island |
+
+### Template sources (pick one per island)
+
+| Pattern | Use when |
+|---|---|
+| `Template` + engine's `SetFS(fs)` | Flat single-FS apps; all islands share one `embed.FS` |
+| `Template` + `AssetsFS` | Self-contained tool packages shipping their own HTML colocated with Go code (`//go:embed`) |
+| `TemplateHTML` | Tiny islands with one template and no local partials — no filesystem at all |
+
+`AssetsFS` accepts any `fs.FS`: `embed.FS`, `os.DirFS(...)` (runtime edits without rebuild), `fstest.MapFS`, or any custom implementation.
+
+Validation at `Register()`:
+- Setting `TemplateHTML` together with `Template` or `AssetsFS` is an error
+- Setting neither `Template` nor `TemplateHTML` is an error
+- Setting `Template` without `AssetsFS` and without engine `SetFS` is an error
 
 ### Island Methods
 
@@ -431,11 +450,22 @@ type Item struct {
 
 ---
 
-## Custom Elements (Template Includes)
+## Partials (Custom Elements)
 
-Split templates into reusable HTML files. Any HTML file in your embedded filesystem can be used as a custom element tag:
+Partials are stateless HTML fragments expanded inline at registration time by custom-element tag name (e.g. `<my-button>`). They are purely a template-include mechanism — no state, no goroutine, no lifecycle. Partials come from two sources:
 
-**ui/todo-item.html:**
+### Source 1: Local sibling files (per-island FS)
+
+Any `*.html` file in an island's `AssetsFS` (or the engine's `SetFS`), located in the same directory as the island's entry template, is usable by name.
+
+**tools/todo/index.html:**
+```html
+<ul>
+    <todo-item g-for="todo, i in Todos"></todo-item>
+</ul>
+```
+
+**tools/todo/todo-item.html:**
 ```html
 <li g-class:done="todo.Done">
     <input type="checkbox" g-checked="todo.Done" g-click="Toggle(index)" />
@@ -444,18 +474,58 @@ Split templates into reusable HTML files. Any HTML file in your embedded filesys
 </li>
 ```
 
-**ui/index.html:**
-```html
-<ul>
-    <todo-item g-for="todo, i in Todos"></todo-item>
-</ul>
+Directives inside the partial resolve against the **enclosing island's** state. Loop variables (`todo`, `i`) are in scope.
+
+### Source 2: Shared named registry
+
+For partials reused across islands, register them by name on the engine. Works even for inline-HTML islands that have no filesystem.
+
+```go
+// Raw string:
+eng.RegisterPartial("my-badge", `<span class="badge"><g-slot/></span>`)
+
+// Or bulk from a directory:
+//go:embed partials
+var partialsFS embed.FS
+eng.UsePartials(partialsFS, "partials")   // each partials/*.html becomes <tag-name>
 ```
 
-- Custom elements are expanded inline at registration time
-- Directives inside the child HTML resolve against the **parent** island's state
-- Loop variables (`todo`, `i`) are available inside child templates
-- The tag name maps to the filename: `<todo-item>` → `ui/todo-item.html`
-- This is purely a template include mechanism — not a separate island
+### Resolution order for `<my-tag>`
+
+1. Island's own FS at `path.Dir(Template)` — sibling file lookup
+2. Engine's shared registry (populated via `RegisterPartial` / `UsePartials`)
+3. Not found → startup error listing every location searched
+
+Inline-HTML islands skip step 1 and go directly to the registry.
+
+### Passing children via `<g-slot/>`
+
+Partials can slot children from their consumer with a `<g-slot/>` or `<g-slot></g-slot>` marker.
+
+```html
+<!-- partials/info-note.html -->
+<div class="callout"><svg>...</svg><div><g-slot/></div></div>
+```
+
+```html
+<info-note>
+    <p>This content lands inside the callout.</p>
+</info-note>
+```
+
+Partials without `<g-slot/>` silently discard children (backward compatible with pre-slot behavior). Multiple slots in one partial each receive the same content.
+
+### Attribute transfer
+
+`g-*` attributes on the consumer tag are transferred to the partial's root element:
+
+```html
+<!-- partial: <button class="btn"></button> -->
+<my-btn g-click="Save">Save</my-btn>
+<!-- becomes: <button class="btn" g-click="Save">Save</button> -->
+```
+
+Non-`g-*` attributes are NOT transferred. Use `<g-slot/>` for passing content.
 
 ---
 

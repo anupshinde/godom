@@ -363,9 +363,13 @@ The class is removed on cleanup (e.g. when an island is re-initialized after rec
 
 ---
 
-## Custom Elements
+## Partials
 
-Split large templates by creating HTML files for partials:
+Partials are stateless HTML fragments included by custom-element tag name. Three ways to supply them:
+
+### Local sibling files
+
+Any `*.html` next to the island's entry template is usable by its filename:
 
 **`ui/todo-item.html`:**
 ```html
@@ -383,7 +387,83 @@ Split large templates by creating HTML files for partials:
 </ul>
 ```
 
-Custom elements are template includes — directives inside the child HTML resolve against the parent island's state. Loop variables (`todo`, `i`) are available inside the child template.
+Directives inside the partial resolve against the enclosing island's state. Loop variables (`todo`, `i`) are in scope.
+
+### Shared partials (registry)
+
+Partials reused across islands live in a named registry on the engine:
+
+```go
+// Raw string:
+eng.RegisterPartial("my-badge", `<span class="badge"><g-slot/></span>`)
+
+// Or bulk from a directory:
+//go:embed partials
+var partialsFS embed.FS
+eng.UsePartials(partialsFS, "partials")   // partials/*.html → <tag>
+```
+
+Lookup order: island's own FS first, then the registry.
+
+### `<g-slot/>` children
+
+Partials can slot children from their consumer:
+
+```html
+<!-- partials/info-note.html -->
+<div class="callout">
+    <svg>...icon...</svg>
+    <div><g-slot/></div>
+</div>
+```
+
+```html
+<info-note>
+    <p>This content lands inside the callout.</p>
+</info-note>
+```
+
+Partials without `<g-slot/>` silently discard children.
+
+---
+
+## Template sources (three patterns)
+
+Islands pick one way to declare their HTML:
+
+**1. Engine-wide FS** — one `SetFS` on the engine, every island uses it:
+```go
+eng.SetFS(ui)
+counter.Template = "counter/index.html"
+```
+
+**2. Per-island `AssetsFS`** — each package ships its own HTML:
+```go
+//go:embed *.html
+var fsys embed.FS
+
+func New() *Counter {
+    return &Counter{Island: godom.Island{
+        TargetName: "counter",
+        Template:   "counter.html",
+        AssetsFS:   fsys,
+    }}
+}
+```
+
+**3. Inline `TemplateHTML`** — for tiny islands with no partials:
+```go
+const tmpl = `<span g-text="Time">--:--:--</span>`
+
+func New() *Clock {
+    return &Clock{Island: godom.Island{
+        TargetName:   "clock",
+        TemplateHTML: tmpl,
+    }}
+}
+```
+
+`AssetsFS` is `fs.FS`, so `embed.FS`, `os.DirFS("./local")` (runtime edits), or any custom implementation works. Switching between embedded and disk based on a DEV env var is a one-line change.
 
 ---
 

@@ -54,10 +54,12 @@ log.Fatal(eng.ListenAndServe())                             // bind port, open b
 
 `Register()` does the heavy lifting before any HTTP traffic:
 
-1. **Read the entry HTML** from the embedded filesystem at the island's `Template` path (e.g., `"ui/index.html"`)
-2. **Expand partials** — custom element tags like `<todo-item>` are replaced with the contents of `todo-item.html`. `g-*` attributes from the custom tag are transferred to the partial.s root element
-3. **Validate directives** — every `g-*` attribute is checked against the island struct via reflection. Unknown fields or methods cause `log.Fatal`. This happens at startup, not at runtime
-4. **Parse templates** — the expanded HTML is parsed into a reusable `[]*vdom.TemplateNode` tree. Directives, text interpolations (`{{expr}}`), `g-for` loops, and plugin bindings are all extracted into structured template nodes. This tree is parsed once and reused on every render
+1. **Resolve the entry HTML**:
+   - If `Island.TemplateHTML` is set, use it directly (no filesystem read).
+   - Otherwise read `Island.Template` from `Island.AssetsFS` (per-island FS) or, if absent, from the engine's `SetFS` default.
+2. **Expand partials** — custom element tags like `<todo-item>` are resolved by looking up, in order: (a) a sibling file in the island's FS at `path.Dir(Template)`, (b) the engine's shared partial registry (populated via `RegisterPartial` / `UsePartials`). The first hit wins; `<g-slot/>` markers inside the partial receive the consumer's children; `g-*` attributes on the custom tag transfer to the partial's root element.
+3. **Validate directives** — every `g-*` attribute is checked against the island struct via reflection. Unknown fields or methods cause `log.Fatal`. This happens at startup, not at runtime.
+4. **Parse templates** — the expanded HTML is parsed into a reusable `[]*vdom.TemplateNode` tree. Directives, text interpolations (`{{expr}}`), `g-for` loops, and plugin bindings are all extracted into structured template nodes. This tree is parsed once and reused on every render.
 
 `Register()` also wires up the embedded `Island` struct's internal pointer (`ci`) so that `Refresh()` and `MarkRefresh()` work even if a goroutine starts before `Run()` is called.
 

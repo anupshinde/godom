@@ -18,16 +18,29 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 
 ## Terminology
 - **Island** — a stateful unit registered with the engine (`godom.Island` embed, mounted via `g-island="name"`). Has its own goroutine, event queue, VDOM tree, and state.
-- **Partial** — a stateless HTML fragment included by tag name (e.g. `<my-button>` resolves to `my-button.html`). Zero runtime cost.
+- **Partial** — a stateless HTML fragment included by custom-element tag. Zero runtime cost. Source: either a sibling file in an island's `AssetsFS`, or the engine-wide registry (via `RegisterPartial`/`UsePartials`).
 - "Component" is avoided as a godom term; see [docs/why-islands.md](docs/why-islands.md).
 
+## Template source (Phase B)
+Each island picks one of three sources for its entry HTML:
+- `Island.AssetsFS` + `Island.Template` — per-island FS (typical for tool packages shipping their own HTML).
+- `Island.TemplateHTML` — inline Go string; no filesystem.
+- `Engine.SetFS` + `Island.Template` — engine-wide default FS; `SetFS` is optional.
+
+## Partial resolution for `<my-tag>`
+1. Island's own FS at `path.Dir(Template)` — sibling file.
+2. Engine's registry (`RegisterPartial`/`UsePartials`).
+3. Otherwise error listing every location searched.
+
+Partials may contain `<g-slot/>` — replaced by children passed between the custom element's open/close tags.
+
 ## Internal packages
-- `godom.go` — public API: Engine, SetFS, SetMux, Register, Run, QuickServe, ListenAndServe, SetAuth, Cleanup, Island, Refresh, MarkRefresh, ExecJS
+- `godom.go` — public API: Engine (SetFS, SetMux, Register, Run, QuickServe, ListenAndServe, SetAuth, Cleanup, RegisterPartial, UsePartials), Island (TargetName, Template, TemplateHTML, AssetsFS, Refresh, MarkRefresh, ExecJS)
 - `internal/vdom/` — VDOM node types, template parsing, tree resolution, diffing, merging
 - `internal/island/` — Island struct, Info, method dispatch, field access
 - `internal/server/` — WebSocket handling, connection pool, init/update pipeline
 - `internal/render/` — encode patches to protobuf DomPatch, encode trees to JSON wire format
-- `internal/template/` — HTML parsing, partial expansion, directive validation
+- `internal/template/` — HTML parsing, partial expansion (`ExpandPartials`, `ExpandPartialsLayered`), `<g-slot/>` substitution, directive validation
 - `internal/bridge/` — bridge.js (DOM construction, patch execution, event handling, Shadow DOM via `g-shadow`)
 - `internal/proto/` — protocol.proto, generated Go types, protocol.js, protobuf.min.js
 - `internal/env/` — environment config utilities (GODOM_* env var readers)
@@ -46,6 +59,7 @@ Local GUI apps in Go using the browser as the rendering engine. Minimal JS — m
 - `docs/nested-for.md` — nested g-for loop design
 - `docs/nested-islands.md` — nested island composition in embedded mode, gotchas
 - `docs/planning/next.md` — prioritized roadmap (details tracked in Linear)
+- `examples/multi-page-v2/` — reference example for Phase B features (AssetsFS, TemplateHTML, RegisterPartial, UsePartials, `<g-slot/>`, DirFS dev mode)
 - `docs/transport.md` — WebSocket vs SSE+POST analysis
 - `docs/protocol.md` — wire format (protobuf), transport decisions, media streaming
 - `internal/proto/protocol.proto` — protobuf schema defining the wire format

@@ -231,6 +231,45 @@ Split HTML into reusable files. Any HTML file in your embedded filesystem can be
 
 Partials are expanded inline at registration time — directives resolve against the enclosing island's state. Loop variables (`todo`, `i`) are available inside the included template. Partials carry no state, no goroutine, no lifecycle.
 
+#### Shared partials via the registry
+
+Partials can also be registered by name, independent of any filesystem — useful for reusable snippets shared across islands.
+
+```go
+// Register a raw HTML string as a shared partial:
+eng.RegisterPartial("my-badge", `<span class="badge"><g-slot/></span>`)
+
+// Or bulk-register every *.html file from a directory:
+//go:embed partials
+var partialsFS embed.FS
+eng.UsePartials(partialsFS, "partials")   // partials/my-badge.html → <my-badge>
+```
+
+Partial lookup order for `<my-tag>`:
+1. Island's own FS at the entry template's directory (sibling file).
+2. Engine's partial registry (populated via `RegisterPartial` / `UsePartials`).
+3. If neither has it, startup errors with every location searched.
+
+#### Slotting children with `<g-slot/>`
+
+A partial can contain a `<g-slot/>` marker. Whatever sits between a consumer's custom-element tags replaces the slot:
+
+```html
+<!-- info-note.html -->
+<div class="callout">
+    <svg>...icon...</svg>
+    <div><g-slot/></div>
+</div>
+```
+
+```html
+<info-note>
+    <p>This content lands inside the callout.</p>
+</info-note>
+```
+
+Partials without a `<g-slot/>` discard any inner content (the default).
+
 ### Islands
 
 For apps with multiple independent pieces of state, register separate **islands**. Each gets its own Go struct, HTML template, VDOM tree, goroutine, and refresh cycle. The parent declares insertion points with `g-island`, and child islands render into them.
@@ -283,6 +322,45 @@ Cross-island communication uses Go callbacks:
 sidebar.OnNavigate = func(msg, kind string) { toast.Show(msg, kind) }
 ```
 
+#### Per-island filesystem (`AssetsFS`)
+
+For portable tool packages, each island can bring its own filesystem — Go code and HTML colocate in one folder:
+
+```go
+// tools/counter/counter.go
+//go:embed *.html
+var fsys embed.FS
+
+func New() *Counter {
+    return &Counter{Island: godom.Island{
+        TargetName: "counter",
+        Template:   "counter.html",   // path inside counter's own fs
+        AssetsFS:   fsys,
+    }}
+}
+```
+
+Main no longer needs `SetFS` if every island brings its own. Local sibling partials still work — the lookup searches the island's own FS first.
+
+`AssetsFS` is `fs.FS`, so `os.DirFS(".")` also works for dev-mode edits without rebuilding.
+
+#### Inline HTML (`TemplateHTML`)
+
+For tiny one-off islands, skip the filesystem entirely:
+
+```go
+const tmpl = `<span class="font-mono" g-text="Time">--:--:--</span>`
+
+func New() *DigiClock {
+    return &DigiClock{Island: godom.Island{
+        TargetName:   "digiclock",
+        TemplateHTML: tmpl,   // no Template, no AssetsFS
+    }}
+}
+```
+
+Inline-HTML islands can still use shared partials from the registry; they just don't have sibling-file lookup.
+
 See [examples/multi-island/](examples/multi-island/) for a full 9-island demo.
 
 ## API
@@ -300,12 +378,17 @@ eng.Quiet = true                                  // Suppress startup output
 eng.DisableExecJS = true                          // Disable ExecJS server-side
 eng.Use(chartjs.Plugin, plotly.Plugin)            // Register plugins (Chart.js, Plotly, ECharts, etc.)
 eng.RegisterPlugin("myplugin", bridgeJS)          // Register a custom plugin with one or more JS scripts
-eng.SetFS(fsys)                                   // Set the shared UI filesystem for templates
+eng.SetFS(fsys)                                   // Default UI filesystem; optional if every island has AssetsFS
+eng.RegisterPartial("my-badge", html)             // Register a shared partial by name (raw string)
+eng.UsePartials(fsys, "partials")                 // Bulk-register partials from a directory (scans *.html)
 eng.DisconnectHTML = "<div>Custom overlay</div>"  // Custom disconnect overlay (root mode)
 eng.DisconnectBadgeHTML = "<span>Offline</span>"  // Custom disconnect badge (embedded mode)
 
 child.TargetName = "name"                         // Matches g-island="name" in parent template
-child.Template = "ui/child.html"                  // Template path relative to SetFS filesystem
+child.Template = "ui/child.html"                  // Template path (resolved against AssetsFS or engine SetFS)
+child.AssetsFS = childFS                          // Optional per-island filesystem (overrides SetFS for this island)
+// or:
+child.TemplateHTML = "<div>...</div>"             // Inline HTML — no filesystem at all
 eng.Register(child)                               // Register one or more islands (variadic)
 
 app.Template = "ui/index.html"
@@ -358,11 +441,19 @@ See [docs/configuration.md](docs/configuration.md) for the full reference on set
 
 ### Island
 
-Embed `godom.Island` in your struct. The `TargetName` field matches `g-island="name"` attributes in parent templates. The `Template` field is the path to the HTML template relative to the filesystem set via `SetFS`.
+Embed `godom.Island` in your struct. `TargetName` matches `g-island="name"` attributes in parent templates. The island's HTML comes from one of three sources:
+
+| Field | Use when |
+|---|---|
+| `Template` + engine's `SetFS(fs)` | Flat single-FS apps. `Template` is resolved against the engine-wide FS. |
+| `Template` + `AssetsFS` (per-island) | Tool packages that ship HTML colocated with Go code. Each island brings its own `//go:embed`. Local sibling partials resolve from this FS automatically. |
+| `TemplateHTML` (inline) | Tiny islands with no partials — the template is a plain Go string literal. |
+
+`AssetsFS` is `fs.FS` — so `embed.FS`, `os.DirFS` (runtime edits), `fstest.MapFS`, or any custom filesystem all work.
 
 ```go
 type MyApp struct {
-    godom.Island            // TargetName, Template fields come from here
+    godom.Island            // TargetName, Template, TemplateHTML, AssetsFS all live here
     Name string        // exported fields = state
     Items []Item       // slices work with g-for
 }
@@ -455,6 +546,7 @@ See [docs/plugins.md](docs/plugins.md) for the full list and [docs/javascript-li
 - [examples/stock-ticker/](examples/stock-ticker/) — live stock ticker dashboard with 30 simulated stocks, per-stock tick intervals, table with color-coded gainers/losers, and external CSS via static file serving
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)
 - [examples/terminal/](examples/terminal/) — browser-based terminal with full shell access via PTY and xterm.js (session respawn, resize, multi-tab, Tailscale-friendly)
+- [examples/multi-page-v2/](examples/multi-page-v2/) — **reference for Phase B features** — tool packages with `//go:embed` + `AssetsFS`, inline `TemplateHTML`, shared partials via `UsePartials` / `RegisterPartial`, `<g-slot/>` children substitution, `os.DirFS` dev mode, multi-page routing with Go html/template chrome
 - [examples/multi-island/](examples/multi-island/) — 9-island dashboard with `g-island` composition, cross-island callbacks, Chart.js plugin, drag-and-drop reorder, goroutine-driven updates
 - [examples/embedded-widget/](examples/embedded-widget/) — godom islands embedded in an external HTML page (separate static server, `GODOM_WS_URL`, `/godom.js` script tag, `g-island` targets, `g-shadow` for CSS isolation)
 - [examples/same-island-repeated/](examples/same-island-repeated/) — same island type rendered into multiple `g-island` targets simultaneously
