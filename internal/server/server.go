@@ -41,19 +41,19 @@ type EngineConfig interface {
 	GetFaviconSVG() string
 }
 
-// BuildIslandInfo reads a template, expands custom-element partials, validates
-// directives, and parses the VDOM templates. Returns a ready-to-use Info
-// (caller still needs to wire the godom.Island embed and add it to the slice).
-func BuildIslandInfo(comp interface{}, fsys fs.FS, entryPath string) *island.Info {
+// BuildIslandInfo takes pre-read entry HTML, expands custom-element partials
+// via the provided layers and registry, validates directives, and parses the
+// VDOM templates. Returns a ready-to-use Info (caller still needs to wire the
+// godom.Island embed and add it to the slice).
+//
+// entryHTML is the raw HTML (already read from disk, or supplied inline).
+// layers are consulted in order for sibling-file partial lookup.
+// registry is the engine-wide named-partial map (may be nil).
+func BuildIslandInfo(comp interface{}, entryHTML string, layers []template.FSLayer, registry map[string]string) *island.Info {
 	v := reflect.ValueOf(comp)
 	t := v.Elem().Type()
 
-	indexHTML, err := fs.ReadFile(fsys, entryPath)
-	if err != nil {
-		log.Fatalf("godom: failed to read %s: %v", entryPath, err)
-	}
-
-	composed, err := template.ExpandPartials(string(indexHTML), fsys, path.Dir(entryPath))
+	composed, err := template.ExpandPartialsLayered(entryHTML, layers, registry)
 	if err != nil {
 		log.Fatalf("godom: failed to expand partials: %v", err)
 	}
@@ -75,6 +75,18 @@ func BuildIslandInfo(comp interface{}, fsys fs.FS, entryPath string) *island.Inf
 	ci.VDOMTemplates = templates
 
 	return ci
+}
+
+// BuildIslandInfoFromFS is a convenience for the common case where an island's
+// entry HTML lives in a single filesystem with siblings as partials. Reads the
+// entry file and sets up a single FSLayer at the entry's directory.
+func BuildIslandInfoFromFS(comp interface{}, fsys fs.FS, entryPath string) *island.Info {
+	indexHTML, err := fs.ReadFile(fsys, entryPath)
+	if err != nil {
+		log.Fatalf("godom: failed to read %s: %v", entryPath, err)
+	}
+	layers := []template.FSLayer{{FS: fsys, BaseDir: path.Dir(entryPath)}}
+	return BuildIslandInfo(comp, string(indexHTML), layers, nil)
 }
 
 // serverCtx holds shared state used by event processors and handlers.

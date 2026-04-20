@@ -1,6 +1,7 @@
 package template
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"path"
@@ -16,9 +17,31 @@ var openTagRe = regexp.MustCompile(`<([a-z][a-z0-9]*-[a-z0-9-]*)(\s[^>]*?)?\s*/?
 // gAttrRe matches g-* attributes (including g-class:done etc.) in an attribute string.
 var gAttrRe = regexp.MustCompile(`(g-[a-z]+(?::[a-z-]+)?)\s*=\s*"([^"]*)"`)
 
+// FSLayer is one filesystem search location for partial resolution.
+// Layers are consulted in order; the first hit wins.
+type FSLayer struct {
+	FS      fs.FS
+	BaseDir string
+	// Label is shown in "not found" error messages to help identify which
+	// layer was searched (e.g. "island \"solar\" FS", "shared").
+	Label string
+}
+
 // ExpandPartials takes HTML and recursively replaces custom element tags
-// with the contents of their corresponding HTML files from the filesystem.
+// with partial content from a single filesystem (sibling-file lookup).
+// This is the simple entry point; internally delegates to ExpandPartialsLayered.
 func ExpandPartials(htmlStr string, fsys fs.FS, baseDir string) (string, error) {
+	return ExpandPartialsLayered(htmlStr, []FSLayer{{FS: fsys, BaseDir: baseDir}}, nil)
+}
+
+// ExpandPartialsLayered takes HTML and recursively replaces custom element tags
+// with partial content. For each tag it consults, in order:
+//  1. Each FSLayer at path.Join(layer.BaseDir, tag+".html")
+//  2. registry[tag] (registered via Engine.RegisterPartial / UsePartials)
+//
+// If no source has the tag, an error is returned that lists every location
+// searched to aid debugging.
+func ExpandPartialsLayered(htmlStr string, layers []FSLayer, registry map[string]string) (string, error) {
 	maxExpansions := 10
 	searchFrom := 0
 	for expansions := 0; expansions < maxExpansions; expansions++ {
@@ -26,7 +49,6 @@ func ExpandPartials(htmlStr string, fsys fs.FS, baseDir string) (string, error) 
 		if loc == nil {
 			break
 		}
-		// Adjust indices relative to full string
 		for i := range loc {
 			if loc[i] >= 0 {
 				loc[i] += searchFrom
@@ -35,7 +57,7 @@ func ExpandPartials(htmlStr string, fsys fs.FS, baseDir string) (string, error) 
 
 		tagName := htmlStr[loc[2]:loc[3]]
 
-		// Skip g-* tags — these are framework directives, not custom elements (partials).
+		// Skip g-* tags — framework directives, not custom elements (partials).
 		if strings.HasPrefix(tagName, "g-") {
 			searchFrom = loc[1]
 			expansions--
@@ -48,14 +70,11 @@ func ExpandPartials(htmlStr string, fsys fs.FS, baseDir string) (string, error) 
 			attrs = strings.TrimSpace(htmlStr[loc[4]:loc[5]])
 		}
 
-		// Determine if self-closing or has a closing tag
 		openTag := htmlStr[loc[0]:loc[1]]
 		var end int
 		if strings.HasSuffix(openTag, "/>") {
-			// Self-closing
 			end = loc[1]
 		} else {
-			// Find matching closing tag
 			closeTag := "</" + tagName + ">"
 			closeIdx := strings.Index(htmlStr[loc[1]:], closeTag)
 			if closeIdx < 0 {
@@ -64,15 +83,12 @@ func ExpandPartials(htmlStr string, fsys fs.FS, baseDir string) (string, error) 
 			end = loc[1] + closeIdx + len(closeTag)
 		}
 
-		// Load partial HTML
-		compHTML, err := fs.ReadFile(fsys, path.Join(baseDir, tagName+".html"))
+		compHTML, err := lookupPartial(tagName, layers, registry)
 		if err != nil {
-			return "", fmt.Errorf("partial %q: %w", tagName, err)
+			return "", err
 		}
 
 		expanded := strings.TrimSpace(string(compHTML))
-
-		// Transfer g-* attributes from the custom tag to the partial.s root element
 		if attrs != "" {
 			gAttrs := ExtractGAttrs(attrs)
 			if gAttrs != "" {
@@ -84,6 +100,41 @@ func ExpandPartials(htmlStr string, fsys fs.FS, baseDir string) (string, error) 
 	}
 
 	return htmlStr, nil
+}
+
+// lookupPartial resolves a tag name to HTML content. Tries FS layers in order,
+// then the registry. Returns a structured error listing everything tried.
+func lookupPartial(tagName string, layers []FSLayer, registry map[string]string) ([]byte, error) {
+	var tried []string
+	for _, layer := range layers {
+		if layer.FS == nil {
+			continue
+		}
+		p := path.Join(layer.BaseDir, tagName+".html")
+		label := p
+		if layer.Label != "" {
+			label = fmt.Sprintf("%s (%s)", p, layer.Label)
+		}
+		tried = append(tried, label)
+		b, err := fs.ReadFile(layer.FS, p)
+		if err == nil {
+			return b, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("partial %q: %w", tagName, err)
+		}
+	}
+	if registry != nil {
+		if html, ok := registry[tagName]; ok {
+			return []byte(html), nil
+		}
+		tried = append(tried, fmt.Sprintf("registry[%q]", tagName))
+	}
+	if len(tried) == 0 {
+		return nil, fmt.Errorf("partial %q: not found (no FS layers or registry configured)", tagName)
+	}
+	return nil, fmt.Errorf("partial %q: not found; searched:\n  - %s",
+		tagName, strings.Join(tried, "\n  - "))
 }
 
 // ExtractGAttrs pulls out g-* attributes (and g-class:* etc.) from an attribute string.

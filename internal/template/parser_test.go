@@ -355,4 +355,149 @@ func TestExtractGAttrs_Empty(t *testing.T) {
 	}
 }
 
+// --- Layered + registry resolution tests ---
+
+func TestExpandPartialsLayered_LocalFirst(t *testing.T) {
+	local := fstest.MapFS{"my-tag.html": &fstest.MapFile{Data: []byte("<span>local</span>")}}
+	shared := fstest.MapFS{"my-tag.html": &fstest.MapFile{Data: []byte("<span>shared</span>")}}
+
+	got, err := ExpandPartialsLayered(
+		`<my-tag></my-tag>`,
+		[]FSLayer{{FS: local, BaseDir: "."}, {FS: shared, BaseDir: "."}},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "local") || strings.Contains(got, "shared") {
+		t.Errorf("expected local layer to win, got: %s", got)
+	}
+}
+
+func TestExpandPartialsLayered_FallsBackToSharedFS(t *testing.T) {
+	local := fstest.MapFS{} // empty
+	shared := fstest.MapFS{"my-tag.html": &fstest.MapFile{Data: []byte("<span>shared</span>")}}
+
+	got, err := ExpandPartialsLayered(
+		`<my-tag></my-tag>`,
+		[]FSLayer{{FS: local, BaseDir: "."}, {FS: shared, BaseDir: "."}},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "shared") {
+		t.Errorf("expected fallback to shared layer, got: %s", got)
+	}
+}
+
+func TestExpandPartialsLayered_RegistryFallback(t *testing.T) {
+	local := fstest.MapFS{}
+	registry := map[string]string{"my-tag": "<span>registry</span>"}
+
+	got, err := ExpandPartialsLayered(
+		`<my-tag></my-tag>`,
+		[]FSLayer{{FS: local, BaseDir: "."}},
+		registry,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "registry") {
+		t.Errorf("expected registry lookup, got: %s", got)
+	}
+}
+
+func TestExpandPartialsLayered_FSLayerBeatsRegistry(t *testing.T) {
+	local := fstest.MapFS{"my-tag.html": &fstest.MapFile{Data: []byte("<span>fs</span>")}}
+	registry := map[string]string{"my-tag": "<span>registry</span>"}
+
+	got, err := ExpandPartialsLayered(
+		`<my-tag></my-tag>`,
+		[]FSLayer{{FS: local, BaseDir: "."}},
+		registry,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "fs") || strings.Contains(got, "registry") {
+		t.Errorf("expected FS layer to win over registry, got: %s", got)
+	}
+}
+
+func TestExpandPartialsLayered_NotFound_ErrorListsLayers(t *testing.T) {
+	local := fstest.MapFS{}
+	shared := fstest.MapFS{}
+
+	_, err := ExpandPartialsLayered(
+		`<my-tag></my-tag>`,
+		[]FSLayer{
+			{FS: local, BaseDir: ".", Label: "solar FS"},
+			{FS: shared, BaseDir: "partials", Label: "shared"},
+		},
+		map[string]string{},
+	)
+	if err == nil {
+		t.Fatal("expected not-found error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "solar FS") {
+		t.Errorf("expected error to mention 'solar FS' layer, got: %s", msg)
+	}
+	if !strings.Contains(msg, "shared") {
+		t.Errorf("expected error to mention 'shared' layer, got: %s", msg)
+	}
+	if !strings.Contains(msg, `registry["my-tag"]`) {
+		t.Errorf("expected error to mention registry, got: %s", msg)
+	}
+}
+
+func TestExpandPartialsLayered_NoSourcesConfigured(t *testing.T) {
+	// No layers, no registry — concise error.
+	_, err := ExpandPartialsLayered(`<my-tag></my-tag>`, nil, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "no FS layers or registry") {
+		t.Errorf("expected concise error, got: %s", err.Error())
+	}
+}
+
+func TestExpandPartialsLayered_NilFSLayerSkipped(t *testing.T) {
+	// A layer with nil FS should be skipped, not crash.
+	shared := fstest.MapFS{"my-tag.html": &fstest.MapFile{Data: []byte("<span>shared</span>")}}
+	got, err := ExpandPartialsLayered(
+		`<my-tag></my-tag>`,
+		[]FSLayer{{FS: nil, BaseDir: "."}, {FS: shared, BaseDir: "."}},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "shared") {
+		t.Errorf("expected shared layer used after nil skipped, got: %s", got)
+	}
+}
+
+func TestExpandPartialsLayered_Recursive_ResolvesViaLayers(t *testing.T) {
+	// An outer-tag from local FS references <inner-tag> that only exists in the shared layer.
+	local := fstest.MapFS{
+		"outer-tag.html": &fstest.MapFile{Data: []byte(`<div><inner-tag></inner-tag></div>`)},
+	}
+	shared := fstest.MapFS{
+		"inner-tag.html": &fstest.MapFile{Data: []byte(`<span>inner</span>`)},
+	}
+	got, err := ExpandPartialsLayered(
+		`<outer-tag></outer-tag>`,
+		[]FSLayer{{FS: local, BaseDir: "."}, {FS: shared, BaseDir: "."}},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "inner") {
+		t.Errorf("expected recursive expansion to use shared layer, got: %s", got)
+	}
+}
+
 

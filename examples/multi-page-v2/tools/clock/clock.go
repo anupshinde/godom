@@ -1,12 +1,16 @@
 package clock
 
 import (
+	"embed"
 	"fmt"
 	"time"
 
 	"github.com/anupshinde/godom"
 	"github.com/anupshinde/godom/examples/multi-page-v2/tools/counter"
 )
+
+//go:embed clock.html
+var fsys embed.FS
 
 type Clock struct {
 	godom.Island
@@ -47,7 +51,8 @@ func New(s *counter.State) *Clock {
 	c := &Clock{
 		Island: godom.Island{
 			TargetName: "clock",
-			Template:   "island-templates/clock/index.html",
+			Template:   "clock.html",
+			AssetsFS:   fsys,
 		},
 		State: s,
 	}

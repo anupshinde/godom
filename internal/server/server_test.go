@@ -4368,7 +4368,7 @@ func TestBuildIslandInfo_Success(t *testing.T) {
 		)},
 	}
 
-	ci := BuildIslandInfo(app, fsys, "index.html")
+	ci := BuildIslandInfoFromFS(app, fsys, "index.html")
 
 	if ci == nil {
 		t.Fatal("expected non-nil island.Info")
@@ -4394,7 +4394,7 @@ func TestBuildIslandInfo_PreservesHTMLBody(t *testing.T) {
 		"page.html": &fstest.MapFile{Data: []byte(html)},
 	}
 
-	ci := BuildIslandInfo(app, fsys, "page.html")
+	ci := BuildIslandInfoFromFS(app, fsys, "page.html")
 
 	if !strings.Contains(ci.HTMLBody, `class="wrapper"`) {
 		t.Error("expected HTMLBody to preserve the wrapper div")

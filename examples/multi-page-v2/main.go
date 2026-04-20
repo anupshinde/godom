@@ -17,12 +17,13 @@ import (
 
 	"github.com/anupshinde/godom/examples/multi-page-v2/tools/clock"
 	"github.com/anupshinde/godom/examples/multi-page-v2/tools/counter"
+	"github.com/anupshinde/godom/examples/multi-page-v2/tools/digiclock"
 	"github.com/anupshinde/godom/examples/multi-page-v2/tools/monitor"
 	"github.com/anupshinde/godom/examples/multi-page-v2/tools/solar"
 )
 
-//go:embed pages island-templates
-var ui embed.FS
+//go:embed pages
+var pagesFS embed.FS
 
 type PageData struct {
 	Title string
@@ -30,7 +31,7 @@ type PageData struct {
 }
 
 func mustTmpl(page string) *template.Template {
-	return template.Must(template.ParseFS(ui,
+	return template.Must(template.ParseFS(pagesFS,
 		"pages/layout/base.html",
 		"pages/"+page+"/page.html",
 	))
@@ -38,7 +39,7 @@ func mustTmpl(page string) *template.Template {
 
 func main() {
 	eng := godom.NewEngine()
-	eng.SetFS(ui)
+	// No SetFS needed — each tool brings its own AssetsFS.
 	eng.Use(chartjs.Plugin, solar.Plugin)
 
 	// Build tool islands. Counter, clock, and monitor all share one
@@ -50,12 +51,17 @@ func main() {
 	monitorI := monitor.New(sharedCounter)
 	solarI := solar.New()
 
-	eng.Register(counterI, clockI, monitorI, solarI)
+	// digiclock demonstrates Island.TemplateHTML — the tool carries no HTML
+	// file at all, just an inline string. Used as inline prose on the dashboard.
+	digiClockI := digiclock.New()
+
+	eng.Register(counterI, clockI, monitorI, solarI, digiClockI)
 
 	// Fire up goroutine-driven tools.
 	go clockI.Run()
 	go monitorI.Run()
 	go solarI.Run()
+	go digiClockI.Run()
 
 	// Pre-parse page templates once.
 	pages := map[string]*template.Template{

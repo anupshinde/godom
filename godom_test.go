@@ -556,8 +556,8 @@ func TestRegister_NoFS(t *testing.T) {
 		return
 	}
 	out := runSubprocess(t, "TestRegister_NoFS", "TEST_FATAL_REGISTER_NOFS")
-	if !strings.Contains(out, "call SetFS() before Register()") {
-		t.Errorf("expected SetFS error, got: %s", out)
+	if !strings.Contains(out, "has no filesystem") {
+		t.Errorf("expected no-filesystem error, got: %s", out)
 	}
 }
 
@@ -1272,3 +1272,149 @@ func runSubprocess(t *testing.T, testName, envVar string) string {
 
 // Ensure middleware.AuthFunc is usable (compile check).
 var _ middleware.AuthFunc = func(w http.ResponseWriter, r *http.Request) bool { return true }
+
+// =============================================================================
+// Phase B — AssetsFS, TemplateHTML, RegisterPartial, UsePartials
+// =============================================================================
+
+func TestRegister_PerIslandAssetsFS(t *testing.T) {
+	// Island carries its own FS — no SetFS on the engine.
+	e := NewEngine()
+	islFS := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(`<div g-text="Name">x</div>`)},
+	}
+	app := &testApp{Name: "hello"}
+	app.TargetName = "solo"
+	app.Template = "index.html"
+	app.AssetsFS = islFS
+
+	e.Register(app)
+
+	if len(e.islands) != 1 {
+		t.Fatalf("expected 1 island, got %d", len(e.islands))
+	}
+	if !strings.Contains(e.islands[0].HTMLBody, `g-text="Name"`) {
+		t.Error("expected HTMLBody to come from per-island FS")
+	}
+}
+
+func TestRegister_TemplateHTMLInline(t *testing.T) {
+	// Island uses inline HTML — no FS at all.
+	e := NewEngine()
+	app := &testApp{Name: "hello"}
+	app.TargetName = "inline"
+	app.TemplateHTML = `<div g-text="Name">x</div>`
+
+	e.Register(app)
+
+	if len(e.islands) != 1 {
+		t.Fatalf("expected 1 island, got %d", len(e.islands))
+	}
+	if !strings.Contains(e.islands[0].HTMLBody, `g-text="Name"`) {
+		t.Error("expected HTMLBody to come from inline TemplateHTML")
+	}
+}
+
+func TestRegister_TemplateHTMLAndTemplate_Rejected(t *testing.T) {
+	if os.Getenv("TEST_FATAL_BOTH") == "1" {
+		e := NewEngine()
+		e.SetFS(makeTestFS())
+		app := &testApp{}
+		app.TargetName = "both"
+		app.Template = "index.html"
+		app.TemplateHTML = "<div></div>"
+		e.Register(app)
+		return
+	}
+	out := runSubprocess(t, "TestRegister_TemplateHTMLAndTemplate_Rejected", "TEST_FATAL_BOTH")
+	if !strings.Contains(out, "mutually exclusive") {
+		t.Errorf("expected mutual-exclusion error, got: %s", out)
+	}
+}
+
+func TestRegister_NeitherTemplate_Rejected(t *testing.T) {
+	if os.Getenv("TEST_FATAL_NEITHER") == "1" {
+		e := NewEngine()
+		app := &testApp{}
+		app.TargetName = "neither"
+		// no Template, no TemplateHTML
+		e.Register(app)
+		return
+	}
+	out := runSubprocess(t, "TestRegister_NeitherTemplate_Rejected", "TEST_FATAL_NEITHER")
+	if !strings.Contains(out, "Template") && !strings.Contains(out, "TemplateHTML") {
+		t.Errorf("expected template-required error, got: %s", out)
+	}
+}
+
+func TestRegisterPartial_ResolvedInTemplate(t *testing.T) {
+	// A shared partial registered by name; an island references it.
+	e := NewEngine()
+	e.RegisterPartial("my-badge", `<span class="badge" g-text="Name">?</span>`)
+
+	app := &testApp{Name: "ok"}
+	app.TargetName = "app"
+	app.TemplateHTML = `<div><my-badge></my-badge></div>`
+
+	e.Register(app)
+
+	if !strings.Contains(e.islands[0].HTMLBody, `class="badge"`) {
+		t.Errorf("expected partial expansion, got: %s", e.islands[0].HTMLBody)
+	}
+}
+
+func TestUsePartials_BulkRegister(t *testing.T) {
+	partialsFS := fstest.MapFS{
+		"partials/my-badge.html": &fstest.MapFile{Data: []byte(`<span class="badge">badge</span>`)},
+		"partials/my-card.html":  &fstest.MapFile{Data: []byte(`<div class="card">card</div>`)},
+	}
+	e := NewEngine()
+	e.UsePartials(partialsFS, "partials")
+
+	if e.partials["my-badge"] == "" {
+		t.Error("expected my-badge to be registered")
+	}
+	if e.partials["my-card"] == "" {
+		t.Error("expected my-card to be registered")
+	}
+	if !strings.Contains(e.partials["my-badge"], `class="badge"`) {
+		t.Errorf("expected my-badge content, got: %s", e.partials["my-badge"])
+	}
+}
+
+func TestRegisterPartial_LocalFSBeatsRegistry(t *testing.T) {
+	// An island with a local sibling my-tag.html should win over a registered partial of the same name.
+	e := NewEngine()
+	e.RegisterPartial("my-tag", `<span>registry</span>`)
+
+	islFS := fstest.MapFS{
+		"index.html":  &fstest.MapFile{Data: []byte(`<div><my-tag></my-tag></div>`)},
+		"my-tag.html": &fstest.MapFile{Data: []byte(`<span>local</span>`)},
+	}
+	app := &testApp{}
+	app.TargetName = "app"
+	app.Template = "index.html"
+	app.AssetsFS = islFS
+
+	e.Register(app)
+
+	if !strings.Contains(e.islands[0].HTMLBody, "local") || strings.Contains(e.islands[0].HTMLBody, "registry") {
+		t.Errorf("expected local FS to win over registry, got: %s", e.islands[0].HTMLBody)
+	}
+}
+
+func TestTemplateHTML_UsesPartialRegistry(t *testing.T) {
+	// Inline-HTML islands have no FS; partial resolution must use the registry.
+	e := NewEngine()
+	e.RegisterPartial("my-tag", `<span>from-registry</span>`)
+
+	app := &testApp{}
+	app.TargetName = "inline"
+	app.TemplateHTML = `<div><my-tag></my-tag></div>`
+
+	e.Register(app)
+
+	if !strings.Contains(e.islands[0].HTMLBody, "from-registry") {
+		t.Errorf("expected registry lookup for inline island, got: %s", e.islands[0].HTMLBody)
+	}
+}

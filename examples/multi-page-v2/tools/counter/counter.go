@@ -1,6 +1,13 @@
 package counter
 
-import "github.com/anupshinde/godom"
+import (
+	"embed"
+
+	"github.com/anupshinde/godom"
+)
+
+//go:embed counter.html
+var fsys embed.FS
 
 // State is the shared counter state. Multiple islands embed *State to observe
 // and display the counter. Modifying State from Counter auto-refreshes any
@@ -26,7 +33,8 @@ func New(s *State) *Counter {
 	return &Counter{
 		Island: godom.Island{
 			TargetName: "counter",
-			Template:   "island-templates/counter/index.html",
+			Template:   "counter.html",
+			AssetsFS:   fsys,
 		},
 		State: s,
 	}

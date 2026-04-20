@@ -1,4 +1,10 @@
 {{define "body"}}
+<p class="text-gray-700 mb-4">
+    This dashboard shows four independent islands running in one Go process — a counter, an analog clock, a simulated system monitor, and a 3D solar system.
+    Counter, clock, and monitor share a single <code class="text-sm bg-gray-100 px-1 rounded">*counter.State</code> pointer, so incrementing the counter auto-refreshes the other two views.
+    The current time right now is <span g-island="digiclock"></span> — rendered by a minimal island using inline <code class="text-sm bg-gray-100 px-1 rounded">Island.TemplateHTML</code> with no filesystem at all.
+</p>
+
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
     <div class="bg-white rounded-lg shadow-sm p-5"><div g-island="counter"></div></div>
     <div class="bg-white rounded-lg shadow-sm p-5"><div g-island="clock"></div></div>

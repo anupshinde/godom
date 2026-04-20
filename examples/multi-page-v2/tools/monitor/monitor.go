@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"embed"
 	"math"
 	"math/rand"
 	"time"
@@ -9,6 +10,9 @@ import (
 	"github.com/anupshinde/godom/examples/multi-page-v2/tools/counter"
 	"github.com/anupshinde/godom/plugins/chartjs"
 )
+
+//go:embed monitor.html
+var fsys embed.FS
 
 type M = map[string]interface{}
 
@@ -101,7 +105,8 @@ func New(s *counter.State) *Monitor {
 	return &Monitor{
 		Island: godom.Island{
 			TargetName: "monitor",
-			Template:   "island-templates/monitor/index.html",
+			Template:   "monitor.html",
+			AssetsFS:   fsys,
 		},
 		State: s,
 	}

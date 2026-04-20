@@ -3,6 +3,7 @@
 package solar
 
 import (
+	"embed"
 	_ "embed"
 	"math"
 	"sort"
@@ -13,6 +14,9 @@ import (
 
 //go:embed canvas-bridge.js
 var canvasBridgeJS string
+
+//go:embed solar.html
+var fsys embed.FS
 
 const (
 	canvasWidth  = 1200
@@ -126,7 +130,8 @@ func New() *Solar {
 	return &Solar{
 		Island: godom.Island{
 			TargetName: "solar",
-			Template:   "island-templates/solar/index.html",
+			Template:   "solar.html",
+			AssetsFS:   fsys,
 		},
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/anupshinde/godom/internal/env"
 	"github.com/anupshinde/godom/internal/middleware"
 	"github.com/anupshinde/godom/internal/server"
+	"github.com/anupshinde/godom/internal/template"
 	"github.com/anupshinde/godom/internal/utils"
 	"github.com/anupshinde/godom/internal/vdom"
 )
@@ -55,7 +56,8 @@ type Engine struct {
 	plugins    map[string][]string      // plugin name → JS scripts
 	islIndex   map[interface{}]int      // island pointer → index in islands slice
 	names      map[string]bool          // registered target names (for duplicate check)
-	sharedFS   fs.FS                    // shared UI filesystem, set via SetFS; used when an island has no TemplateFS
+	sharedFS   fs.FS                    // default UI filesystem, set via SetFS; used when an island has no AssetsFS
+	partials   map[string]string        // named shared-partial registry (RegisterPartial / UsePartials)
 	userMux    *http.ServeMux           // custom mux from SetMux()
 	muxOpts    *MuxOptions              // custom paths for /ws and /godom.js
 	authFn     middleware.AuthFunc      // auth check; nil = no auth
@@ -73,10 +75,17 @@ type MuxOptions struct {
 // An island is a self-contained, stateful unit: its own goroutine, event
 // queue, and VDOM tree. This is islands-architecture terminology — what
 // other frameworks call "component" at the page level. See docs/why-islands.md.
+//
+// Template sources, in order of precedence:
+//   - TemplateHTML set: inline HTML is used directly (no filesystem involved).
+//   - Template + AssetsFS set: read Template from AssetsFS.
+//   - Template + engine's SetFS: read Template from the engine's shared FS.
 type Island struct {
-	TargetName string // matches g-island="name" attributes in parent templates
-	Template   string // template path relative to TemplateFS (or the engine's shared FS)
-	ci       *island.Info
+	TargetName   string // matches g-island="name" attributes in parent templates
+	Template     string // template path (resolved against AssetsFS or engine's SetFS)
+	TemplateHTML string // inline HTML; mutually exclusive with Template/AssetsFS
+	AssetsFS     fs.FS  // per-island filesystem for Template + sibling partials
+	ci           *island.Info
 }
 
 // MarkRefresh marks fields for surgical refresh. The actual refresh happens
@@ -135,13 +144,65 @@ func NewEngine() *Engine {
 		plugins:        make(map[string][]string),
 		islIndex:       make(map[interface{}]int),
 		names:          make(map[string]bool),
+		partials:       make(map[string]string),
 	}
 }
 
-// SetFS sets the shared UI filesystem for island templates. It is used by
-// Register() when an island does not carry its own TemplateFS.
+// SetFS sets the default UI filesystem for island templates. It is used by
+// Register() when an island does not carry its own AssetsFS. Optional — if
+// every island brings its own AssetsFS or uses TemplateHTML, SetFS can be
+// skipped.
 func (a *Engine) SetFS(fsys fs.FS) {
 	a.sharedFS = fsys
+}
+
+// RegisterPartial registers a shared partial by name. When a template uses
+// <my-button>, the engine resolves it by looking in (1) the island's local
+// FS at the entry's baseDir, then (2) this registry. Use this for reusable
+// HTML fragments shared across islands.
+//
+// Example:
+//
+//	eng.RegisterPartial("brand-logo", `<img src="/logo.svg" alt="brand"/>`)
+func (a *Engine) RegisterPartial(name, html string) {
+	if a.partials == nil {
+		a.partials = make(map[string]string)
+	}
+	a.partials[name] = html
+}
+
+// UsePartials bulk-registers partials from a filesystem. It scans baseDir
+// inside fsys for *.html files and calls RegisterPartial(basename, content)
+// for each. Sugar over RegisterPartial for the embed-a-directory case.
+//
+// Example:
+//
+//	//go:embed partials
+//	var partials embed.FS
+//	eng.UsePartials(partials, "partials")
+func (a *Engine) UsePartials(fsys fs.FS, baseDir string) {
+	if fsys == nil {
+		log.Fatal("godom: UsePartials requires a non-nil fs.FS")
+	}
+	entries, err := fs.ReadDir(fsys, baseDir)
+	if err != nil {
+		log.Fatalf("godom: UsePartials failed to read %s: %v", baseDir, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasSuffix(name, ".html") {
+			continue
+		}
+		base := strings.TrimSuffix(name, ".html")
+		b, err := fs.ReadFile(fsys, path.Join(baseDir, name))
+		if err != nil {
+			log.Fatalf("godom: UsePartials failed to read %s: %v", name, err)
+		}
+		a.RegisterPartial(base, string(b))
+	}
 }
 
 // SetMux sets the HTTP mux. godom registers its handlers (/ws, /godom.js) on it.
@@ -197,11 +258,9 @@ func (a *Engine) RegisterPlugin(name string, scripts ...string) {
 	a.plugins[name] = scripts
 }
 
-// Register registers one or more islands. Each island must have TargetName
-// and Template set on its embedded godom.Island before calling Register.
-//
-// Register uses the filesystem set via SetFS() unless the island carries
-// its own TemplateFS. The Template path is resolved against that filesystem.
+// Register registers one or more islands. Each island must set TargetName and
+// one of: TemplateHTML (inline), or Template+AssetsFS, or just Template with
+// a shared SetFS() default on the engine.
 func (a *Engine) Register(islands ...interface{}) {
 	for _, isl := range islands {
 		v := reflect.ValueOf(isl)
@@ -212,10 +271,15 @@ func (a *Engine) Register(islands ...interface{}) {
 			log.Fatal("godom: registered struct must embed godom.Island")
 		}
 
-		// Read TargetName and Template from the embedded Island.
+		// Read Island fields.
 		islField := v.Elem().FieldByName("Island")
 		name := islField.FieldByName("TargetName").String()
 		entryPath := islField.FieldByName("Template").String()
+		inlineHTML := islField.FieldByName("TemplateHTML").String()
+		var assetsFS fs.FS
+		if f := islField.FieldByName("AssetsFS"); f.IsValid() && !f.IsNil() {
+			assetsFS = f.Interface().(fs.FS)
+		}
 
 		if name == "" {
 			log.Fatal("godom: Register requires Island.TargetName to be set")
@@ -223,8 +287,13 @@ func (a *Engine) Register(islands ...interface{}) {
 		if name != "document.body" && !vdom.IsValidIdentifier(name) {
 			log.Fatalf("godom: Island.TargetName %q must be a valid identifier (letters, digits, underscores; cannot start with a digit)", name)
 		}
-		if entryPath == "" {
-			log.Fatalf("godom: Register %q requires Island.Template to be set", name)
+
+		// Validate template source: exactly one mode.
+		if inlineHTML != "" && (entryPath != "" || assetsFS != nil) {
+			log.Fatalf("godom: island %q: TemplateHTML is mutually exclusive with Template/AssetsFS", name)
+		}
+		if inlineHTML == "" && entryPath == "" {
+			log.Fatalf("godom: island %q: set either Template (path) or TemplateHTML (inline)", name)
 		}
 
 		if a.names[name] {
@@ -240,17 +309,55 @@ func (a *Engine) Register(islands ...interface{}) {
 			log.Fatalf("godom: Register %q failed — same instance already registered as %q", name, a.islands[idx].SlotName)
 		}
 
-		if a.sharedFS == nil {
-			log.Fatal("godom: call SetFS() before Register()")
+		// Resolve the entry HTML and the sibling-file FS layer.
+		entryHTML, layers, err := resolveIslandSource(name, entryPath, inlineHTML, assetsFS, a.sharedFS)
+		if err != nil {
+			log.Fatal(err)
 		}
 
-		ci := server.BuildIslandInfo(isl, a.sharedFS, entryPath)
+		ci := server.BuildIslandInfo(isl, entryHTML, layers, a.partials)
 		ci.SlotName = name
-		islField.Set(reflect.ValueOf(Island{TargetName: name, Template: entryPath, ci: ci}))
+
+		// Preserve island-side fields on the embed after Register.
+		islField.Set(reflect.ValueOf(Island{
+			TargetName:   name,
+			Template:     entryPath,
+			TemplateHTML: inlineHTML,
+			AssetsFS:     assetsFS,
+			ci:           ci,
+		}))
 		a.islands = append(a.islands, ci)
 		a.islIndex[isl] = len(a.islands) - 1
 		a.names[name] = true
 	}
+}
+
+// resolveIslandSource picks the template source and builds the FS layers for
+// sibling-partial lookup. Returns the entry HTML string and ordered FSLayers.
+func resolveIslandSource(name, entryPath, inlineHTML string, assetsFS, sharedFS fs.FS) (string, []template.FSLayer, error) {
+	// Inline path: HTML is given directly, no FS needed for entry.
+	if inlineHTML != "" {
+		// Inline islands have no sibling FS; partial lookup goes straight
+		// to the engine registry (threaded through BuildIslandInfo).
+		return inlineHTML, nil, nil
+	}
+
+	// FS-based: prefer island's AssetsFS, fall back to engine SetFS.
+	fsys := assetsFS
+	layerLabel := fmt.Sprintf("island %q AssetsFS", name)
+	if fsys == nil {
+		fsys = sharedFS
+		layerLabel = "engine SetFS"
+	}
+	if fsys == nil {
+		return "", nil, fmt.Errorf("godom: island %q has no filesystem — set Island.AssetsFS or call SetFS()", name)
+	}
+	b, err := fs.ReadFile(fsys, entryPath)
+	if err != nil {
+		return "", nil, fmt.Errorf("godom: island %q: failed to read %s: %w", name, entryPath, err)
+	}
+	layers := []template.FSLayer{{FS: fsys, BaseDir: path.Dir(entryPath), Label: layerLabel}}
+	return string(b), layers, nil
 }
 
 // Run initializes the island lifecycle, registers /ws and /godom.js handlers
@@ -343,24 +450,34 @@ func (a *Engine) QuickServe(isl interface{}) error {
 	idx := a.islIndex[isl]
 	pageHTML := strings.Replace(a.islands[idx].HTMLBody, "</body>", "<script src=\"/godom.js\"></script>\n</body>", 1)
 
-	// Serve static files from the template's directory.
-	dir := path.Dir(templateFile)
+	// Serve static files from the template's directory. Only available for
+	// FS-based islands with a shared engine FS (QuickServe's common case).
 	var staticFS fs.FS
-	if dir == "." {
-		staticFS = a.sharedFS
-	} else {
-		var err error
-		staticFS, err = fs.Sub(a.sharedFS, dir)
-		if err != nil {
-			return fmt.Errorf("godom: invalid template path %q: %w", templateFile, err)
+	if a.sharedFS != nil && templateFile != "" {
+		dir := path.Dir(templateFile)
+		if dir == "." {
+			staticFS = a.sharedFS
+		} else {
+			var err error
+			staticFS, err = fs.Sub(a.sharedFS, dir)
+			if err != nil {
+				return fmt.Errorf("godom: invalid template path %q: %w", templateFile, err)
+			}
 		}
 	}
-	staticHandler := http.FileServer(http.FS(staticFS))
+	var staticHandler http.Handler
+	if staticFS != nil {
+		staticHandler = http.FileServer(http.FS(staticFS))
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
-			staticHandler.ServeHTTP(w, r)
+			if staticHandler != nil {
+				staticHandler.ServeHTTP(w, r)
+			} else {
+				http.NotFound(w, r)
+			}
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
