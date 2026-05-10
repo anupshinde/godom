@@ -153,7 +153,7 @@ This is the intentional state change path. Methods are where business logic live
 
 Separating sync from action solves a fundamental tension: inputs change constantly, but re-renders are expensive.
 
-Without Layer 1, you'd need a method for every input (`g-click="OnNameChange"`) or you'd re-render the entire tree on every keystroke. With Layer 1, the user types freely (Go stays in sync via cheap field updates), then clicks a button (Layer 2 calls the method, which reads the already-synced field). The method doesn't need to parse the input — it's already there.
+Without Layer 1, you'd need a method for every input (`g-click="OnNameChange"`) or you'd re-render the entire tree on every keystroke. With Layer 1, the framework sets exactly one bound field per keystroke and runs a tightly-scoped render — Go stays in sync, the user types freely, and the wire payload is usually empty. Then they click a button (Layer 2 calls the method, which reads the already-synced field). The method doesn't need to parse the input — it's already there.
 
 ```
 User types "hello" into g-bind="Name"     User clicks g-click="Save"
@@ -403,7 +403,7 @@ The bridge is vanilla JS with no dependencies. It:
 - On `init`: builds the entire DOM from a JSON tree description, registering every node by ID in `nodeMap`
 - On `patch`: applies patches by looking up target nodes via `nodeMap[nodeID]` — text changes, fact updates, appends, removals, keyed reorders, plugin updates, and full redraws
 - Applies facts: DOM properties, HTML attributes, namespaced attributes (SVG), inline styles, and event listeners
-- Layer 1 (input sync): sends `BROWSER_INPUT` — cheap field update, no re-render (see [two layers](#browser--go-two-layers))
+- Layer 1 (input sync): sends `BROWSER_INPUT` — server sets the bound field, triggers a scoped re-render (see [two layers](#browser--go-two-layers))
 - Layer 2 (method calls): sends `BROWSER_METHOD` — calls Go method, triggers re-render (see [two layers](#browser--go-two-layers))
 - ExecJS: evaluates JavaScript expressions sent by Go (`SERVER_JSCALL`), returns results via `BROWSER_JSRESULT`
 - `godom.call()`: allows JavaScript to invoke Go methods on islands via `BROWSER_METHOD` with `node_id: 0`
