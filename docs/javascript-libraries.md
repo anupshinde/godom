@@ -269,7 +269,7 @@ func main() {
 | `Refresh()` from a goroutine | `update(el, data)` called for changed plugin fields |
 | Browser reconnects | `init(el, data)` called again (fresh start) |
 
-The bridge tracks which elements have been initialized using the element's `data-gid`. On reconnect, the tracking resets and `init` is called again.
+The bridge tracks which elements have been initialized using a `WeakSet` (`readyEls`); each element also carries an internal `_godomId` property that maps it back to its VDOM node ID. On reconnect, the tracking resets and `init` is called again.
 
 ---
 

@@ -137,21 +137,20 @@ Requires Go 1.25+ and a web browser.
 | Directive | Example | Description |
 |-----------|---------|-------------|
 | `g-draggable` | `g-draggable="i"` | Make element draggable, with the given value as drag data |
-| `g-draggable:group` | `g-draggable:palette="'red'"` | Draggable with a named group — only matching dropzones accept the drop |
-| `g-dropzone` | `g-dropzone="'canvas'"` | Mark element as a drop zone with a named value (used as `to` in drop handler) |
-| `g-drop` | `g-drop="Reorder"` | Call method on drop — receives `(from, to)` or `(from, to, position)` |
+| `g-draggable:group` | `g-draggable:palette="'red'"` | Draggable with a named group — only matching `g-drop:group`/`g-dropzone:group` handlers accept the drop |
+| `g-drop` | `g-drop="Reorder"` | Call method on drop — receives `(from, to)` |
 | `g-drop:group` | `g-drop:palette="Add"` | Drop handler filtered by group — only fires for matching `g-draggable:group` |
+| `g-dropzone` | `g-dropzone="HandleDrop"` | Synonym for `g-drop` — registers a drop handler on a "zone" element (often without its own `g-draggable`, in which case `to` arrives as `"null"`) |
 
 **Groups** isolate drag interactions. A `g-draggable:palette` element can only be dropped on a `g-drop:palette` handler. Without a group, all draggables and drop handlers interact freely.
 
-**Drop data** is passed as method arguments: `from` (the draggable's value), `to` (the dropzone's value or the target's drag data), and optionally `position` (`"above"` or `"below"` based on cursor position). String and numeric values are preserved automatically.
+**Drop data** is passed as method arguments: `from` (the draggable's value) and `to` (the drop target's `g-draggable` value, or `"null"` if it has none). Any extra args declared in the directive (`g-drop="Reorder(item)"`) are appended after them. String and numeric values are preserved automatically.
 
 **CSS classes** are applied automatically during drag operations:
 - `.g-dragging` — on the element being dragged
 - `.g-drag-over` — on a drop zone when a compatible draggable hovers over it
-- `.g-drag-over-above` / `.g-drag-over-below` — on sortable items indicating cursor position
 
-See [docs/drag-drop.md](docs/drag-drop.md) for the full design rationale — why this split between bridge and Go, why MIME types for groups, and alternatives considered.
+See [docs/drag-drop.md](docs/drag-drop.md) for the full design rationale — why this split between bridge and Go, how groups are filtered, and alternatives considered.
 
 ### Lists
 
@@ -541,7 +540,7 @@ See [docs/plugins.md](docs/plugins.md) for the full list and [docs/javascript-li
 - [examples/system-monitor-chartjs/](examples/system-monitor-chartjs/) — system monitor with Chart.js plugin (CPU, memory, disk, swap, load charts)
 - [examples/charts-without-plugin/](examples/charts-without-plugin/) — ApexCharts with inline bridge adapter (no plugin package)
 - [examples/drag-tiles/](examples/drag-tiles/) — 24 colored tiles with drag-to-reorder and a periodic shine animation sweep
-- [examples/drag-demo/](examples/drag-demo/) — drag-and-drop demo with groups, dropzones, string data, and position detection (palette → canvas → trash)
+- [examples/drag-demo/](examples/drag-demo/) — drag-and-drop demo with groups, dropzones, and string data (palette → canvas → trash)
 - [examples/basic-form-builder/](examples/basic-form-builder/) — drag-and-drop form builder with palette, canvas, config panel, preview mode, and JSON export (uses drag groups, nested g-for, conditional rendering)
 - [examples/stock-ticker/](examples/stock-ticker/) — live stock ticker dashboard with 30 simulated stocks, per-stock tick intervals, table with color-coded gainers/losers, and external CSS via static file serving
 - [examples/solar-system/](examples/solar-system/) — 3D solar system with a Go-built 3D engine and Canvas 2D rendering (mouse drag, scroll zoom, follow planets)

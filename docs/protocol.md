@@ -51,9 +51,9 @@ Each `DomPatch` targets a node by its stable numeric `node_id` (assigned by Go d
 
 `BrowserMessage` is the single message type sent from the browser to Go. The `kind` field (a `BrowserKind` enum) determines which payload fields are relevant:
 
-**BROWSER_INPUT** — input value sync (Layer 1). Sent automatically on every `input` event for elements with `g-bind`. Contains `node_id` and `value`. Updates the struct field without triggering a re-render.
+**BROWSER_INPUT** — input value sync (Layer 1). Sent automatically on every `input` event for elements with `g-bind`. Contains `node_id` and `value`. Sets the bound struct field, then runs a render cycle scoped to that one-field change (the diff is typically empty unless another directive reads the same field, or a sibling island shares a pointer).
 
-**BROWSER_METHOD** — method call (Layer 2). Sent when the user triggers an event (click, keydown, etc.) or when JavaScript calls `godom.call()`. Contains `node_id` (0 for `godom.call`), `method`, and `args`. Calls the Go method via reflection and triggers a full re-render.
+**BROWSER_METHOD** — method call (Layer 2). Sent when the user triggers an event (click, keydown, etc.) or when JavaScript calls `godom.call()`. Contains `node_id` (0 for `godom.call`), `method`, and `args`. Calls the Go method via reflection, then runs the same render cycle; because arbitrary code can have mutated arbitrary fields, the diff scope is wider than Layer 1's.
 
 When `node_id` is 0 (from `godom.call`), the server searches all islands for one that has the named method and dispatches to the first match.
 

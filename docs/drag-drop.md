@@ -39,10 +39,10 @@ Three directives cover the common patterns:
 | Directive | Role | Analogy |
 |-----------|------|---------|
 | `g-draggable="value"` | Make an element draggable, attach data | Like `g-bind` — declares what data this element carries |
-| `g-draggable:group="value"` | Draggable within a named group | Group isolation via MIME types |
-| `g-dropzone="'name'"` | Mark a drop target with a name | Identifies this element for drop resolution |
+| `g-draggable:group="value"` | Draggable within a named group | Group isolation via a JS-side group variable + `data-drop-group` attribute |
 | `g-drop="Method"` | Handle drops, call a Go method | Like `g-click` — an event handler |
 | `g-drop:group="Method"` | Drop handler filtered by group | Only fires for matching `g-draggable:group` |
+| `g-dropzone="Method"` | Synonym for `g-drop` | Registers a drop handler (kept for readability where the element is conceptually a "zone") |
 
 ### Groups
 
@@ -59,26 +59,25 @@ Groups solve a real problem: in a form builder, you don't want palette items to 
 <div g-drop:palette="AddField" g-drop:canvas="Reorder">...</div>
 ```
 
-The group name (after the colon in `g-draggable:palette`) is encoded as a MIME type suffix in `dataTransfer`: `application/x-godom-palette`, `application/x-godom-canvas`. This uses the browser's native MIME-type filtering — `dragover` only fires if the MIME type matches, so incompatible drags don't trigger visual feedback.
+The group name (after the colon in `g-draggable:palette` / `g-drop:palette`) is rendered into the DOM as `data-drag-group` on the source and `data-drop-group` on the target. The bridge stores the active drag group in a module-level JS variable on `dragstart` (`_currentDragGroup`) and consults it on `dragover` and `drop`: if the target carries a non-empty `data-drop-group` that doesn't match, the event is short-circuited (`dragover` doesn't `preventDefault`, so the drop is rejected at the browser level; `drop` returns early before sending anything to Go). The `dataTransfer` payload itself uses plain `text/plain` and carries only the source's `data-drag-value`.
 
-**Why MIME types, not a JS-side group map?** Because the browser already has a filtering mechanism for drag data types. Using it means zero JS-side state for group tracking. The bridge sets the MIME type on `dragstart` and checks it on `dragover`/`drop` — no group registry, no lookup tables.
+**Why a JS-side variable, not MIME types?** A direct group string in a closure variable is the simplest thing that works and is easy to read in the bridge. We considered using custom MIME types in `dataTransfer.setData` to lean on the browser's native drag-data filtering, but that adds ceremony for no measurable benefit at the scales godom drag-drop targets — a small number of drag groups per page, all originating in the same document.
 
 ### Drop data flow
 
 When a drop occurs:
 
-1. Bridge reads `from` (the draggable's value from `dataTransfer`)
-2. Bridge reads `to` (the drop target's `g-dropzone` value, or its own `g-draggable` value for sortable lists)
-3. Bridge computes `position` (`"above"` or `"below"` based on cursor Y relative to the element's midpoint)
-4. Bridge sends `from`, `to`, and `position` as JSON-encoded `MethodCall` args
-5. Go unpacks the arguments and calls the method
+1. Bridge reads `from` (the source's `data-drag-value`, originally the resolved `g-draggable` expression — defaults to `"null"` if the source had no draggable value)
+2. Bridge reads `to` (the drop target's `data-drag-value` — also `"null"` if the target has no `g-draggable`; this is common for "container" zones)
+3. Bridge sends `from` and `to` as the first two arguments of a `MethodCall`. Any extra args declared in the directive (e.g. `g-drop="Reorder(item)"`) are appended after them.
+4. Go unpacks the arguments and calls the method via reflection.
 
-The Go method signature is flexible:
-- `Reorder(from, to float64)` — position is ignored (extra args are discarded)
-- `Reorder(from, to float64, position string)` — position is used
-- `AddField(fieldType string)` — from palette, only the drag data matters
+The Go method signature is just whatever the receiving method declares:
+- `Reorder(from, to float64)` — typical sortable list using indices
+- `AddField(from, to float64)` — palette-to-canvas; if the palette carries a string payload, declare `from string` instead
+- Extra trailing args from the directive expression are passed positionally after `from, to`
 
-**Why `float64` for indices?** JSON numbers are `float64`. The Go method receives them as `float64` and casts internally (`int(from)`). This avoids type coercion logic in the bridge — it sends what JSON gives it, and Go handles the types.
+**Why `float64` for indices?** When the resolved `g-draggable` value is a number, the bridge encodes it as a JSON number, and Go's reflection-based dispatcher delivers it as `float64`. Cast to `int` in the method body if you need an index. String payloads (`g-draggable="'text'"`) arrive as `string`. This keeps the bridge dumb — it forwards whatever JSON encoded — and lets Go handle the types.
 
 ### CSS feedback
 
@@ -87,11 +86,9 @@ The bridge applies CSS classes automatically during drag:
 | Class | When applied | Purpose |
 |-------|-------------|---------|
 | `.g-dragging` | On the source element during drag | Dim or hide the original |
-| `.g-drag-over` | On drop zone when compatible item hovers | General "can drop here" feedback |
-| `.g-drag-over-above` | On sortable item, cursor in top half | Show insertion line above |
-| `.g-drag-over-below` | On sortable item, cursor in bottom half | Show insertion line below |
+| `.g-drag-over` | On drop zone when a compatible draggable hovers | General "can drop here" feedback |
 
-Classes are cleaned up on `dragend` and `dragleave`. The developer styles these in CSS — the framework just applies and removes them.
+Classes are cleaned up on `dragend` and `dragleave`. The developer styles these in CSS — the framework just applies and removes them. There is intentionally no built-in "above/below" classifier; if a list needs that affordance, the receiving Go method can read the cursor position from a follow-up event or the app can compute insertion using the source/target indices alone.
 
 **Why CSS classes, not style commands from Go?** Drag feedback needs to be instant — sub-frame latency. A round trip to Go for "add class on hover" would feel sluggish. The bridge applies classes directly because this is visual feedback, not state. Go never needs to know that an element has `.g-drag-over` — it only cares about the final drop.
 
@@ -99,12 +96,12 @@ Classes are cleaned up on `dragend` and `dragleave`. The developer styles these 
 
 | Concern | Bridge (JS) | Go |
 |---------|-------------|-----|
-| `dragstart` listener | ✅ Sets `dataTransfer`, adds `.g-dragging` | — |
-| `dragover` listener | ✅ `preventDefault()`, computes above/below, applies CSS | — |
-| `dragenter`/`dragleave` | ✅ Counter-based tracking, CSS cleanup | — |
-| `dragend` | ✅ Removes all drag CSS classes | — |
-| `drop` listener | ✅ Reads data, computes position, sends to Go | ✅ Receives `(from, to, position)`, calls method, diffs state |
-| Group filtering | ✅ MIME type check on `dragover`/`drop` | ✅ Group name encoded in directive (`.group` suffix) |
+| `dragstart` listener | ✅ Sets `dataTransfer` (`text/plain`), records `_currentDragGroup`, adds `.g-dragging` | — |
+| `dragover` listener | ✅ Group check; if compatible, `preventDefault()` + adds `.g-drag-over` | — |
+| `dragleave` | ✅ Removes `.g-drag-over` | — |
+| `dragend` | ✅ Removes `.g-dragging`, clears `_currentDragGroup` | — |
+| `drop` listener | ✅ Group check, reads `data-drag-value` from source and target, sends `(from, to, ...args)` | ✅ Receives `(from, to, ...)`, calls method, diffs state |
+| Group filtering | ✅ JS variable + `data-drop-group` attribute | ✅ Group name encoded in directive (`:group` suffix) |
 | What happens on drop | — | ✅ Reorder slice, add item, remove item, whatever the method does |
 
 This split mirrors the existing architecture: the bridge handles browser mechanics, Go handles semantics. The bridge never decides what a drop *means* — it just reports what happened.
@@ -121,7 +118,7 @@ Drag-and-drop combined with `g-for` lists is the primary use case. A sortable li
 </div>
 ```
 
-Each item is both draggable (with its index as data) and a drop target. Dropping item 3 onto item 1 calls `Reorder(3, 1, "above")`. The Go method reorders the slice, and godom's list diffing handles the DOM update.
+Each item is both draggable (with its index as data) and a drop target. Dropping item 3 onto item 1 calls `Reorder(3, 1)`. The Go method reorders the slice, and godom's list diffing handles the DOM update.
 
 The `g-draggable` binding is re-evaluated on each render, so indices stay correct after reordering. This is important — after moving item 3 to position 1, the old item 1 is now at position 2, and its `g-draggable` value updates accordingly.
 
@@ -132,6 +129,6 @@ The `basic-form-builder` example exercises all of this:
 - **Palette → canvas** (`g-draggable:palette` / `g-drop:palette`): Drag field types from a palette, drop onto the canvas to add them. Different groups prevent palette items from being sortable within the palette.
 - **Canvas reordering** (`g-draggable:canvas` / `g-drop:canvas`): Drag canvas fields to reorder them within the form.
 - **Canvas → trash** (`g-drop:canvas` on a trash zone): Drag a canvas field to the trash to remove it.
-- **CSS feedback**: `.g-dragging` dims the source, `.g-drag-over` highlights the canvas, `.g-drag-over-above`/`.g-drag-over-below` show insertion lines on sortable items.
+- **CSS feedback**: `.g-dragging` dims the source, `.g-drag-over` highlights the active drop target.
 
 Three groups (`palette`, `canvas`, and ungrouped), three drop handlers (`AddField`, `Reorder`, `RemoveField`), zero JavaScript.

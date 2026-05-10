@@ -267,9 +267,9 @@ All directives are `g-*` attributes on HTML elements.
 |-----------|--------|-------------|
 | `g-draggable` | `g-draggable="payload"` | Make element draggable with payload value |
 | `g-draggable:group` | `g-draggable:tasks="i"` | Draggable within named group |
-| `g-dropzone` | `g-dropzone="'target'"` | Mark as drop target with named value |
-| `g-drop` | `g-drop="HandleDrop"` | Drop handler — receives `(from, to)` or `(from, to, position)` |
-| `g-drop:group` | `g-drop:tasks="Reorder"` | Group-filtered drop handler |
+| `g-drop` | `g-drop="HandleDrop"` | Drop handler — receives `(from, to)` |
+| `g-drop:group` | `g-drop:tasks="Reorder"` | Group-filtered drop handler (only fires when source `g-draggable:tasks` matches) |
+| `g-dropzone` | `g-dropzone="HandleDrop"` | Synonym for `g-drop` — registers a drop handler |
 
 ### Plugins
 
@@ -333,10 +333,10 @@ func (a *App) DragMove(x, y float64) { ... }
 // Wheel event — g-wheel receives deltaY
 func (a *App) Zoom(deltaY float64) { ... }
 
-// Drag and drop — g-drop receives (from, to) or (from, to, position)
+// Drag and drop — g-drop / g-dropzone receive (from, to) — JSON numbers arrive as float64
 func (a *App) Reorder(from, to float64) { ... }
-func (a *App) ReorderWithPos(from, to float64, position string) { ... }
-// position is "above" or "below"
+// from = source element's g-draggable value (e.g. loop index)
+// to   = drop target's g-draggable value, or "null" if the drop element has no g-draggable
 ```
 
 **Important:** After an event handler runs, godom automatically diffs and pushes patches. Do NOT call `Refresh()` inside event handlers.
@@ -825,37 +825,33 @@ godom.register("myplugin", {
 <!-- Grouped drop — only accepts matching g-draggable:palette -->
 <div g-drop:palette="AddColor">Canvas</div>
 
-<!-- Dropzone with named value (passed as 'to' argument) -->
-<div g-dropzone="'trash'" g-drop="HandleDrop">Trash</div>
+<!-- g-dropzone is a synonym for g-drop — registers a drop handler. Use whichever reads better. -->
+<div g-dropzone="HandleTrash">Trash</div>
 ```
 
 ### Go handler signatures
 
 ```go
-// from = draggable payload, to = dropzone value
+// from = source's g-draggable value, to = drop target's g-draggable value (or "null")
 func (a *App) HandleDrop(from, to float64) { ... }
-
-// With position detection ("above" or "below")
-func (a *App) Reorder(from, to float64, position string) { ... }
 ```
 
 ### Auto-applied CSS classes
 
-- `.g-dragging` — on the element being dragged
-- `.g-drag-over` — on drop zone when compatible draggable hovers
-- `.g-drag-over-above` / `.g-drag-over-below` — cursor position indicators
+- `.g-dragging` — on the source element while a drag is in progress
+- `.g-drag-over` — on the drop zone while a compatible draggable hovers over it
 
 ---
 
 ## Shadow DOM
 
-Add `g-shadow` to an island.s target element for CSS isolation:
+Add `g-shadow` to an island's target element for CSS isolation:
 
 ```html
 <div g-island="widget" g-shadow></div>
 ```
 
-The island.s template renders inside a Shadow DOM, isolated from the host page's CSS.
+The island's template renders inside a Shadow DOM, isolated from the host page's CSS.
 
 ---
 
@@ -1012,7 +1008,7 @@ body:not(.g-ready) { visibility: hidden; }
 [g-island]:not(.g-ready) { visibility: hidden; }
 ```
 
-The `.g-ready` class is added after the island.s initial tree renders.
+The `.g-ready` class is added after the island's initial tree renders.
 
 ---
 

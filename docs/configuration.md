@@ -79,6 +79,24 @@ Exit immediately after `Run()` validation succeeds, without starting the server.
 
 This is env-only — there is no code-level field.
 
+### DisconnectHTML
+
+Custom HTML to display when the WebSocket connection is lost. Replaces the default disconnect overlay (used in root mode).
+
+| | Value |
+|---|---|
+| Default | built-in disconnect overlay |
+| Code | `eng.DisconnectHTML = "<div>Connection lost</div>"` |
+
+### DisconnectBadgeHTML
+
+Custom HTML for a small disconnect badge indicator (used in embedded mode instead of the full overlay). Useful for a subtle notification on hosted pages.
+
+| | Value |
+|---|---|
+| Default | built-in badge HTML |
+| Code | `eng.DisconnectBadgeHTML = "<span>offline</span>"` |
+
 ## Browser-side settings
 
 These are JavaScript `window` variables set in the HTML page **before** loading the godom JS bundle. They are not Go engine settings — they configure the bridge running in the browser.
@@ -139,24 +157,6 @@ The godom browser extension sets this to `false` by default and provides an "All
 ### GODOM_DEBUG
 
 Automatically injected by the server when `GODOM_DEBUG` is set. Accepts `1`, `true`, `0`, or `false`. Enables debug-level warnings in the bridge console (e.g. missing island targets during init). Not set manually — controlled via the server-side env var.
-
-### DisconnectHTML
-
-Custom HTML to display when the WebSocket connection is lost. Replaces the default disconnect overlay.
-
-| | Value |
-|---|---|
-| Default | built-in disconnect overlay |
-| Code | `eng.DisconnectHTML = "<div>Connection lost</div>"` |
-
-### DisconnectBadgeHTML
-
-Custom HTML for a small disconnect badge indicator, shown instead of the full overlay. Useful for a subtle notification.
-
-| | Value |
-|---|---|
-| Default | not set (full overlay used) |
-| Code | `eng.DisconnectBadgeHTML = "<span>offline</span>"` |
 
 ### Lifecycle hooks
 

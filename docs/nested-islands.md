@@ -67,7 +67,7 @@ The external page declares a single `g-island` target. godom renders the full is
 
 This pattern supports the same interactive complexity as the QuickServe-based mode. Drag-and-drop reordering of child islands within the layout, shared state between siblings, and all other godom features work correctly through the nested chain.
 
-The VDOM pipeline (tree build, diff, patches) operates the same way regardless of whether the outer shell is served by godom or by an external page. The `nodeMap` and `IDCounter` stay consistent through the full hierarchy.
+The VDOM pipeline (tree build, diff, patches) operates the same way regardless of whether the outer shell is served by godom or by an external page. Per-target `nodeMap`s in the bridge and the engine-wide `IDCounter` stay consistent through the full hierarchy.
 
 ## Gotchas
 

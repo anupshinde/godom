@@ -497,6 +497,10 @@ type Clock struct {
     godom.Island
     Time string
 }
+
+type Layout struct {
+    godom.Island
+}
 ```
 
 Set each island's target name and template, then register them:
@@ -506,9 +510,11 @@ counter := &Counter{}
 counter.TargetName = "counter"
 counter.Template = "ui/counter/index.html"
 
+clock := &Clock{}
 clock.TargetName = "clock"
 clock.Template = "ui/clock/index.html"
 
+layout := &Layout{}
 layout.Template = "ui/layout/index.html"
 
 eng := godom.NewEngine()

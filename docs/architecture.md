@@ -139,11 +139,9 @@ The browser sends two types of messages to Go, each serving a different purpose.
 
 **Layer 1 — Input sync (`BROWSER_INPUT`)**
 
-Automatic and implicit. When an element has `g-bind="Name"`, the bridge sends a `BrowserMessage` with `kind: BROWSER_INPUT` on every `input` event — every keystroke, every paste, every change. The server receives it, updates the struct field (`Name = "new value"`), and **does not re-render**. No tree resolution, no diff, no patches sent back.
+Automatic and implicit. When an element has `g-bind="Name"` (or `g-value`/`g-checked`), the bridge sends a `BrowserMessage` with `kind: BROWSER_INPUT` on every `input` event — every keystroke, every paste, every change. The server updates the struct field (`Name = "new value"`) via `SetField`, then triggers a refresh so any other nodes that reference `Name` (e.g. `<span g-text="Name">`, computed methods like `Greeting()`) update too. The refresh path is shared with `BROWSER_METHOD`: rebuild the tree, diff against the old tree, broadcast patches to all tabs.
 
-This keeps Go's state perfectly in sync with what the user is typing, cheaply. A text field updating 10 times per second doesn't trigger 10 full render cycles.
-
-The server does broadcast the new value to other connected tabs so they see the typing in real time, but this is a targeted value patch — not a tree diff.
+Inputs without a binding (`<input>` without `g-bind`/`g-value`/`g-checked`) take a cheaper path: the server updates `Props["value"]` (or `Props["checked"]`) on the live VDOM node and broadcasts a single targeted facts patch — no tree resolution, no diff. This keeps the input's value mirrored across tabs without paying for a full re-render on every keystroke.
 
 **Layer 2 — Event dispatch (`BROWSER_METHOD`)**
 
@@ -178,7 +176,7 @@ Inputs without `g-bind` still participate in Layer 1. The bridge sends `BROWSER_
 
 Not all state changes come from user interaction. Background goroutines (timers, sensors, network listeners) can mutate struct fields and call `Refresh()` to push the new state to all browsers:
 
-1. `Refresh()` sends a `RefreshKind` event to the island.s event queue
+1. `Refresh()` sends a `RefreshKind` event to the island's event queue
 2. The processor goroutine picks it up, resolves the template tree, diffs against the old tree, produces patches
 3. Broadcasts the patches to all connected tabs
 
@@ -188,7 +186,7 @@ This uses the same `ServerMessage` patch format as user-triggered changes — th
 
 Each island instance has a buffered event channel (`EventCh`) and a single processor goroutine. All browser input changes (`NodeEventKind`), method calls (`MethodCallKind`), background refreshes (`RefreshKind`), and ExecJS results are sent to this channel and processed sequentially.
 
-This eliminates race conditions between concurrent sources (multiple browser tabs, background goroutines) without requiring locks on the island.s state. Node-to-island routing uses a lazily-populated `nodeLookup` index (O(1) on hit, tree traversal on first miss). One exception uses `ci.Mu` directly: `handleInit` (writes the tree on new connection — must be synchronous so the browser receives the tree before subsequent patches).
+This eliminates race conditions between concurrent sources (multiple browser tabs, background goroutines) without requiring locks on the island's state. Node-to-island routing uses a lazily-populated `nodeLookup` index (O(1) on hit, tree traversal on first miss). One exception uses `ci.Mu` directly: `handleInit` (writes the tree on new connection — must be synchronous so the browser receives the tree before subsequent patches).
 
 Two filter hooks control event flow:
 - `shouldEnqueue(event)` — called before sending to the channel
@@ -318,8 +316,8 @@ Islands compose via `g-island` — the parent declares named insertion points us
 │  Browser           │                              │
 │              ┌─────┴─────┐                        │
 │              │  bridge   │                        │
-│              │  one      │                        │
-│              │  nodeMap  │                        │
+│              │ per-target│                        │
+│              │ nodeMaps  │                        │
 │              └─────┬─────┘                        │
 │                    │                              │
 │    ┌───────────────┼───────────────┐              │
@@ -381,7 +379,7 @@ For CSS isolation in embedded mode, add `g-shadow` to the target element:
 <div g-island="stock" g-shadow></div>
 ```
 
-The bridge attaches an open Shadow DOM root and renders the island.s DOM into it. Host page styles cannot reach inside, and island styles cannot leak out. CSS custom properties (`var(--name)`) still cross the boundary for theming.
+The bridge attaches an open Shadow DOM root and renders the island's DOM into it. Host page styles cannot reach inside, and island styles cannot leak out. CSS custom properties (`var(--name)`) still cross the boundary for theming.
 
 See `examples/embedded-widget/` for a working example (the heatmap island uses `g-shadow`). For nested island trees in embedded mode (a layout island whose template contains further `g-island` targets), see [nested-islands.md](nested-islands.md).
 
@@ -409,7 +407,7 @@ The bridge is vanilla JS with no dependencies. It:
 - Layer 2 (method calls): sends `BROWSER_METHOD` — calls Go method, triggers re-render (see [two layers](#browser--go-two-layers))
 - ExecJS: evaluates JavaScript expressions sent by Go (`SERVER_JSCALL`), returns results via `BROWSER_JSRESULT`
 - `godom.call()`: allows JavaScript to invoke Go methods on islands via `BROWSER_METHOD` with `node_id: 0`
-- Manages HTML5 drag-and-drop: `draggable` sets up `dragstart`/`dragend` with group-specific MIME types; drop handlers filter by group, apply CSS feedback classes (`.g-dragging`, `.g-drag-over`, `.g-drag-over-above`/`.g-drag-over-below`), and send drop data via `MethodCall`
+- Manages HTML5 drag-and-drop: `g-draggable` sets up `dragstart`/`dragend` and records the active group in a JS-side variable (with `data-drag-group`/`data-drop-group` for filtering); drop handlers consult that group, apply CSS feedback classes (`.g-dragging`, `.g-drag-over`), and send drop data (`from`, `to`) via `MethodCall`
 - Shadow DOM: when a `[g-island]` element has the `g-shadow` attribute, attaches an open shadow root and renders into it — isolates island CSS from the host page
 - Adds `.g-ready` CSS class to `document.body` (root mode) or `[g-island]` elements (embedded mode) after init, removes on cleanup — consumers use this to hide raw template content with CSS
 - Defers plugin `init` calls until the element is actually in the DOM (for libraries that need to measure dimensions)
@@ -459,7 +457,7 @@ Drag-and-drop splits responsibility between the bridge and Go. The bridge handle
 
 This split exists because `dragover` fires continuously and requires synchronous `preventDefault()` — a round trip to Go would be too slow. But the final drop result is always sent to Go, where the method decides what to do (reorder a slice, add an item, delete an item).
 
-Groups use `dataTransfer` MIME types (`application/x-godom-{group}`) for filtering, requiring zero JS-side state. CSS classes (`.g-dragging`, `.g-drag-over`, `.g-drag-over-above/below`) are applied directly by the bridge for instant visual feedback.
+Groups are filtered with a tiny JS-side variable (`_currentDragGroup` set on `dragstart`) plus `data-drag-group`/`data-drop-group` attributes on the elements. `dataTransfer` itself just carries the source's value as `text/plain`. CSS classes (`.g-dragging`, `.g-drag-over`) are applied directly by the bridge for instant visual feedback — there is no built-in above/below classifier.
 
 See [drag-drop.md](drag-drop.md) for the full design rationale and alternatives considered.
 
