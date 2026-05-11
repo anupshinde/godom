@@ -1154,6 +1154,8 @@ eng.SetMux(mux, nil)
 
 12. **`g-for` variable naming:** The item variable and index are positional: `g-for="item, i in Items"`. The item comes first, index second.
 
+13. **Mixed-content text nodes don't register bindings.** A text node like `<div>Count: {{Count}}</div>` (static prefix + interpolation in the same node) deliberately skips binding registration — surgically patching it would lose the static prefix. Consequences: `MarkRefresh("Count")` won't update this node (the full `Refresh()` path still does, via `BuildUpdate` + diff), and the framework can't tell from this node's patch alone which field changed. For shared-pointer cross-island refresh, this used to mean siblings went stale silently; siblings now get a full fallback refresh in that case. If a field is observed by another island via shared state, prefer `<span g-text="Count">` or wrap the `{{Count}}` in its own element — this keeps surgical refresh available and makes the binding explicit.
+
 ---
 
 ## Project Structure Convention

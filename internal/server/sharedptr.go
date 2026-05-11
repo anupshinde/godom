@@ -66,17 +66,24 @@ func removePtr(ptrs []uintptr, target uintptr) []uintptr {
 	return result
 }
 
-// refreshSharedIslands triggers surgical refresh on all other components
-// that share an embedded pointer with the given component, using the changed
-// field names extracted from the original component's patches.
+// refreshSharedIslands triggers refresh on all other components that share an
+// embedded pointer with the given component. When changedFields is non-empty,
+// siblings get a surgical refresh keyed off those field names. When it's empty
+// — which happens when the source island's patches couldn't be reverse-mapped
+// to a binding (e.g. mixed-content text nodes like "Count: {{Count}}" don't
+// register bindings, so changedFieldsFromPatches returns nothing) — fall back
+// to a full refresh on each sibling. Full refresh goes through BuildUpdate +
+// diff and handles mixed-content text nodes correctly, so siblings stay in
+// sync even when surgical-refresh metadata is unavailable.
 func (sm *sharedPtrMaps) refreshSharedIslands(compIdx int, changedFields []string) {
-	if sm == nil || len(changedFields) == 0 {
+	if sm == nil {
 		return
 	}
 	ptrs := sm.compIdxToPtr[compIdx]
 	if len(ptrs) == 0 {
 		return
 	}
+	surgical := len(changedFields) > 0
 	seen := map[int]bool{compIdx: true} // skip self
 	for _, ptr := range ptrs {
 		for _, sibIdx := range sm.ptrToCompIdx[ptr] {
@@ -85,7 +92,9 @@ func (sm *sharedPtrMaps) refreshSharedIslands(compIdx int, changedFields []strin
 			}
 			seen[sibIdx] = true
 			sib := sm.comps[sibIdx]
-			sib.AddMarkedFields(changedFields...)
+			if surgical {
+				sib.AddMarkedFields(changedFields...)
+			}
 			sib.RefreshFn()
 		}
 	}
