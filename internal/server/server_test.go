@@ -4722,3 +4722,147 @@ func TestBuildUpdate_EmptyPatches_ReturnsNil(t *testing.T) {
 		t.Error("expected nil changed fields when no patches")
 	}
 }
+
+// --- Regression test for issue #39 ---
+//
+// When two islands share an embedded pointer, a method on island A that
+// mutates the shared state must propagate a refresh to island B. The bug:
+// mixed-content interpolation like `Count: {{Count}}` in A's template
+// causes `changedFieldsFromPatches` to return an empty slice (mixed-content
+// text nodes deliberately skip binding registration so they can't be
+// surgically patched), `refreshSharedIslands` then early-returned, and B
+// silently went stale.
+//
+// This test exercises the full pipeline — template parsing, BuildInit,
+// BROWSER_METHOD dispatch, BuildUpdate on both islands, broadcast — so a
+// regression at any link in the chain trips it, not just the one fix site.
+
+type counterState39 struct {
+	Count int
+}
+
+type counterIsland39 struct {
+	Island struct{}
+	*counterState39
+}
+
+func (c *counterIsland39) Increment() { c.Count++ }
+
+type summaryIsland39 struct {
+	Island struct{}
+	*counterState39
+}
+
+// Counter's template uses mixed-content interpolation — the exact construct
+// that previously broke cross-island refresh.
+const counterMixedHTML39 = `<!DOCTYPE html><html><body>
+	<button g-click="Increment">+</button>
+	<div>Count: {{Count}}</div>
+</body></html>`
+
+// Summary also reads Count via mixed content, so its own surgical-refresh
+// path is degraded too; the fallback must drive a full BuildUpdate that
+// produces patches for the mixed-content text node via the diff path.
+const summaryMixedHTML39 = `<!DOCTYPE html><html><body>
+	<div>Total: {{Count}}</div>
+</body></html>`
+
+func makeIslandFromHTML39(app interface{}, html, slotName string) *island.Info {
+	v := reflect.ValueOf(app)
+	templates, err := vdom.ParseTemplate(html)
+	if err != nil {
+		panic(err)
+	}
+	return &island.Info{
+		Value:         v,
+		Typ:           v.Elem().Type(),
+		VDOMTemplates: templates,
+		SlotName:      slotName,
+		HTMLBody:      html,
+	}
+}
+
+func TestSharedPtrRefresh_MixedContentPropagatesAcrossIslands_Issue39(t *testing.T) {
+	shared := &counterState39{Count: 0}
+	counter := &counterIsland39{counterState39: shared}
+	summary := &summaryIsland39{counterState39: shared}
+
+	// Counter must be at index 0: startMultiCompTestServer's BROWSER_METHOD
+	// dispatch hardcodes compIdx=0, and counter is the island that owns
+	// Increment.
+	counterCI := makeIslandFromHTML39(counter, counterMixedHTML39, "document.body")
+	summaryCI := makeIslandFromHTML39(summary, summaryMixedHTML39, "summary")
+	comps := []*island.Info{counterCI, summaryCI}
+
+	host, err := startMultiCompTestServer(t, comps)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wsURL := fmt.Sprintf("ws://%s/ws", host)
+	client, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	client.SetReadDeadline(time.Now().Add(2 * time.Second))
+
+	// Read counter's auto-sent SERVER_INIT for document.body.
+	if _, _, err := client.ReadMessage(); err != nil {
+		t.Fatalf("read counter init: %v", err)
+	}
+
+	// Request summary's init so its tree is materialised on the server.
+	initReq := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_INIT_REQUEST, Island: "summary"}
+	payload, _ := proto.Marshal(initReq)
+	if err := client.WriteMessage(websocket.BinaryMessage, payload); err != nil {
+		t.Fatalf("write summary init request: %v", err)
+	}
+	if _, _, err := client.ReadMessage(); err != nil {
+		t.Fatalf("read summary init: %v", err)
+	}
+
+	// Fire Increment via BROWSER_METHOD (godom.call shape — NodeId=0).
+	methodCall := &gproto.BrowserMessage{Kind: gproto.BrowserKind_BROWSER_METHOD, Method: "Increment"}
+	payload, _ = proto.Marshal(methodCall)
+	if err := client.WriteMessage(websocket.BinaryMessage, payload); err != nil {
+		t.Fatalf("write method call: %v", err)
+	}
+
+	// Expect two patch broadcasts: one targeting "document.body" (counter
+	// rebuild), one targeting "summary" (sibling refresh via the fallback
+	// path). The bug previously suppressed the summary broadcast.
+	var sawCounterPatch, sawSummaryPatch bool
+	deadline := time.Now().Add(2 * time.Second)
+	for !(sawCounterPatch && sawSummaryPatch) && time.Now().Before(deadline) {
+		client.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		_, data, err := client.ReadMessage()
+		if err != nil {
+			break
+		}
+		var msg gproto.ServerMessage
+		if err := proto.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+		if msg.Kind != gproto.ServerKind_SERVER_PATCH {
+			continue
+		}
+		switch msg.Target {
+		case "document.body":
+			sawCounterPatch = true
+		case "summary":
+			sawSummaryPatch = true
+		}
+	}
+
+	if shared.Count != 1 {
+		t.Errorf("Increment did not mutate shared state: want Count=1, got %d", shared.Count)
+	}
+	if !sawCounterPatch {
+		t.Error("counter island did not broadcast a patch after Increment — its own refresh path is broken")
+	}
+	if !sawSummaryPatch {
+		t.Error("regression #39: summary island did not broadcast a patch after counter.Increment — shared-pointer cross-island refresh broken for mixed-content interpolation")
+	}
+}

@@ -226,3 +226,52 @@ func TestRefreshSharedComponents_SkipsSelf(t *testing.T) {
 		t.Error("RefreshFn should be called on sibling component B")
 	}
 }
+
+// Regression: an island that mutates shared state must propagate refreshes to
+// its siblings even when changedFields is empty. That happens whenever the
+// source island's patches can't be reverse-mapped to a binding — most commonly
+// mixed-content text nodes like "Count: {{Count}}", which deliberately skip
+// addBinding (see internal/vdom/tree.go). Before the fallback existed,
+// refreshSharedIslands early-returned on empty changedFields and siblings went
+// stale silently.
+func TestRefreshSharedComponents_FullRefreshFallbackOnEmptyFields(t *testing.T) {
+	shared := &sharedState{Score: 7}
+	a := &compA{sharedState: shared, Name: "A"}
+	b := &compB{sharedState: shared, Label: "B"}
+
+	ciA := makeCI(a)
+	ciB := makeCI(b)
+	comps := []*island.Info{ciA, ciB}
+
+	sm := buildSharedPtrMaps(comps)
+	sm.pool = &connPool{}
+
+	var refreshedB bool
+	ciA.RefreshFn = func() { t.Error("source island should not refresh itself") }
+	ciB.RefreshFn = func() { refreshedB = true }
+
+	sm.refreshSharedIslands(0, nil)
+
+	if !refreshedB {
+		t.Error("sibling RefreshFn should be called even when changedFields is empty (mixed-content shape)")
+	}
+	// Fallback path must not enqueue surgical marks — the sibling refresh will
+	// take the full BuildUpdate path and discover its own changes via diff.
+	if drained := ciB.DrainMarkedFields(); len(drained) != 0 {
+		t.Errorf("fallback path should not AddMarkedFields; got %v", drained)
+	}
+}
+
+// Empty changedFields with no shared pointers must remain a no-op (the
+// fallback is gated on the island actually having siblings to notify).
+func TestRefreshSharedComponents_EmptyFieldsNoSharedPtrs(t *testing.T) {
+	a := &compNoShared{Title: "solo"}
+	ci := makeCI(a)
+	comps := []*island.Info{ci}
+
+	sm := buildSharedPtrMaps(comps)
+	sm.pool = &connPool{}
+
+	ci.RefreshFn = func() { t.Error("RefreshFn should not be called when there are no siblings") }
+	sm.refreshSharedIslands(0, nil)
+}

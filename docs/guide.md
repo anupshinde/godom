@@ -340,6 +340,8 @@ func (a *App) onMouseMove(x, y float64) {
 }
 ```
 
+**Mixed-content gotcha.** A text node like `<div>Count: {{Count}}</div>` (a static prefix sharing a node with `{{Count}}`) deliberately skips binding registration — the framework can't surgically patch it without losing the prefix. `MarkRefresh("Count")` therefore won't update this node (the full `Refresh()` path still does, via tree rebuild + diff). If `Count` is observed by another island through shared state, prefer `<span g-text="Count">` or wrap the interpolation in its own element so the binding is explicit and surgical refresh stays available.
+
 ---
 
 ## Hiding Raw Templates (`.g-ready`)
