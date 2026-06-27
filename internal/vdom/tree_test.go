@@ -825,7 +825,7 @@ func TestParseTextInterpolations(t *testing.T) {
 
 func TestParseForExpr(t *testing.T) {
 	tests := []struct {
-		input                        string
+		input                         string
 		wantItem, wantIndex, wantList string
 	}{
 		{"todo in Todos", "todo", "", "Todos"},
@@ -1527,7 +1527,6 @@ func TestResolve_GIfNegation(t *testing.T) {
 	})
 }
 
-
 // ---------------------------------------------------------------------------
 // Section 2: Expression engine tests
 // ---------------------------------------------------------------------------
@@ -1570,9 +1569,9 @@ func TestResolveExpr_StringLiterals(t *testing.T) {
 
 	// Negative: unterminated or malformed quotes must NOT resolve as strings.
 	negatives := []string{
-		"'hello",  // missing closing quote
-		"hello'",  // missing opening quote
-		"'",       // single quote alone
+		"'hello", // missing closing quote
+		"hello'", // missing opening quote
+		"'",      // single quote alone
 	}
 	for _, expr := range negatives {
 		v := ResolveExpr(expr, ctx)
@@ -2139,7 +2138,6 @@ func TestParse_PluginDirective(t *testing.T) {
 		t.Errorf("expected PluginExpr='ChartData', got %q", div.PluginExpr)
 	}
 }
-
 
 func TestParse_ForWithSVG(t *testing.T) {
 	html := `<!DOCTYPE html><html><head></head><body>
@@ -2843,7 +2841,6 @@ func TestResolveStructField_NilPtrInPath(t *testing.T) {
 	}
 }
 
-
 func findNodeText(nodes []Node, text string) bool {
 	for _, n := range nodes {
 		switch n := n.(type) {
@@ -2877,7 +2874,7 @@ func TestParseMapAccess(t *testing.T) {
 		{"Data[key]", "Data", "key", true},
 		{"Name", "", "", false},
 		{"User.Name", "", "", false},
-		{"[key]", "", "key", true},  // degenerate but parseable
+		{"[key]", "", "key", true},       // degenerate but parseable
 		{"Inputs[]", "Inputs", "", true}, // empty key
 	}
 	for _, tt := range tests {
@@ -4589,6 +4586,61 @@ func TestResolveExpr_BareNegation(t *testing.T) {
 	val := ResolveExpr("!", ctx)
 	if val != nil {
 		t.Errorf("expected nil for bare '!', got %v", val)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Nested indexed field binding (read side of COR-51).
+//
+// Expressions that index into a slice/map and then access a sub-field — e.g.
+// "Fields[Selected].Label" — are not caught by the fast paths or by
+// ParseMapAccess (which only matches a bare "Field[key]" ending in "]"), so
+// they fall through to the expr-lang evaluator. These tests pin that behavior:
+// dynamic indices (resolved from another field) and chained ".Field" access
+// after an index must resolve correctly. The write side (g-bind back into such
+// a path via SetField) is tracked separately in COR-87.
+// ---------------------------------------------------------------------------
+
+type nestedBindSub struct{ Deep string }
+
+type nestedBindItem struct {
+	Label string
+	Sub   nestedBindSub
+}
+
+type nestedBindState struct {
+	Items    []nestedBindItem
+	Selected int
+	M        map[string]nestedBindItem
+	Key      string
+}
+
+func TestResolveExpr_NestedIndexedFieldBinding(t *testing.T) {
+	state := &nestedBindState{
+		Items: []nestedBindItem{
+			{Label: "zero", Sub: nestedBindSub{Deep: "d0"}},
+			{Label: "one", Sub: nestedBindSub{Deep: "d1"}},
+		},
+		Selected: 1,
+		M:        map[string]nestedBindItem{"a": {Label: "mapA"}},
+		Key:      "a",
+	}
+	ctx := &ResolveContext{State: reflect.ValueOf(state), Vars: make(map[string]any)}
+
+	cases := []struct {
+		expr string
+		want any
+	}{
+		{"Items[Selected].Label", "one"},   // dynamic index from a field + sub-field (the COR-51 example)
+		{"Items[Selected].Sub.Deep", "d1"}, // chained sub-fields after a dynamic index
+		{"Items[0].Label", "zero"},         // static index + sub-field
+		{"M[Key].Label", "mapA"},           // map dynamic key + sub-field
+		{"M['a'].Label", "mapA"},           // map static key + sub-field
+	}
+	for _, c := range cases {
+		if got := ResolveExpr(c.expr, ctx); got != c.want {
+			t.Errorf("ResolveExpr(%q) = %#v, want %#v", c.expr, got, c.want)
+		}
 	}
 }
 
