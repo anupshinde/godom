@@ -5,6 +5,18 @@ import (
 	"testing"
 )
 
+// RegisterClientModule stores the module for the server to ship in the bundle.
+func TestRegisterClientModule(t *testing.T) {
+	eng := NewEngine()
+	if len(eng.ClientModules()) != 0 {
+		t.Errorf("a fresh engine should have no client modules")
+	}
+	eng.RegisterClientModule("widget", "godom.modules.widget={render:function(){}};")
+	if got := eng.ClientModules()["widget"]; got == "" {
+		t.Errorf("RegisterClientModule did not store the module")
+	}
+}
+
 // The embedded bridge must carry the §3 env delivery; this guards against the
 // bridge.js wiring being dropped, since the Go side silently ignores a client
 // that never sends its env.

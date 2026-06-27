@@ -64,6 +64,7 @@ type Engine struct {
 	wsPath     string              // resolved WebSocket path (from muxOpts or default)
 	scriptPath string              // resolved script path (from muxOpts or default)
 	clients    server.ClientSource // live connection roster, bound by the server at startup
+	modules    map[string]string   // registered client-side JS modules (name → script)
 }
 
 // Client is an addressable handle to one connected browser tab (one WebSocket).
@@ -100,6 +101,26 @@ func (a *Engine) Clients() []*Client {
 // connection roster. It is part of the internal EngineConfig wiring and is not
 // intended for application use.
 func (a *Engine) BindClients(cs server.ClientSource) { a.clients = cs }
+
+// RegisterClientModule ships a client-side JS module to every browser, exposed
+// as window.godom.modules.<name>. The module script is responsible for assigning
+// itself, e.g. `godom.modules.widget = { render: function(args){ ... } };`. Call
+// a module function with typed args/reply via Client.Call / Client.CallAsync.
+//
+// Targeting is explicit and the consumer's responsibility: use
+// eng.Clients()-based fan-out to keep a replicated widget in sync across tabs,
+// or call a single client for a singleton owner. Module state is not part of
+// godom's VDOM sync.
+func (a *Engine) RegisterClientModule(name, js string) {
+	if a.modules == nil {
+		a.modules = make(map[string]string)
+	}
+	a.modules[name] = js
+}
+
+// ClientModules returns the registered client modules. Part of the internal
+// EngineConfig wiring; not intended for application use.
+func (a *Engine) ClientModules() map[string]string { return a.modules }
 
 // MuxOptions configures custom paths for godom's handlers when using SetMux.
 type MuxOptions struct {

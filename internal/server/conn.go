@@ -26,6 +26,13 @@ type Client struct {
 	wc    *wsConn
 	envMu sync.RWMutex
 	env   Env
+
+	// Targeted-call state (§4). Pending callbacks are keyed by a per-client,
+	// negative call id (the island broadcast ExecJS path uses positive ids, so
+	// the read loop can route replies by sign without collision).
+	callMu  sync.Mutex
+	callID  int32
+	pending map[int32]func(result []byte, errMsg string)
 }
 
 // ID returns the connection's stable, process-unique identifier.
@@ -92,6 +99,11 @@ func (p *connPool) remove(wc *wsConn) {
 		}
 	}
 	p.mu.Unlock()
+	// Fail any in-flight targeted calls so a blocked Call unblocks instead of
+	// hanging when the tab goes away.
+	if wc.client != nil {
+		wc.client.cancelPending("client disconnected")
+	}
 }
 
 // Clients returns a snapshot of the currently connected clients. The slice is a

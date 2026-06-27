@@ -43,6 +43,10 @@ type EngineConfig interface {
 	// BindClients hands the live connection roster back to the engine at
 	// startup so Engine.Clients() can read it. Called once from Run.
 	BindClients(ClientSource)
+
+	// ClientModules returns registered client-side JS modules (name → script)
+	// to ship in the bundle for targeted client.Call. May be nil/empty.
+	ClientModules() map[string]string
 }
 
 // BuildIslandInfo takes pre-read entry HTML, expands custom-element partials
@@ -215,6 +219,11 @@ func Run(cfg EngineConfig) error {
 			parts = append(parts, pluginScripts...)
 		}
 	}
+	// Ship registered client modules (§4) so godom.modules.<name> is available
+	// for targeted client.Call/CallAsync.
+	if modsJS := clientModulesJS(cfg.ClientModules()); modsJS != "" {
+		parts = append(parts, modsJS)
+	}
 	if disableExecJS {
 		parts = append(parts, "window.GODOM_DISABLE_EXEC=true;")
 	}
@@ -380,8 +389,14 @@ func Run(cfg EngineConfig) error {
 				if env.Debug {
 					log.Printf("godom: JSResult id=%d result=%d bytes err=%q", msg.CallId, len(msg.Result), msg.Error)
 				}
-				for _, ci := range ctx.comps {
-					ci.HandleJSResult(msg.CallId, msg.Result, msg.Error)
+				// Negative ids are per-client targeted calls (§4); route the reply
+				// back to the originating client. Positive ids are broadcast ExecJS.
+				if msg.CallId < 0 {
+					wc.client.handleResult(msg.CallId, msg.Result, msg.Error)
+				} else {
+					for _, ci := range ctx.comps {
+						ci.HandleJSResult(msg.CallId, msg.Result, msg.Error)
+					}
 				}
 			}
 		}
