@@ -98,6 +98,14 @@ type Info struct {
 	// read and write happens on the single processEvents goroutine (task starts,
 	// Applies, and renders all run there), so it needs no lock. See task.go.
 	tasks map[string]*taskState
+
+	// Computed fields (see computed.go). computeds maps a field name to its
+	// derivation; computedOrder is the dependency order (deps before dependents);
+	// computedDeps is the reverse graph (dep name → dependent computed names) used
+	// to expand marked fields to the computeds that must be recomputed.
+	computeds     map[string]*computed
+	computedOrder []string
+	computedDeps  map[string][]string
 }
 
 // ExecJS sends a JavaScript expression to all connected browsers and calls the

@@ -415,6 +415,10 @@ func wireRefresh(ci *island.Info) {
 func (s *serverCtx) executeRefresh(ci *island.Info) {
 	fields := ci.DrainMarkedFields()
 	if len(fields) > 0 {
+		// Expand marks to the computeds transitively reachable from them and
+		// recompute those (assigning to their fields) before patching, so the
+		// surgical path emits patches for the computeds' bound nodes too.
+		fields = ci.ExpandAndRecompute(fields)
 		patches := s.buildSurgicalPatches(ci, fields)
 		if len(patches) > 0 {
 			msg := render.EncodePatchMessage(patches)
@@ -424,6 +428,8 @@ func (s *serverCtx) executeRefresh(ci *island.Info) {
 			return
 		}
 	}
+	// Full refresh recomputes every computed before rebuilding the tree.
+	ci.RecomputeAll()
 	msg, changedFields := BuildUpdate(ci)
 	s.lookup.evictRemoved()
 	ci.LastChangedFields = changedFields

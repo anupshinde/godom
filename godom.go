@@ -108,7 +108,39 @@ type Island struct {
 	TemplateHTML string // inline HTML; mutually exclusive with Template/AssetsFS
 	AssetsFS     fs.FS  // per-island filesystem for Template + sibling partials
 	ci           *island.Info
+	computeds    []computedDef // pending computed-field declarations (installed at Register)
 }
+
+type computedDef struct {
+	name string
+	fn   func() any
+	deps []string
+}
+
+// computeProvider lets Register read an island's pending computed declarations
+// through the promoted *Island method, without reflecting on unexported fields.
+type computeProvider interface{ pendingComputeds() []computedDef }
+
+// Compute declares a computed field: Name is one of the island's own exported
+// fields whose value the engine maintains by calling fn — a pure derivation of
+// other fields — whenever any dep changes. The engine assigns fn's result to the
+// field and surgically patches its bound nodes; fn itself must be cheap, pure,
+// non-blocking, and must not mutate island state (do heavy or effectful work in
+// a Task that writes a plain field the computed then reads).
+//
+// Call Compute before Register (e.g. in a constructor or Init). Dependencies and
+// the dependency graph are validated at Register: an unknown field, a duplicate
+// computed, or a cycle aborts startup.
+//
+// Example:
+//
+//	c.Compute("Subtotal", func() any { return c.Qty * c.UnitPrice }, "Qty", "UnitPrice")
+//	c.Compute("SubtotalText", func() any { return money(c.Subtotal) }, "Subtotal")
+func (c *Island) Compute(name string, fn func() any, deps ...string) {
+	c.computeds = append(c.computeds, computedDef{name: name, fn: fn, deps: deps})
+}
+
+func (c *Island) pendingComputeds() []computedDef { return c.computeds }
 
 // MarkRefresh marks fields for surgical refresh. The actual refresh happens
 // when Refresh() is called (either by the user or automatically by the
@@ -379,6 +411,20 @@ func (a *Engine) Register(islands ...interface{}) {
 
 		ci := server.BuildIslandInfo(isl, entryHTML, layers, a.partials)
 		ci.SlotName = name
+
+		// Install computed fields declared via Compute() before this Register.
+		// Read them through the promoted method before the embed is overwritten.
+		if cp, ok := isl.(computeProvider); ok {
+			if defs := cp.pendingComputeds(); len(defs) > 0 {
+				idefs := make([]island.ComputedDef, len(defs))
+				for i, d := range defs {
+					idefs[i] = island.ComputedDef{Name: d.name, Fn: d.fn, Deps: d.deps}
+				}
+				if err := ci.RegisterComputed(idefs); err != nil {
+					log.Fatalf("godom: island %q: %v", name, err)
+				}
+			}
+		}
 
 		// Preserve island-side fields on the embed after Register.
 		islField.Set(reflect.ValueOf(Island{
