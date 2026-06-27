@@ -18,7 +18,7 @@ All planned features, improvements, and ideas are tracked in the GODOM project o
 |---|-------|------|
 | 5 | COR-85: Coalesce multiple queued Refresh events into a single render | Improvement |
 | 6 | COR-45: Inactive island pausing — skip patches when no DOM targets | Improvement |
-| 7 | COR-51: Nested field binding (Fields[Selected].Label) | Improvement |
+| 7 | COR-87: Two-way g-bind write-back into nested indexed paths (SetField) | Improvement |
 | 8 | COR-52: Virtual scrolling for large lists | Feature |
 | 9 | COR-53: Streaming / append-only updates (bypass VDOM) | Feature |
 | 10 | COR-60: Cross-app broadcast messaging (racing game demo) | Feature |
