@@ -475,6 +475,18 @@ func (s *serverCtx) processEvents(ci *island.Info, compIdx int) {
 			s.handleMethodCall(ci, compIdx, evt.Msg)
 		case island.RefreshKind:
 			s.executeRefresh(ci)
+		case island.ApplyKind:
+			// Fence stale task applies: a superseded run's late applies (and its
+			// terminal transition) are dropped before they can touch state, so
+			// they neither surface nor clear a newer run's Busy.
+			if evt.TaskName != "" && !ci.TaskGenCurrent(evt.TaskName, evt.TaskGen) {
+				continue
+			}
+			s.runApply(ci, evt)
+			// One refresh per apply: marks set inside the apply drive a surgical
+			// patch; a task transition (no marks) falls through to a full update
+			// that re-renders the Busy/Progress/Err/Crashed bindings.
+			s.executeRefresh(ci)
 		}
 	}
 }
@@ -609,6 +621,7 @@ func buildTree(ci *island.Info) *vdom.ElementNode {
 		IDs:           ci.IDCounter,
 		UnboundValues: ci.UnboundValues,
 		NodeStableIDs: nodeStableIDs,
+		ExtraEnv:      taskEnv(ci),
 	}
 	children := vdom.ResolveTree(ci.VDOMTemplates, ctx)
 	root := &vdom.ElementNode{NodeBase: vdom.NodeBase{ID: ci.IDCounter.Next()}, Tag: "body", Children: children}
@@ -640,7 +653,7 @@ func (s *serverCtx) buildSurgicalPatches(ci *island.Info, fields []string) []vdo
 			if expr == "" {
 				expr = field
 			}
-			val := vdom.ResolveExpr(expr, &vdom.ResolveContext{State: ci.Value})
+			val := vdom.ResolveExpr(expr, &vdom.ResolveContext{State: ci.Value, ExtraEnv: taskEnv(ci)})
 			truthy := vdom.IsTruthy(val)
 			strVal := fmt.Sprint(val)
 

@@ -17,9 +17,10 @@ import (
 type EventKind int
 
 const (
-	NodeEventKind   EventKind = iota // browser input changed
-	MethodCallKind                   // browser event handler (g-click, etc.)
-	RefreshKind                      // background goroutine refresh
+	NodeEventKind  EventKind = iota // browser input changed
+	MethodCallKind                  // browser event handler (g-click, etc.)
+	RefreshKind                     // background goroutine refresh
+	ApplyKind                       // run a closure on the loop (async-task Apply)
 )
 
 // Event is a unit of work sent to a component's event queue.
@@ -28,6 +29,14 @@ type Event struct {
 	NodeID int32
 	Value  string
 	Msg    *gproto.BrowserMessage // for MethodCallKind — carries method + args
+
+	// ApplyKind fields. Apply is the closure to run on the loop. When TaskName
+	// is non-empty the apply is fenced by TaskGen: the server drops it if the
+	// task's current generation no longer matches (a superseded run's late
+	// applies must not land). TaskName == "" means an unfenced apply.
+	Apply    func()
+	TaskName string
+	TaskGen  uint64
 }
 
 // Info holds reflection data about a mounted component.
@@ -79,11 +88,16 @@ type Info struct {
 	NodeStableIDs map[int]string // nodeID → stableKey (rebuilt each resolve)
 
 	// ExecJS support
-	ExecJSFn       func(id int32, expr string)                        // broadcast JSCall to all browsers (set by server)
-	ExecJSDisabled bool                                                // when true, ExecJS calls are silently dropped
-	JSCallbacks    map[int32]func(result []byte, err string)           // pending callbacks by request ID
+	ExecJSFn       func(id int32, expr string)               // broadcast JSCall to all browsers (set by server)
+	ExecJSDisabled bool                                      // when true, ExecJS calls are silently dropped
+	JSCallbacks    map[int32]func(result []byte, err string) // pending callbacks by request ID
 	JSCallbackMu   sync.Mutex
-	jsCallID       int32                                               // monotonic ID counter
+	jsCallID       int32 // monotonic ID counter
+
+	// tasks holds async-task state keyed by task name. It is loop-owned: every
+	// read and write happens on the single processEvents goroutine (task starts,
+	// Applies, and renders all run there), so it needs no lock. See task.go.
+	tasks map[string]*taskState
 }
 
 // ExecJS sends a JavaScript expression to all connected browsers and calls the

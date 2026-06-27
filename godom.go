@@ -154,6 +154,46 @@ func (c *Island) Refresh() {
 	}
 }
 
+// Task and its options are the async-task primitive. See Island.Task.
+type (
+	// Task is the handle passed to a task closure. The closure runs off the
+	// island event loop and must not touch island state directly; all state
+	// changes go through Task.Apply, which serializes them on the loop with
+	// renders. Cancellation is cooperative via Task.Cancelled / Task.Context.
+	Task = island.Task
+	// TaskOption configures a Task start (WithRestart, WithQueue).
+	TaskOption = island.TaskOption
+	// TaskPanic is the error type surfaced via the Err(name) binding when a task
+	// body or one of its Apply closures panics. Crashed(name) reports it too.
+	TaskPanic = island.TaskPanic
+)
+
+// WithRestart cancels an in-flight task of the same name and starts fresh. The
+// superseded run's late results are fenced out and can never clobber the new run.
+func WithRestart() TaskOption { return island.WithRestart() }
+
+// WithQueue runs the new task after the current one of the same name finishes,
+// instead of the default (drop the new start while one is running).
+func WithQueue() TaskOption { return island.WithQueue() }
+
+// Task starts a named background task. The closure fn runs on a fresh goroutine
+// off the island event loop, so it may block on I/O or compute. It must not
+// write island fields directly — marshal every state change back with t.Apply,
+// which runs on the loop and triggers a refresh. Pending/progress/error are
+// bindable without app fields via Busy(name), Progress(name), Err(name), and
+// Crashed(name).
+//
+// Re-entry: by default a start is dropped while a task of the same name runs;
+// use WithRestart() or WithQueue() to change that. Panics in the task body or
+// its Apply closures are recovered and surfaced as Err(name)/Crashed(name) —
+// they fail the task, not the process.
+func (c *Island) Task(name string, fn func(*Task), opts ...TaskOption) {
+	if c.ci == nil {
+		return
+	}
+	c.ci.StartTask(name, fn, opts...)
+}
+
 // NewEngine creates a new godom Engine.
 func NewEngine() *Engine {
 	return &Engine{
