@@ -7,13 +7,13 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"strings"
 	"os"
 	"path"
 	"reflect"
+	"strings"
 
-	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/env"
+	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/middleware"
 	"github.com/anupshinde/godom/internal/server"
 	"github.com/anupshinde/godom/internal/template"
@@ -42,28 +42,50 @@ var defaultFaviconSVG string
 // Engine is the godom runtime. It registers islands and plugins,
 // mounts the root island, and starts the server.
 type Engine struct {
-	Port           int    // 0 = random available port
-	Host           string // default "localhost"; set to "0.0.0.0" for network access
-	NoAuth         bool   // disable token auth (default false = auth enabled)
-	FixedAuthToken string // fixed auth token; empty = generate random token
-	NoBrowser      bool   // don't open browser on start
-	Quiet          bool   // suppress startup output
-	DisableExecJS  bool   // disable ExecJS — server won't send, bridge won't execute
+	Port                int    // 0 = random available port
+	Host                string // default "localhost"; set to "0.0.0.0" for network access
+	NoAuth              bool   // disable token auth (default false = auth enabled)
+	FixedAuthToken      string // fixed auth token; empty = generate random token
+	NoBrowser           bool   // don't open browser on start
+	Quiet               bool   // suppress startup output
+	DisableExecJS       bool   // disable ExecJS — server won't send, bridge won't execute
 	DisconnectHTML      string // custom disconnect overlay HTML (root mode); empty = default
 	DisconnectBadgeHTML string // custom disconnect badge HTML (embedded mode); empty = default
 
-	islands    []*island.Info           // mounted islands
-	plugins    map[string][]string      // plugin name → JS scripts
-	islIndex   map[interface{}]int      // island pointer → index in islands slice
-	names      map[string]bool          // registered target names (for duplicate check)
-	sharedFS   fs.FS                    // default UI filesystem, set via SetFS; used when an island has no AssetsFS
-	partials   map[string]string        // named shared-partial registry (RegisterPartial / UsePartials)
-	userMux    *http.ServeMux           // custom mux from SetMux()
-	muxOpts    *MuxOptions              // custom paths for /ws and /godom.js
-	authFn     middleware.AuthFunc      // auth check; nil = no auth
-	wsPath     string                   // resolved WebSocket path (from muxOpts or default)
-	scriptPath string                   // resolved script path (from muxOpts or default)
+	islands    []*island.Info      // mounted islands
+	plugins    map[string][]string // plugin name → JS scripts
+	islIndex   map[interface{}]int // island pointer → index in islands slice
+	names      map[string]bool     // registered target names (for duplicate check)
+	sharedFS   fs.FS               // default UI filesystem, set via SetFS; used when an island has no AssetsFS
+	partials   map[string]string   // named shared-partial registry (RegisterPartial / UsePartials)
+	userMux    *http.ServeMux      // custom mux from SetMux()
+	muxOpts    *MuxOptions         // custom paths for /ws and /godom.js
+	authFn     middleware.AuthFunc // auth check; nil = no auth
+	wsPath     string              // resolved WebSocket path (from muxOpts or default)
+	scriptPath string              // resolved script path (from muxOpts or default)
+	clients    server.ClientSource // live connection roster, bound by the server at startup
 }
+
+// Client is an addressable handle to one connected browser tab (one WebSocket).
+// It is the foundation that per-connection features build on. A Client is
+// per-socket: a reconnecting tab is a new Client with a new ID. Obtain Clients
+// from Engine.Clients(); they are never constructed by application code.
+type Client = server.Client
+
+// Clients returns a snapshot of the currently connected browser tabs. It returns
+// nil before Run() has started the server. The returned slice is a fresh copy;
+// the *Client values are stable per-connection handles safe to use as map keys.
+func (a *Engine) Clients() []*Client {
+	if a.clients == nil {
+		return nil
+	}
+	return a.clients.Clients()
+}
+
+// BindClients is called by the server at startup to hand the engine the live
+// connection roster. It is part of the internal EngineConfig wiring and is not
+// intended for application use.
+func (a *Engine) BindClients(cs server.ClientSource) { a.clients = cs }
 
 // MuxOptions configures custom paths for godom's handlers when using SetMux.
 type MuxOptions struct {
@@ -221,14 +243,14 @@ func (a *Engine) SetAuth(fn middleware.AuthFunc) {
 
 // --- EngineConfig interface methods (used by internal/server) ---
 
-func (a *Engine) Islands() []*island.Info               { return a.islands }
-func (a *Engine) PluginScripts() map[string][]string    { return a.plugins }
-func (a *Engine) EmbeddedJS() (string, string, string)  { return bridgeJS, protobufMinJS, protocolJS }
-func (a *Engine) Mux() *http.ServeMux                   { return a.userMux }
-func (a *Engine) WebSocketPath() string                  { return a.wsPath }
-func (a *Engine) GodomScriptPath() string                { return a.scriptPath }
-func (a *Engine) Auth() middleware.AuthFunc              { return a.authFn }
-func (a *Engine) ExecJSDisabled() bool                   { return a.DisableExecJS }
+func (a *Engine) Islands() []*island.Info              { return a.islands }
+func (a *Engine) PluginScripts() map[string][]string   { return a.plugins }
+func (a *Engine) EmbeddedJS() (string, string, string) { return bridgeJS, protobufMinJS, protocolJS }
+func (a *Engine) Mux() *http.ServeMux                  { return a.userMux }
+func (a *Engine) WebSocketPath() string                { return a.wsPath }
+func (a *Engine) GodomScriptPath() string              { return a.scriptPath }
+func (a *Engine) Auth() middleware.AuthFunc            { return a.authFn }
+func (a *Engine) ExecJSDisabled() bool                 { return a.DisableExecJS }
 func (a *Engine) GetDisconnectHTML() string {
 	if a.DisconnectHTML != "" {
 		return a.DisconnectHTML

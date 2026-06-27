@@ -11,8 +11,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/env"
+	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/middleware"
 	gproto "github.com/anupshinde/godom/internal/proto"
 	"github.com/anupshinde/godom/internal/render"
@@ -39,6 +39,10 @@ type EngineConfig interface {
 	GetDisconnectHTML() string
 	GetDisconnectBadgeHTML() string
 	GetFaviconSVG() string
+
+	// BindClients hands the live connection roster back to the engine at
+	// startup so Engine.Clients() can read it. Called once from Run.
+	BindClients(ClientSource)
 }
 
 // BuildIslandInfo takes pre-read entry HTML, expands custom-element partials
@@ -127,6 +131,9 @@ func Run(cfg EngineConfig) error {
 	disconnectBadgeHTML := cfg.GetDisconnectBadgeHTML()
 
 	pool := &connPool{}
+
+	// Hand the live roster to the engine so Engine.Clients() can read it.
+	cfg.BindClients(pool)
 
 	// All components share a single IDCounter so node IDs are globally
 	// unique across the bridge's nodeMap.
