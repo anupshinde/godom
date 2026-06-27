@@ -72,6 +72,20 @@ type Engine struct {
 // from Engine.Clients(); they are never constructed by application code.
 type Client = server.Client
 
+// Env is a connection's browser environment (timezone, locale, viewport) —
+// the data Go cannot derive on its own. Read it via Client.Env().
+type Env = server.Env
+
+// Viewport is the browser viewport size in CSS pixels.
+type Viewport = server.Viewport
+
+// EnvAware is the optional interface an island implements to seed state from a
+// new connection's environment. OnConnect(c *Client) runs once per connecting
+// client, as an ordinary event on the island loop. Seeding a shared field from
+// c.Env() is last-writer-wins across clients — correct for the single-environment
+// case; for divergent per-client environments, scope by page or engine.
+type EnvAware = server.EnvAware
+
 // Clients returns a snapshot of the currently connected browser tabs. It returns
 // nil before Run() has started the server. The returned slice is a fresh copy;
 // the *Client values are stable per-connection handles safe to use as map keys.

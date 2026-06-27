@@ -22,12 +22,29 @@ var upgrader = websocket.Upgrader{
 // process. Application code obtains Clients from the engine roster; it never
 // constructs them.
 type Client struct {
-	id string
-	wc *wsConn
+	id    string
+	wc    *wsConn
+	envMu sync.RWMutex
+	env   Env
 }
 
 // ID returns the connection's stable, process-unique identifier.
 func (c *Client) ID() string { return c.id }
+
+// Env returns a snapshot of the connection's browser environment (timezone,
+// locale, viewport). It is zero until the bridge delivers it just after connect;
+// safe to read from any goroutine.
+func (c *Client) Env() Env {
+	c.envMu.RLock()
+	defer c.envMu.RUnlock()
+	return c.env
+}
+
+func (c *Client) setEnv(e Env) {
+	c.envMu.Lock()
+	c.env = e
+	c.envMu.Unlock()
+}
 
 // send writes a single binary frame to this client's connection only
 // (send-to-one), in contrast to connPool.broadcast which writes to all.

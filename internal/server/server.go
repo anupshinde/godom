@@ -328,6 +328,12 @@ func Run(cfg EngineConfig) error {
 				}
 
 			case gproto.BrowserKind_BROWSER_METHOD:
+				// Connection environment (§3) rides this channel under a reserved
+				// method name; it is per-connection, not an island method call.
+				if msg.Method == clientEnvMethod {
+					applyClientEnv(wc.client, msg.Args, ctx.comps)
+					continue
+				}
 				if msg.NodeId == 0 {
 					// nodeId=0 means godom.call() from JS — find the component that has this method.
 					for _, ci := range ctx.comps {
