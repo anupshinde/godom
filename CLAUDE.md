@@ -59,6 +59,7 @@ Partials may contain a `<g-slot/>` (or `<g-slot></g-slot>`) marker. When a consu
 - **Init is pull-based.** On WebSocket connect, the server only pushes `document.body` init (root mode). All other islands are initialized on demand: the bridge scans for `[g-island]` elements and sends `BROWSER_INIT_REQUEST` for each. In embedded mode (no `document.body`), the bridge scans on `ws.onopen`. The server injects `window.GODOM_ROOT=true` into the JS bundle so the bridge knows which mode it's in. See `scanAndRequestIslands` in `internal/bridge/bridge.js` and the `BROWSER_INIT_REQUEST` handler in `internal/server/server.go`.
 
 ## Key docs
+- `docs/testing.md` — **testing conventions — read before writing or modifying tests** (behavior over implementation, never weaken assertions, race-test concurrency, the 90% coverage floor is a floor not the goal, don't pad coverage)
 - `docs/llm-reference.md` — **complete API reference for AI agents** — read this to build godom apps without digging into source code
 - `docs/why.md` — project rationale and motivation
 - `docs/why-islands.md` — why godom calls its stateful units "islands", not "components"
