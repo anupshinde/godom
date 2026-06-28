@@ -548,7 +548,7 @@ for _, c := range eng.ClientsWith("widget") { // only connections that declared 
 }
 ```
 
-> ⚠️ Targeting one connection deliberately steps **outside godom's cross-connection sync** (it acts on the client-side-JS layer godom doesn't replicate — the Go VDOM itself stays broadcast). Note that, unlike page-scoped VDOM patches, a broadcast `ExecJS` runs on *every* connection — which is why per-connection addressing exists. Use it for per-connection concerns: fan out via `ClientsWith` for a replicated widget (cleaner than a self-guarded broadcast), and target the one owner of a privileged link (e.g. a single live-broker tab — where targeting is necessary, not just nicer).
+> ⚠️ Targeting one connection deliberately steps **outside godom's cross-connection sync** (it acts on the client-side-JS layer godom doesn't replicate — the Go VDOM itself stays broadcast). Note that, unlike page-scoped VDOM patches, a broadcast `ExecJS` runs on *every* connection — which is why per-connection addressing exists. Use it for per-connection concerns: fan out via `ClientsWith` for a replicated widget (cleaner than a self-guarded broadcast), and target the one owner of a privileged link (e.g. a single tab holding a live external-app session — where targeting is necessary, not just nicer).
 
 See the [guide](docs/guide.md#targeting-one-connection-clienteval--call) and the [AI reference](docs/llm-reference.md#targeted-client-bridge-clienteval--call).
 

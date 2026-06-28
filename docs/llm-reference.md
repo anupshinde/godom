@@ -924,10 +924,10 @@ The two use cases it was built for:
   that lack the canvas. A self-guarding broadcast (`ExecJS` with a presence check) also works
   here; `ClientsWith` is just cleaner, typed, and avoids the spurious calls.
 - **Singleton authoritative bridge** (exactly one connection holds a privileged, stateful link —
-  a live broker session, an authenticated order path). Here targeting is **necessary**, not just
-  nicer: you must send the privileged call to *that one* connection and never broadcast it to the
-  rest, and no client-side guard can answer "am I *the* owner?" — only the server's
-  `ClientsWith` (where only the owner declared the capability) can.
+  e.g. a live external-app session). Here targeting is **necessary**, not just nicer: you must
+  send the privileged call to *that one* connection and never broadcast it to the rest, and no
+  client-side guard can answer "am I *the* owner?" — only the server's `ClientsWith` (where only
+  the owner declared the capability) can.
 
 **Register a module** (shipped to every connection as `window.godom.modules.<name>`):
 
@@ -954,8 +954,8 @@ for _, c := range eng.ClientsWith("widget") {
 
 // Singleton owner / blocking typed call — only inside a Task (off the loop):
 v.Task("send", func(t *godom.Task) {
-    var out Receipt
-    if err := client.Call("bridge.send", order, &out); err != nil { t.Fail(err); return }
+    var out Result
+    if err := client.Call("bridge.send", payload, &out); err != nil { t.Fail(err); return }
     t.Apply(func() { v.Last = out; v.MarkRefresh("Last") })
 })
 ```

@@ -901,9 +901,9 @@ divergent per-tab environments, scope by page or engine.
 >   fans the call out to just the connections that declared a working widget. (A self-guarding
 >   broadcast works too; `ClientsWith` is cleaner and avoids spurious calls.)
 > - *Singleton authoritative bridge* — exactly one connection holds a privileged/stateful link
->   (a live broker session). Here targeting is **necessary**: send the privileged call to that
->   one connection, never broadcast it; no client-side guard can tell which connection is *the*
->   owner — only the server's `ClientsWith` can.
+>   (e.g. a live external-app session). Here targeting is **necessary**: send the privileged call
+>   to that one connection, never broadcast it; no client-side guard can tell which connection is
+>   *the* owner — only the server's `ClientsWith` can.
 
 `ExecJS` broadcasts to every connection. To target **one** — or to call a client-side JS module
 with typed args and replies — use the `*Client` methods. Register a module once; it ships to
