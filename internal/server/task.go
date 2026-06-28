@@ -12,11 +12,13 @@ import (
 // loop-owned task state and are only ever evaluated during a render on the
 // event loop, so they need no synchronization.
 func taskEnv(ci *island.Info) map[string]any {
+	// Keys come from island.Bind* — the same constants the template validator
+	// checks via IsReservedBinding — so renderer and validator cannot drift.
 	return map[string]any{
-		"Busy":     func(name string) bool { return ci.TaskBusy(name) },
-		"Progress": func(name string) string { return ci.TaskProgress(name) },
-		"Crashed":  func(name string) bool { return ci.TaskCrashed(name) },
-		"Err": func(name string) any {
+		island.BindBusy:     func(name string) bool { return ci.TaskBusy(name) },
+		island.BindProgress: func(name string) string { return ci.TaskProgress(name) },
+		island.BindCrashed:  func(name string) bool { return ci.TaskCrashed(name) },
+		island.BindErr: func(name string) any {
 			if e := ci.TaskErr(name); e != nil {
 				return e.Error()
 			}

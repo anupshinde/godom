@@ -242,3 +242,23 @@ func TestTask_ProgressVisible(t *testing.T) {
 	close(release)
 	waitBusy(t, ci, "p", false)
 }
+
+// taskEnv (the renderer's bindings) and island.ReservedBindingNames (what the
+// validator accepts) must be exactly the same set — otherwise a binding the
+// renderer supplies could be rejected by the validator at startup, or vice versa.
+func TestTaskEnv_MatchesReservedBindingNames(t *testing.T) {
+	env := taskEnv(&island.Info{})
+	if len(env) != len(island.ReservedBindingNames) {
+		t.Fatalf("taskEnv has %d keys, ReservedBindingNames has %d", len(env), len(island.ReservedBindingNames))
+	}
+	for _, name := range island.ReservedBindingNames {
+		if _, ok := env[name]; !ok {
+			t.Errorf("ReservedBindingNames lists %q but taskEnv does not provide it", name)
+		}
+	}
+	for name := range env {
+		if !island.IsReservedBinding(name) {
+			t.Errorf("taskEnv provides %q but it is not in ReservedBindingNames (validator would reject it)", name)
+		}
+	}
+}

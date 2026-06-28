@@ -261,3 +261,31 @@ func (ci *Info) TaskCrashed(name string) bool {
 	st := ci.tasks[name]
 	return st != nil && st.panicked
 }
+
+// Names of the engine-provided task-state bindings. These are injected into the
+// expression environment as ExtraEnv functions at render time (see the server's
+// taskEnv), so they are valid in templates even though they are neither struct
+// fields nor methods. Keeping them here as the single source of truth lets the
+// template validator accept the same names the renderer resolves — the two
+// cannot drift.
+const (
+	BindBusy     = "Busy"     // Busy(name) bool
+	BindProgress = "Progress" // Progress(name) string
+	BindErr      = "Err"      // Err(name) -> error text or ""
+	BindCrashed  = "Crashed"  // Crashed(name) bool
+)
+
+// ReservedBindingNames is the set of engine-provided expression-function names.
+var ReservedBindingNames = []string{BindBusy, BindProgress, BindErr, BindCrashed}
+
+// IsReservedBinding reports whether name is an engine-provided binding function
+// (a name the renderer supplies via ExtraEnv). The template validator uses it to
+// accept these names instead of rejecting them as unknown methods.
+func IsReservedBinding(name string) bool {
+	for _, n := range ReservedBindingNames {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
