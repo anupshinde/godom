@@ -25,8 +25,12 @@ godom is a Go framework for building local GUI apps that use the browser as the 
 - [Multiple Islands](#multiple-islands)
 - [Background Updates (Refresh)](#background-updates-refresh)
 - [Surgical Updates (MarkRefresh)](#surgical-updates-markrefresh)
+- [Computed Fields](#computed-fields)
+- [Async Tasks](#async-tasks)
 - [ExecJS (Go to Browser)](#execjs-go-to-browser)
 - [godom.call (Browser to Go)](#godomcall-browser-to-go)
+- [Connections (Client)](#connections-client)
+- [Targeted Client Bridge (Client.Eval / Call)](#targeted-client-bridge-clienteval--call)
 - [Plugins](#plugins)
 - [Drag and Drop](#drag-and-drop)
 - [Shadow DOM](#shadow-dom)
@@ -129,10 +133,13 @@ eng := godom.NewEngine()
 | `UsePartials(fs.FS, baseDir string)` | Bulk-register: scans `baseDir` for `*.html` and calls `RegisterPartial(basename, content)` for each |
 | `Use(plugins ...PluginFunc)` | Register plugin functions |
 | `RegisterPlugin(name string, scripts ...string)` | Register custom plugin with JS scripts |
+| `RegisterClientModule(name, js string)` | Ship a client-side JS module as `window.godom.modules.<name>`, callable via `Client.Call` — see [Targeted Client Bridge](#targeted-client-bridge-clienteval--call) |
 | `Run() error` | Validate templates, register handlers, start event processors |
 | `QuickServe(island interface{}) error` | All-in-one: sets TargetName="document.body", registers, runs, serves (blocks) |
 | `ListenAndServe() error` | Bind port, wrap with auth, open browser, serve (blocks) |
 | `AuthMiddleware(http.Handler) http.Handler` | Wrap handler with auth (call after Run) |
+| `Clients() []*Client` | Snapshot of currently connected browser tabs (nil before `Run`) — see [Connections](#connections-client) |
+| `ClientsWith(capability string) []*Client` | Connected clients that advertised `capability` (via `godom.declareCapability`) |
 | `Cleanup()` | Close event channels on shutdown |
 
 ### MuxOptions
@@ -190,6 +197,8 @@ Validation at `Register()`:
 | `Refresh` | `func()` | Push current state to all connected browsers. Use from background goroutines. Do NOT call inside event handlers |
 | `MarkRefresh` | `func(fields ...string)` | Mark specific fields for surgical refresh (accumulates). Next Refresh() only patches nodes bound to these fields |
 | `ExecJS` | `func(expr string, cb func(result []byte, err string))` | Execute JS in all connected browsers. Callback fires once per browser |
+| `Compute` | `func(name string, fn func() any, deps ...string)` | Declare a computed field — the engine maintains `name` (one of the island's fields) by calling `fn` whenever a dep changes. Call before `Register`. See [Computed Fields](#computed-fields) |
+| `Task` | `func(name string, fn func(*Task), opts ...TaskOption)` | Run managed background work — `fn` runs off the event loop; state changes go through `t.Apply`. See [Async Tasks](#async-tasks) |
 
 ### Rules
 
@@ -302,6 +311,7 @@ Directive values are expressions resolved in Go. Supported:
 | Boolean literal | `true`, `false` | |
 | Comparison | `Count > 0`, `Status == 'active'` | `==`, `!=`, `<`, `>`, `<=`, `>=` |
 | Logical | `IsAdmin and IsActive` | `and`, `or`, `not` (not `&&`, `||`) |
+| Task bindings | `Busy('search')`, `Progress('search')`, `Err('search')`, `Crashed('search')` | Engine-provided functions reading [async-task](#async-tasks) state — no app field needed |
 | Method call | `Summary()` | Zero-arg exported method returning a value |
 | Interpolation | `Hello, {{Name}}!` | Mix static text with `{{expr}}` in text content |
 
@@ -667,6 +677,105 @@ func (a *App) UpdatePrice(i int) {
 
 ---
 
+## Computed Fields
+
+A computed field is one of the island's **own exported fields** whose value the engine
+maintains for you: declare it once with `Compute`, and whenever any dependency changes the
+engine recomputes it (in dependency order) and surgically patches its bound nodes. This
+replaces the error-prone pattern of recomputing-and-re-marking derived values by hand in
+every handler.
+
+```go
+type Cart struct {
+    godom.Island
+    Qty, UnitPrice  int
+    Subtotal        int    // computed
+    SubtotalText    string // computed (depends on a computed)
+    CheckoutEnabled bool   // computed
+}
+
+// Declare computeds in a method you call yourself BEFORE Register
+// (godom does not auto-run it):
+func (c *Cart) defineComputeds() {
+    c.Compute("Subtotal", func() any { return c.Qty * c.UnitPrice }, "Qty", "UnitPrice")
+    c.Compute("SubtotalText", func() any { return money(c.Subtotal) }, "Subtotal")
+    c.Compute("CheckoutEnabled", func() any { return c.Qty > 0 }, "Qty")
+}
+
+// Handlers only touch inputs — computeds invalidate transitively.
+func (c *Cart) SetQty(n int) { c.Qty = n; c.MarkRefresh("Qty") }
+
+// Wiring:
+cart := &Cart{Qty: 1, UnitPrice: 10}
+cart.defineComputeds() // before Register
+eng.Register(cart)
+```
+
+```html
+<p>Total: <span g-text="SubtotalText">$0.00</span></p>
+<button g-if="CheckoutEnabled">Checkout</button>
+```
+
+Rules:
+- `Compute(name, fn, deps...)` — `name` and each `dep` must be exported struct fields (a dep
+  may itself be a computed). The engine assigns `fn`'s result to the field.
+- `fn` must be a **pure, cheap, non-blocking derivation** — no I/O, no blocking, and it must
+  not mutate island state. Heavy/effectful work belongs in a [Task](#async-tasks) that writes
+  a plain field the computed then reads.
+- Validated at `Register()` (fatal): an unknown field/dep, a duplicate computed, or a
+  dependency cycle aborts startup.
+- A bare `Refresh()` recomputes all computeds; `MarkRefresh(dep)` recomputes only those
+  reachable from `dep` and patches them surgically.
+
+---
+
+## Async Tasks
+
+`Task` is a managed primitive for background work — it replaces the hand-rolled
+pending-flag + re-entry-guard + goroutine + refresh-on-done quartet, and makes it safe by
+construction. The task closure runs **off** the island event loop (so it may block), and
+**must not touch island fields directly** — all state changes are marshaled back onto the
+loop via `t.Apply`, which serializes them with renders.
+
+```go
+func (v *View) Run() {
+    v.Task("search", func(t *godom.Task) {
+        rows, err := work(v.Query)   // off-loop; safe to block
+        if t.Cancelled() { return }
+        if err != nil { t.Fail(err); return }
+        t.Apply(func() {             // back on the event loop
+            v.Results = rows
+            v.MarkRefresh("Results")
+        })
+    })
+}
+```
+
+Pending/progress/error are bindable **without an app field**:
+
+```html
+<button g-disabled="Busy('search')" g-text="Busy('search') ? 'Working…' : 'Run'">Run</button>
+<p g-show="Busy('search')" g-text="Progress('search')"></p>
+<p g-if="Crashed('search')">Something went wrong</p>
+```
+
+`Task(name, fn, opts...)`:
+- **Re-entry** (default = drop a start while a same-named task runs): `WithRestart()` cancels
+  the in-flight run and starts fresh; `WithQueue()` runs the next after the current finishes.
+- **`*godom.Task` handle:** `t.Apply(func())` (mutate on the loop + one refresh), `t.Progress(msg)`
+  (coalesced latest-wins), `t.Fail(err)`, `t.Cancelled() bool`, `t.Context() context.Context`.
+- **Cancellation is cooperative** — check `t.Cancelled()`/`t.Context()` in long loops.
+- **Panics** in the task body or its Applies are recovered and surfaced as `Err(name)` (a
+  distinct `*godom.TaskPanic`) + `Crashed(name)`, always logged server-side — they fail the
+  *task*, not the process.
+- **Bindings:** `Busy(name) bool`, `Progress(name) string`, `Err(name)`, `Crashed(name) bool`.
+
+> Safety is by construction: island state is touched only on the event loop (via `t.Apply`),
+> never from the task goroutine. A `WithRestart` superseded run's late Applies are fenced out,
+> so they can't clobber the new run.
+
+---
+
 ## ExecJS (Go to Browser)
 
 Execute JavaScript in all connected browsers and receive results:
@@ -695,6 +804,8 @@ a.ExecJS("document.title = 'Updated'", func(result []byte, err string) {})
 - Result is JSON-serialized automatically by the bridge
 - Can be disabled server-side: `eng.DisableExecJS = true`
 - Can be disabled browser-side: `window.GODOM_DISABLE_EXEC = true`
+- To target **one** tab instead of broadcasting, use `Client.Eval` / `Client.Call` — see
+  [Targeted Client Bridge](#targeted-client-bridge-clienteval--call)
 
 ---
 
@@ -724,6 +835,97 @@ func (a *App) SelectItem(id string) {
 ```
 
 The server searches all registered islands for the method name. First match wins. After the method runs, godom auto-refreshes.
+
+---
+
+## Connections (Client)
+
+Each connected browser tab is a `*godom.Client` — an addressable handle the engine exposes
+for per-connection features. `eng.Clients()` returns a snapshot of the live roster (nil before
+`Run`). A `*Client` is **per-socket**: a reconnecting tab is a new `*Client` with a new `ID()`.
+
+```go
+for _, c := range eng.Clients() {
+    log.Printf("tab %s, tz=%s", c.ID(), c.Env().TimeZone)
+}
+```
+
+| `*Client` method | Description |
+|---|---|
+| `ID() string` | Stable, process-unique connection id |
+| `Env() Env` | Browser environment (timezone/locale/viewport) — see below |
+| `Has(capability string) bool` | Whether this tab advertised a module capability |
+| `Eval(expr string, cb)` | Run JS on this one tab — see [Targeted Client Bridge](#targeted-client-bridge-clienteval--call) |
+| `CallAsync(method string, args any, cb)` | Typed module call, non-blocking (handler-safe) |
+| `Call(method string, args, out any) error` | Typed module call, blocking — **off-loop only** (inside a Task) |
+
+> Reminder: an island has **one** shared VDOM replicated to all tabs. `*Client` lets you
+> *address* and *observe* connections; it does not fork the rendered view per tab.
+
+### Connection environment (`Client.Env`)
+
+The browser reports its timezone, locale, and viewport just after connect — data Go can't
+derive on its own. Implement the optional `EnvAware` interface to seed island state from it:
+
+```go
+func (d *Dashboard) OnConnect(c *godom.Client) { // runs once per connecting tab, on the loop
+    d.TZ = c.Env().TimeZone   // "Europe/Berlin"
+    d.MarkRefresh("TZ")
+    d.Refresh()
+}
+```
+
+`Env` = `{ TimeZone, Locale string; Viewport struct{ W, H int } }`. Seeding a *shared* field
+from `Env` is last-writer-wins across tabs — correct for the single-environment case (one
+local user, possibly multiple same-machine windows); for divergent per-tab environments,
+scope by page or engine.
+
+---
+
+## Targeted Client Bridge (Client.Eval / Call)
+
+`ExecJS` broadcasts to every tab. To talk to **one** tab — or to a client-side JS module with
+typed args/replies — use the `*Client` methods.
+
+**Register a module** (shipped to every tab as `window.godom.modules.<name>`):
+
+```go
+//go:embed widget.js
+var widgetJS string
+eng.RegisterClientModule("widget", widgetJS)
+```
+
+The module assigns itself and declares its capability once initialized (in `widget.js`):
+
+```js
+godom.modules.widget = { render: function(args) { /* ... */ return summary; } };
+godom.declareCapability('widget'); // so eng.ClientsWith("widget") finds this tab
+```
+
+**Call it** — explicit targeting per archetype:
+
+```go
+// Replicated widget: fan out to every capable tab to keep them in sync.
+for _, c := range eng.ClientsWith("widget") {
+    c.CallAsync("widget.render", args, nil)
+}
+
+// Singleton owner / blocking typed call — only inside a Task (off the loop):
+v.Task("send", func(t *godom.Task) {
+    var out Receipt
+    if err := client.Call("bridge.send", order, &out); err != nil { t.Fail(err); return }
+    t.Apply(func() { v.Last = out; v.MarkRefresh("Last") })
+})
+```
+
+- `Eval` / `CallAsync` are **non-blocking** (callback) — safe from a handler.
+- `Call` **blocks** on a browser round-trip, so it must run **off the event loop** (inside a
+  `Task`). A JS throw becomes a Go `error`; a disconnect mid-call returns a "client
+  disconnected" error instead of hanging.
+- **Targeting is explicit** and the consumer's responsibility — client-side module state is
+  outside godom's VDOM sync. Fan out over `ClientsWith` for a replicated widget; target one
+  client for a singleton owner.
+- Plain broadcast `ExecJS` still works unchanged.
 
 ---
 

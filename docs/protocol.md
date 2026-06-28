@@ -45,7 +45,7 @@ Each `DomPatch` targets a node by its stable numeric `node_id` (assigned by Go d
 | `plugin` | `plugin_data` (JSON) | Updated data for a plugin node |
 | `lazy` | `sub_patches` (nested) | Patches inside a lazy node's subtree |
 
-**SERVER_JSCALL** — sent when a island calls `ExecJS()`. Carries `call_id` (unique request ID) and `expr` (JavaScript expression). The bridge evaluates the expression, `JSON.stringify`'s the result, and sends a `BROWSER_JSRESULT` back.
+**SERVER_JSCALL** — sent when an island calls `ExecJS()` (broadcast to all tabs) or when `Client.Eval`/`Client.Call` targets one tab. Carries `call_id` (unique request ID — **negative** for per-client targeted calls, positive for broadcast) and `expr` (JavaScript expression). The bridge evaluates the expression, `JSON.stringify`'s the result, and sends a `BROWSER_JSRESULT` back.
 
 ### Browser → Go: BrowserMessage
 
@@ -55,9 +55,9 @@ Each `DomPatch` targets a node by its stable numeric `node_id` (assigned by Go d
 
 **BROWSER_METHOD** — method call (Layer 2). Sent when the user triggers an event (click, keydown, etc.) or when JavaScript calls `godom.call()`. Contains `node_id` (0 for `godom.call`), `method`, and `args`. Calls the Go method via reflection, then runs the same render cycle; because arbitrary code can have mutated arbitrary fields, the diff scope is wider than Layer 1's.
 
-When `node_id` is 0 (from `godom.call`), the server searches all islands for one that has the named method and dispatches to the first match.
+When `node_id` is 0 (from `godom.call`), the server searches all islands for one that has the named method and dispatches to the first match. Two **reserved method names** also ride this channel as per-connection signals, handled before island dispatch: `__godom_env__` (the browser environment for `Client.Env`) and `__godom_capability__` (a module capability for `Client.Has`/`Engine.ClientsWith`). Reusing this channel means §3/§4 add no new wire message types.
 
-**BROWSER_JSRESULT** — response to a `SERVER_JSCALL`. Contains `call_id` (matching the request), `result` (JSON-encoded), and `error`. The server dispatches to the island that made the ExecJS call.
+**BROWSER_JSRESULT** — response to a `SERVER_JSCALL`. Contains `call_id` (matching the request), `result` (JSON-encoded), and `error`. A positive `call_id` dispatches to the island that made the broadcast `ExecJS` call; a negative `call_id` routes back to the originating `Client` (targeted `Eval`/`Call`).
 
 **BROWSER_INIT_REQUEST** — pull-based init. The bridge sends this with a `island` name to request the init tree for a named island. The server responds with a `SERVER_INIT` targeting that island. Used after `document.body` renders (root mode) or on `ws.onopen` (embedded mode) to initialize child islands discovered via `[g-island]` attributes. Also used by `godom.mount()` for dynamic mounting.
 

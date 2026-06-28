@@ -39,7 +39,7 @@ Partials may contain a `<g-slot/>` (or `<g-slot></g-slot>`) marker. When a consu
 - Single binary output via `go build`; QuickServe for simple apps, SetMux+Run+ListenAndServe for full control
 
 ## Internal packages
-- `godom.go` — public API: Engine (SetFS, SetMux, Register, Run, QuickServe, ListenAndServe, SetAuth, Cleanup, RegisterPartial, UsePartials, Use, RegisterPlugin), Island (TargetName, Template, TemplateHTML, AssetsFS, Refresh, MarkRefresh, ExecJS)
+- `godom.go` — public API: Engine (SetFS, SetMux, Register, Run, QuickServe, ListenAndServe, SetAuth, Cleanup, RegisterPartial, UsePartials, Use, RegisterPlugin, RegisterClientModule, Clients, ClientsWith), Island (TargetName, Template, TemplateHTML, AssetsFS, Refresh, MarkRefresh, ExecJS, Compute, Task). Per-connection + reactivity types: Client (ID, Env, Has, Eval, CallAsync, Call), Env/Viewport, EnvAware (OnConnect hook), Task (Apply/Progress/Fail/Cancelled/Context) with WithRestart/WithQueue, TaskPanic. Template task bindings: Busy/Progress/Err/Crashed. Full reference: docs/llm-reference.md.
 - `internal/vdom/` — VDOM node types, template parsing, tree resolution, diffing, merging
 - `internal/island/` — Island struct, Info, method dispatch, field access
 - `internal/server/` — EngineConfig interface, BuildIslandInfo, WebSocket handling, connection pool, init/update pipeline

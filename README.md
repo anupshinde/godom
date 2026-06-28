@@ -201,6 +201,7 @@ Directives support:
 - Loop variables: `todo`, `i` from `g-for`
 - Literals: `true`, `false`, integers, quoted strings
 - Text interpolation: `{{Name}}` in HTML text content (e.g., `<p>Hello, {{Name}}!</p>`)
+- Async-task bindings: `Busy('search')`, `Progress('search')`, `Err('search')`, `Crashed('search')` (see [Async tasks](#async-tasks))
 
 All expressions are resolved in Go (the browser-side bridge is a pure command executor).
 
@@ -508,6 +509,46 @@ a.ExecJS("location.pathname", func(result []byte, err string) {
 ```
 
 This is mainly for browser-only capabilities or one-off integrations. It can be disabled on the server with `eng.DisableExecJS = true` and on the page with `window.GODOM_DISABLE_EXEC = true`.
+
+To run JS on **one** tab instead of broadcasting, use `Client.Eval` / `Client.Call` — see [Connections and targeted JS](#connections-and-targeted-js) below.
+
+### Computed fields
+
+Declare a field as derived from others; the engine recomputes and surgically patches it when a dependency changes — no manual re-marking:
+
+```go
+cart.Compute("Subtotal", func() any { return cart.Qty * cart.UnitPrice }, "Qty", "UnitPrice")
+// call before eng.Register(cart); deps/cycles validated at Register
+```
+
+### Async tasks
+
+Managed background work, safe by construction — the closure runs off the event loop and marshals state back via `t.Apply`:
+
+```go
+func (v *View) Search() {
+    v.Task("search", func(t *godom.Task) {
+        rows, err := query(v.Q)              // off-loop; safe to block
+        if err != nil { t.Fail(err); return }
+        t.Apply(func() { v.Rows = rows; v.MarkRefresh("Rows") })
+    })
+}
+```
+
+Pending/progress/error bind without an app field: `g-disabled="Busy('search')"`, `g-text="Progress('search')"`. Re-entry policy via `WithRestart()` / `WithQueue()`; panics fail the task, not the process. See the [guide](docs/guide.md#async-tasks).
+
+### Connections and targeted JS
+
+Each tab is a `*godom.Client` (`eng.Clients()`), with browser environment (`c.Env()` — timezone/locale/viewport, seedable via an `OnConnect` hook) and targeted JS. Register a client-side module and call it on specific tabs with typed args:
+
+```go
+eng.RegisterClientModule("widget", widgetJS) // window.godom.modules.widget
+for _, c := range eng.ClientsWith("widget") { // only tabs that declared the capability
+    c.CallAsync("widget.render", data, nil)
+}
+```
+
+See the [guide](docs/guide.md#targeting-one-tab-clienteval--call) and the [AI reference](docs/llm-reference.md#targeted-client-bridge-clienteval--call).
 
 ### Plugins
 

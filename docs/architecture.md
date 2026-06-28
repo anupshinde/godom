@@ -184,7 +184,7 @@ This uses the same `ServerMessage` patch format as user-triggered changes — th
 
 ### Event queue (concurrency model)
 
-Each island instance has a buffered event channel (`EventCh`) and a single processor goroutine. All browser input changes (`NodeEventKind`), method calls (`MethodCallKind`), background refreshes (`RefreshKind`), and ExecJS results are sent to this channel and processed sequentially.
+Each island instance has a buffered event channel (`EventCh`) and a single processor goroutine. Browser input changes (`NodeEventKind`), method calls (`MethodCallKind`), background refreshes (`RefreshKind`), async-task closures (`ApplyKind`), and ExecJS results are sent to this channel and processed sequentially.
 
 This eliminates race conditions between concurrent sources (multiple browser tabs, background goroutines) without requiring locks on the island's state. Node-to-island routing uses a lazily-populated `nodeLookup` index (O(1) on hit, tree traversal on first miss). One exception uses `ci.Mu` directly: `handleInit` (writes the tree on new connection — must be synchronous so the browser receives the tree before subsequent patches).
 
@@ -192,7 +192,7 @@ Two filter hooks control event flow:
 - `shouldEnqueue(event)` — called before sending to the channel
 - `shouldProcess(event)` — called before processing from the channel
 
-Both currently return `true` unconditionally.
+`ApplyKind` carries a closure plus a `(taskName, generation)` fence: the processor drops a task's apply if its generation is no longer current, so a superseded run (`WithRestart`) cannot clobber the live one. Each apply runs the closure on the loop, then refreshes (drained marks → surgical; otherwise full). See [Computed fields & async tasks](#computed-fields--async-tasks).
 
 ### Surgical refresh (MarkRefresh)
 
@@ -203,6 +203,22 @@ For large UIs where only a few fields changed, `MarkRefresh()` avoids a full tre
 3. If the partial rebuild produces patches, they are sent. Otherwise, it falls back to a full rebuild
 
 This is the primary optimization for dashboards and large lists where one item changed.
+
+### Computed fields & async tasks
+
+Both build on the surgical-refresh machinery and the single-goroutine event loop.
+
+**Computed fields** (`Compute(name, fn, deps...)`) are island fields the engine maintains. The dependency graph and a topological order are built and validated at `Register()` (unknown dep, duplicate, or cycle is fatal). On a surgical refresh, `MarkRefresh(dep)` is expanded — inside `DrainMarkedFields` — to every computed transitively reachable from the marked fields; those are recomputed in dependency order (their `fn` result assigned to the field) and added to the patched set. A full refresh recomputes all of them. Because a computed *is* a field, the field assignment is itself the per-cycle memoization, and binding/patching reuse the normal field path.
+
+**Async tasks** (`Task(name, fn, opts...)`) run `fn` on a fresh goroutine *off* the loop. The closure never touches island state directly; it marshals changes back via `t.Apply`, which enqueues an `ApplyKind` event (see above). Safety is by construction — island state is read/written only on the loop. Re-entry policy (drop / `WithRestart` / `WithQueue`) and the generation fence live in the loop-owned per-task state; panics in the task body or its applies are recovered and routed to `Fail` (surfaced as `Err(name)`/`Crashed(name)`), never the process-fatal recover. `Busy/Progress/Err/Crashed` are engine-provided expression functions injected into the resolver env via `ResolveContext.ExtraEnv` (the template validator accepts these reserved names alongside fields and methods).
+
+### Per-connection client (Client)
+
+The connection pool wraps each WebSocket as a `*Client` with a stable, per-socket id, exposed through `Engine.Clients()`. Beyond broadcast, the pool can **send to one** client, which powers:
+
+- **Connection environment (`Client.Env`)** — the bridge reports timezone/locale/viewport just after connect, over the existing `BROWSER_METHOD` channel under a reserved method name (`__godom_env__`); the server records it on the client and dispatches the optional `OnConnect` hook on the island loop. No new wire message.
+- **Targeted JS (`Client.Eval`/`CallAsync`/`Call`)** — a `SERVER_JSCALL` sent to one client, correlated by a **negative** call id so replies route back to the originating client without colliding with broadcast `ExecJS` (positive ids). On disconnect, pending calls are failed so a blocking `Call` can't hang.
+- **Module capabilities (`Has`/`ClientsWith`)** — a module advertises itself via `godom.declareCapability` (also over the reserved-method channel, re-sent on reconnect), letting the backend fan a call out only to capable tabs or identify a singleton owner. Registered client modules are shipped in the JS bundle *after* `bridge.js` so they can use the godom API at load.
 
 ## Virtual DOM
 
