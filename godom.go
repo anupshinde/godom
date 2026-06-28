@@ -7,13 +7,13 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"strings"
 	"os"
 	"path"
 	"reflect"
+	"strings"
 
-	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/env"
+	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/middleware"
 	"github.com/anupshinde/godom/internal/server"
 	"github.com/anupshinde/godom/internal/template"
@@ -42,28 +42,94 @@ var defaultFaviconSVG string
 // Engine is the godom runtime. It registers islands and plugins,
 // mounts the root island, and starts the server.
 type Engine struct {
-	Port           int    // 0 = random available port
-	Host           string // default "localhost"; set to "0.0.0.0" for network access
-	NoAuth         bool   // disable token auth (default false = auth enabled)
-	FixedAuthToken string // fixed auth token; empty = generate random token
-	NoBrowser      bool   // don't open browser on start
-	Quiet          bool   // suppress startup output
-	DisableExecJS  bool   // disable ExecJS — server won't send, bridge won't execute
+	Port                int    // 0 = random available port
+	Host                string // default "localhost"; set to "0.0.0.0" for network access
+	NoAuth              bool   // disable token auth (default false = auth enabled)
+	FixedAuthToken      string // fixed auth token; empty = generate random token
+	NoBrowser           bool   // don't open browser on start
+	Quiet               bool   // suppress startup output
+	DisableExecJS       bool   // disable ExecJS — server won't send, bridge won't execute
 	DisconnectHTML      string // custom disconnect overlay HTML (root mode); empty = default
 	DisconnectBadgeHTML string // custom disconnect badge HTML (embedded mode); empty = default
 
-	islands    []*island.Info           // mounted islands
-	plugins    map[string][]string      // plugin name → JS scripts
-	islIndex   map[interface{}]int      // island pointer → index in islands slice
-	names      map[string]bool          // registered target names (for duplicate check)
-	sharedFS   fs.FS                    // default UI filesystem, set via SetFS; used when an island has no AssetsFS
-	partials   map[string]string        // named shared-partial registry (RegisterPartial / UsePartials)
-	userMux    *http.ServeMux           // custom mux from SetMux()
-	muxOpts    *MuxOptions              // custom paths for /ws and /godom.js
-	authFn     middleware.AuthFunc      // auth check; nil = no auth
-	wsPath     string                   // resolved WebSocket path (from muxOpts or default)
-	scriptPath string                   // resolved script path (from muxOpts or default)
+	islands    []*island.Info      // mounted islands
+	plugins    map[string][]string // plugin name → JS scripts
+	islIndex   map[interface{}]int // island pointer → index in islands slice
+	names      map[string]bool     // registered target names (for duplicate check)
+	sharedFS   fs.FS               // default UI filesystem, set via SetFS; used when an island has no AssetsFS
+	partials   map[string]string   // named shared-partial registry (RegisterPartial / UsePartials)
+	userMux    *http.ServeMux      // custom mux from SetMux()
+	muxOpts    *MuxOptions         // custom paths for /ws and /godom.js
+	authFn     middleware.AuthFunc // auth check; nil = no auth
+	wsPath     string              // resolved WebSocket path (from muxOpts or default)
+	scriptPath string              // resolved script path (from muxOpts or default)
+	clients    server.ClientSource // live connection roster, bound by the server at startup
+	modules    map[string]string   // registered client-side JS modules (name → script)
 }
+
+// Client is an addressable handle to one connected browser tab (one WebSocket).
+// It is the foundation that per-connection features build on. A Client is
+// per-socket: a reconnecting tab is a new Client with a new ID. Obtain Clients
+// from Engine.Clients(); they are never constructed by application code.
+type Client = server.Client
+
+// Env is a connection's browser environment (timezone, locale, viewport) —
+// the data Go cannot derive on its own. Read it via Client.Env().
+type Env = server.Env
+
+// Viewport is the browser viewport size in CSS pixels.
+type Viewport = server.Viewport
+
+// EnvAware is the optional interface an island implements to seed state from a
+// new connection's environment. OnConnect(c *Client) runs once per connecting
+// client, as an ordinary event on the island loop. Seeding a shared field from
+// c.Env() is last-writer-wins across clients — correct for the single-environment
+// case; for divergent per-client environments, scope by page or engine.
+type EnvAware = server.EnvAware
+
+// Clients returns a snapshot of the currently connected browser tabs. It returns
+// nil before Run() has started the server. The returned slice is a fresh copy;
+// the *Client values are stable per-connection handles safe to use as map keys.
+func (a *Engine) Clients() []*Client {
+	if a.clients == nil {
+		return nil
+	}
+	return a.clients.Clients()
+}
+
+// BindClients is called by the server at startup to hand the engine the live
+// connection roster. It is part of the internal EngineConfig wiring and is not
+// intended for application use.
+func (a *Engine) BindClients(cs server.ClientSource) { a.clients = cs }
+
+// ClientsWith returns the connected clients that have advertised the named
+// module capability (via godom.declareCapability in the module's JS). Use it to
+// fan a module call out only to the tabs that can actually handle it — keeping a
+// replicated widget in sync without erroring on tabs that lack the module's
+// prerequisites, or to find the single owner of a privileged capability.
+func (a *Engine) ClientsWith(capability string) []*Client {
+	return server.ClientsWith(a.Clients(), capability)
+}
+
+// RegisterClientModule ships a client-side JS module to every browser, exposed
+// as window.godom.modules.<name>. The module script is responsible for assigning
+// itself, e.g. `godom.modules.widget = { render: function(args){ ... } };`. Call
+// a module function with typed args/reply via Client.Call / Client.CallAsync.
+//
+// Targeting is explicit and the consumer's responsibility: use
+// eng.Clients()-based fan-out to keep a replicated widget in sync across tabs,
+// or call a single client for a singleton owner. Module state is not part of
+// godom's VDOM sync.
+func (a *Engine) RegisterClientModule(name, js string) {
+	if a.modules == nil {
+		a.modules = make(map[string]string)
+	}
+	a.modules[name] = js
+}
+
+// ClientModules returns the registered client modules. Part of the internal
+// EngineConfig wiring; not intended for application use.
+func (a *Engine) ClientModules() map[string]string { return a.modules }
 
 // MuxOptions configures custom paths for godom's handlers when using SetMux.
 type MuxOptions struct {
@@ -86,7 +152,39 @@ type Island struct {
 	TemplateHTML string // inline HTML; mutually exclusive with Template/AssetsFS
 	AssetsFS     fs.FS  // per-island filesystem for Template + sibling partials
 	ci           *island.Info
+	computeds    []computedDef // pending computed-field declarations (installed at Register)
 }
+
+type computedDef struct {
+	name string
+	fn   func() any
+	deps []string
+}
+
+// computeProvider lets Register read an island's pending computed declarations
+// through the promoted *Island method, without reflecting on unexported fields.
+type computeProvider interface{ pendingComputeds() []computedDef }
+
+// Compute declares a computed field: Name is one of the island's own exported
+// fields whose value the engine maintains by calling fn — a pure derivation of
+// other fields — whenever any dep changes. The engine assigns fn's result to the
+// field and surgically patches its bound nodes; fn itself must be cheap, pure,
+// non-blocking, and must not mutate island state (do heavy or effectful work in
+// a Task that writes a plain field the computed then reads).
+//
+// Call Compute before Register (e.g. in a constructor or Init). Dependencies and
+// the dependency graph are validated at Register: an unknown field, a duplicate
+// computed, or a cycle aborts startup.
+//
+// Example:
+//
+//	c.Compute("Subtotal", func() any { return c.Qty * c.UnitPrice }, "Qty", "UnitPrice")
+//	c.Compute("SubtotalText", func() any { return money(c.Subtotal) }, "Subtotal")
+func (c *Island) Compute(name string, fn func() any, deps ...string) {
+	c.computeds = append(c.computeds, computedDef{name: name, fn: fn, deps: deps})
+}
+
+func (c *Island) pendingComputeds() []computedDef { return c.computeds }
 
 // MarkRefresh marks fields for surgical refresh. The actual refresh happens
 // when Refresh() is called (either by the user or automatically by the
@@ -130,6 +228,46 @@ func (c *Island) Refresh() {
 	if c.ci.EventCh != nil {
 		c.ci.EventCh <- island.Event{Kind: island.RefreshKind}
 	}
+}
+
+// Task and its options are the async-task primitive. See Island.Task.
+type (
+	// Task is the handle passed to a task closure. The closure runs off the
+	// island event loop and must not touch island state directly; all state
+	// changes go through Task.Apply, which serializes them on the loop with
+	// renders. Cancellation is cooperative via Task.Cancelled / Task.Context.
+	Task = island.Task
+	// TaskOption configures a Task start (WithRestart, WithQueue).
+	TaskOption = island.TaskOption
+	// TaskPanic is the error type surfaced via the Err(name) binding when a task
+	// body or one of its Apply closures panics. Crashed(name) reports it too.
+	TaskPanic = island.TaskPanic
+)
+
+// WithRestart cancels an in-flight task of the same name and starts fresh. The
+// superseded run's late results are fenced out and can never clobber the new run.
+func WithRestart() TaskOption { return island.WithRestart() }
+
+// WithQueue runs the new task after the current one of the same name finishes,
+// instead of the default (drop the new start while one is running).
+func WithQueue() TaskOption { return island.WithQueue() }
+
+// Task starts a named background task. The closure fn runs on a fresh goroutine
+// off the island event loop, so it may block on I/O or compute. It must not
+// write island fields directly — marshal every state change back with t.Apply,
+// which runs on the loop and triggers a refresh. Pending/progress/error are
+// bindable without app fields via Busy(name), Progress(name), Err(name), and
+// Crashed(name).
+//
+// Re-entry: by default a start is dropped while a task of the same name runs;
+// use WithRestart() or WithQueue() to change that. Panics in the task body or
+// its Apply closures are recovered and surfaced as Err(name)/Crashed(name) —
+// they fail the task, not the process.
+func (c *Island) Task(name string, fn func(*Task), opts ...TaskOption) {
+	if c.ci == nil {
+		return
+	}
+	c.ci.StartTask(name, fn, opts...)
 }
 
 // NewEngine creates a new godom Engine.
@@ -221,14 +359,14 @@ func (a *Engine) SetAuth(fn middleware.AuthFunc) {
 
 // --- EngineConfig interface methods (used by internal/server) ---
 
-func (a *Engine) Islands() []*island.Info               { return a.islands }
-func (a *Engine) PluginScripts() map[string][]string    { return a.plugins }
-func (a *Engine) EmbeddedJS() (string, string, string)  { return bridgeJS, protobufMinJS, protocolJS }
-func (a *Engine) Mux() *http.ServeMux                   { return a.userMux }
-func (a *Engine) WebSocketPath() string                  { return a.wsPath }
-func (a *Engine) GodomScriptPath() string                { return a.scriptPath }
-func (a *Engine) Auth() middleware.AuthFunc              { return a.authFn }
-func (a *Engine) ExecJSDisabled() bool                   { return a.DisableExecJS }
+func (a *Engine) Islands() []*island.Info              { return a.islands }
+func (a *Engine) PluginScripts() map[string][]string   { return a.plugins }
+func (a *Engine) EmbeddedJS() (string, string, string) { return bridgeJS, protobufMinJS, protocolJS }
+func (a *Engine) Mux() *http.ServeMux                  { return a.userMux }
+func (a *Engine) WebSocketPath() string                { return a.wsPath }
+func (a *Engine) GodomScriptPath() string              { return a.scriptPath }
+func (a *Engine) Auth() middleware.AuthFunc            { return a.authFn }
+func (a *Engine) ExecJSDisabled() bool                 { return a.DisableExecJS }
 func (a *Engine) GetDisconnectHTML() string {
 	if a.DisconnectHTML != "" {
 		return a.DisconnectHTML
@@ -317,6 +455,20 @@ func (a *Engine) Register(islands ...interface{}) {
 
 		ci := server.BuildIslandInfo(isl, entryHTML, layers, a.partials)
 		ci.SlotName = name
+
+		// Install computed fields declared via Compute() before this Register.
+		// Read them through the promoted method before the embed is overwritten.
+		if cp, ok := isl.(computeProvider); ok {
+			if defs := cp.pendingComputeds(); len(defs) > 0 {
+				idefs := make([]island.ComputedDef, len(defs))
+				for i, d := range defs {
+					idefs[i] = island.ComputedDef{Name: d.name, Fn: d.fn, Deps: d.deps}
+				}
+				if err := ci.RegisterComputed(idefs); err != nil {
+					log.Fatalf("godom: island %q: %v", name, err)
+				}
+			}
+		}
 
 		// Preserve island-side fields on the embed after Register.
 		islField.Set(reflect.ValueOf(Island{

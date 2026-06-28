@@ -402,6 +402,12 @@ type ResolveContext struct {
 	NodeStableIDs map[int]string // nodeID → stableKey (built during resolve, read by server)
 	ForIndices    []int          // current g-for loop index stack (for composite stable keys)
 
+	// ExtraEnv holds engine-provided expression functions that are not struct
+	// fields or methods — e.g. the task-state bindings Busy/Progress/Err/Crashed.
+	// They are merged into the base env with lower precedence than struct
+	// members (a struct field/method of the same name wins, for back-compat).
+	ExtraEnv map[string]any
+
 	// baseEnv is the expr-lang environment built from struct fields + methods.
 	// Built once per render on first use, reused for every ResolveExpr call.
 	baseEnv map[string]any
@@ -1016,6 +1022,14 @@ func buildBaseEnv(ctx *ResolveContext) map[string]any {
 				method := sv.Method(i)
 				env[name] = method.Interface()
 			}
+		}
+	}
+
+	// Engine-provided functions (e.g. task bindings) — lower precedence than
+	// struct members so an app's own field/method of the same name still wins.
+	for name, fn := range ctx.ExtraEnv {
+		if _, exists := env[name]; !exists {
+			env[name] = fn
 		}
 	}
 

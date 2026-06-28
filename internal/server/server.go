@@ -11,8 +11,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/env"
+	"github.com/anupshinde/godom/internal/island"
 	"github.com/anupshinde/godom/internal/middleware"
 	gproto "github.com/anupshinde/godom/internal/proto"
 	"github.com/anupshinde/godom/internal/render"
@@ -39,6 +39,14 @@ type EngineConfig interface {
 	GetDisconnectHTML() string
 	GetDisconnectBadgeHTML() string
 	GetFaviconSVG() string
+
+	// BindClients hands the live connection roster back to the engine at
+	// startup so Engine.Clients() can read it. Called once from Run.
+	BindClients(ClientSource)
+
+	// ClientModules returns registered client-side JS modules (name → script)
+	// to ship in the bundle for targeted client.Call. May be nil/empty.
+	ClientModules() map[string]string
 }
 
 // BuildIslandInfo takes pre-read entry HTML, expands custom-element partials
@@ -128,6 +136,9 @@ func Run(cfg EngineConfig) error {
 
 	pool := &connPool{}
 
+	// Hand the live roster to the engine so Engine.Clients() can read it.
+	cfg.BindClients(pool)
+
 	// All components share a single IDCounter so node IDs are globally
 	// unique across the bridge's nodeMap.
 	sharedIDCounter := &vdom.IDCounter{}
@@ -199,21 +210,6 @@ func Run(cfg EngineConfig) error {
 		}
 	}
 
-	// Build the JS bundle once: protobuf, protocol, plugins, bridge.
-	var parts []string
-	parts = append(parts, protobufMinJS, protocolJS)
-	if len(plugins) > 0 {
-		parts = append(parts, "var godom=window[window.GODOM_NS||'godom']=window[window.GODOM_NS||'godom']||{};godom._plugins=godom._plugins||{};godom.register=function(n,h){godom._plugins[n]=h};")
-		for _, pluginScripts := range plugins {
-			parts = append(parts, pluginScripts...)
-		}
-	}
-	if disableExecJS {
-		parts = append(parts, "window.GODOM_DISABLE_EXEC=true;")
-	}
-	if env.Debug {
-		parts = append(parts, "window.GODOM_DEBUG=true;")
-	}
 	hasRoot := false
 	for _, ci := range comps {
 		if ci.SlotName == "document.body" {
@@ -221,18 +217,18 @@ func Run(cfg EngineConfig) error {
 			break
 		}
 	}
-	if hasRoot {
-		parts = append(parts, "window.GODOM_ROOT=true;")
-	}
-	// Inject disconnect overlay HTML as a JSON-encoded string.
-	htmlJSON, _ := json.Marshal(disconnectHTML)
-	parts = append(parts, fmt.Sprintf("window.GODOM_DISCONNECT_HTML=%s;", htmlJSON))
-	badgeJSON, _ := json.Marshal(disconnectBadgeHTML)
-	parts = append(parts, fmt.Sprintf("window.GODOM_DISCONNECT_BADGE=%s;", badgeJSON))
-	parts = append(parts, bridge)
-	// Separate each part with \r\n and a semicolon to prevent
-	// minified scripts from being parsed as continuations.
-	bundleJS := strings.Join(parts, ";\r\n\n")
+	bundleJS := assembleBundle(bundleInputs{
+		protobufMinJS:       protobufMinJS,
+		protocolJS:          protocolJS,
+		bridge:              bridge,
+		plugins:             plugins,
+		modules:             cfg.ClientModules(),
+		disableExecJS:       disableExecJS,
+		debug:               env.Debug,
+		hasRoot:             hasRoot,
+		disconnectHTML:      disconnectHTML,
+		disconnectBadgeHTML: disconnectBadgeHTML,
+	})
 
 	// Serve default favicon unless the user already registered /favicon.ico.
 	faviconSVG := cfg.GetFaviconSVG()
@@ -321,6 +317,17 @@ func Run(cfg EngineConfig) error {
 				}
 
 			case gproto.BrowserKind_BROWSER_METHOD:
+				// Connection environment (§3) rides this channel under a reserved
+				// method name; it is per-connection, not an island method call.
+				if msg.Method == clientEnvMethod {
+					applyClientEnv(wc.client, msg.Args, ctx.comps)
+					continue
+				}
+				// Per-client module capability advertisement (§4).
+				if msg.Method == clientCapMethod {
+					applyClientCapability(wc.client, msg.Args)
+					continue
+				}
 				if msg.NodeId == 0 {
 					// nodeId=0 means godom.call() from JS — find the component that has this method.
 					for _, ci := range ctx.comps {
@@ -367,8 +374,14 @@ func Run(cfg EngineConfig) error {
 				if env.Debug {
 					log.Printf("godom: JSResult id=%d result=%d bytes err=%q", msg.CallId, len(msg.Result), msg.Error)
 				}
-				for _, ci := range ctx.comps {
-					ci.HandleJSResult(msg.CallId, msg.Result, msg.Error)
+				// Negative ids are per-client targeted calls (§4); route the reply
+				// back to the originating client. Positive ids are broadcast ExecJS.
+				if msg.CallId < 0 {
+					wc.client.handleResult(msg.CallId, msg.Result, msg.Error)
+				} else {
+					for _, ci := range ctx.comps {
+						ci.HandleJSResult(msg.CallId, msg.Result, msg.Error)
+					}
 				}
 			}
 		}
@@ -408,6 +421,10 @@ func wireRefresh(ci *island.Info) {
 func (s *serverCtx) executeRefresh(ci *island.Info) {
 	fields := ci.DrainMarkedFields()
 	if len(fields) > 0 {
+		// Expand marks to the computeds transitively reachable from them and
+		// recompute those (assigning to their fields) before patching, so the
+		// surgical path emits patches for the computeds' bound nodes too.
+		fields = ci.ExpandAndRecompute(fields)
 		patches := s.buildSurgicalPatches(ci, fields)
 		if len(patches) > 0 {
 			msg := render.EncodePatchMessage(patches)
@@ -417,6 +434,8 @@ func (s *serverCtx) executeRefresh(ci *island.Info) {
 			return
 		}
 	}
+	// Full refresh recomputes every computed before rebuilding the tree.
+	ci.RecomputeAll()
 	msg, changedFields := BuildUpdate(ci)
 	s.lookup.evictRemoved()
 	ci.LastChangedFields = changedFields
@@ -467,6 +486,18 @@ func (s *serverCtx) processEvents(ci *island.Info, compIdx int) {
 		case island.MethodCallKind:
 			s.handleMethodCall(ci, compIdx, evt.Msg)
 		case island.RefreshKind:
+			s.executeRefresh(ci)
+		case island.ApplyKind:
+			// Fence stale task applies: a superseded run's late applies (and its
+			// terminal transition) are dropped before they can touch state, so
+			// they neither surface nor clear a newer run's Busy.
+			if evt.TaskName != "" && !ci.TaskGenCurrent(evt.TaskName, evt.TaskGen) {
+				continue
+			}
+			s.runApply(ci, evt)
+			// One refresh per apply: marks set inside the apply drive a surgical
+			// patch; a task transition (no marks) falls through to a full update
+			// that re-renders the Busy/Progress/Err/Crashed bindings.
 			s.executeRefresh(ci)
 		}
 	}
@@ -602,6 +633,7 @@ func buildTree(ci *island.Info) *vdom.ElementNode {
 		IDs:           ci.IDCounter,
 		UnboundValues: ci.UnboundValues,
 		NodeStableIDs: nodeStableIDs,
+		ExtraEnv:      taskEnv(ci),
 	}
 	children := vdom.ResolveTree(ci.VDOMTemplates, ctx)
 	root := &vdom.ElementNode{NodeBase: vdom.NodeBase{ID: ci.IDCounter.Next()}, Tag: "body", Children: children}
@@ -633,7 +665,7 @@ func (s *serverCtx) buildSurgicalPatches(ci *island.Info, fields []string) []vdo
 			if expr == "" {
 				expr = field
 			}
-			val := vdom.ResolveExpr(expr, &vdom.ResolveContext{State: ci.Value})
+			val := vdom.ResolveExpr(expr, &vdom.ResolveContext{State: ci.Value, ExtraEnv: taskEnv(ci)})
 			truthy := vdom.IsTruthy(val)
 			strVal := fmt.Sprint(val)
 

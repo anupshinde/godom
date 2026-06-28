@@ -344,6 +344,70 @@ func (a *App) onMouseMove(x, y float64) {
 
 ---
 
+## Computed Fields
+
+When a field is *derived* from other fields, declare it with `Compute` instead of recomputing
+and re-marking it by hand in every handler. The engine maintains it: whenever a dependency
+changes, it recomputes the field (in dependency order) and surgically patches its bound nodes.
+
+```go
+type Cart struct {
+    godom.Island
+    Qty, UnitPrice  int
+    Subtotal        int    // computed
+    CheckoutEnabled bool   // computed
+}
+
+// Call this yourself before Register — godom does not auto-run it.
+func (c *Cart) defineComputeds() {
+    c.Compute("Subtotal", func() any { return c.Qty * c.UnitPrice }, "Qty", "UnitPrice")
+    c.Compute("CheckoutEnabled", func() any { return c.Qty > 0 }, "Qty")
+}
+
+func (c *Cart) SetQty(n int) { c.Qty = n; c.MarkRefresh("Qty") } // computeds follow
+
+// cart := &Cart{Qty: 1, UnitPrice: 10}; cart.defineComputeds(); eng.Register(cart)
+```
+
+The computed `name` and its `deps` must be exported fields (a dep can itself be a computed).
+`fn` must be a pure, cheap derivation — no I/O, no blocking, no state mutation; heavy work
+belongs in a task (below). Unknown deps, duplicates, and dependency cycles are caught at
+`Register()`.
+
+---
+
+## Async Tasks
+
+`Task` is the managed way to do background work — it replaces the hand-rolled loading-flag +
+re-entry-guard + goroutine + refresh quartet and makes it safe by construction. The closure
+runs **off** the event loop (so it may block) and must not touch island fields directly —
+state changes go back through `t.Apply`, which the loop serializes with renders.
+
+```go
+func (v *View) Search() {
+    v.Task("search", func(t *godom.Task) {
+        rows, err := query(v.Q)        // off-loop; safe to block
+        if t.Cancelled() { return }
+        if err != nil { t.Fail(err); return }
+        t.Apply(func() { v.Rows = rows; v.MarkRefresh("Rows") })
+    })
+}
+```
+
+Pending/progress/error bind without an app field:
+
+```html
+<button g-disabled="Busy('search')" g-text="Busy('search') ? 'Searching…' : 'Search'">Search</button>
+<p g-show="Busy('search')" g-text="Progress('search')"></p>
+```
+
+Re-entry defaults to *drop* (ignore a start while one runs); use `godom.WithRestart()` (cancel
+and restart) or `godom.WithQueue()`. The handle offers `t.Apply`, `t.Progress(msg)` (coalesced
+latest-wins), `t.Fail(err)`, `t.Cancelled()`, `t.Context()`. A panic in the task fails the
+*task* (surfaced as `Err(name)`/`Crashed(name)`), not the process.
+
+---
+
 ## Hiding Raw Templates (`.g-ready`)
 
 When a page loads, there's a brief moment before godom initializes where raw template content (`{{Count}}`, placeholder text) is visible. The bridge adds a `.g-ready` CSS class to signal when an island is initialized:
@@ -724,6 +788,10 @@ func (a *App) NavigateTo(path string) {
 }
 ```
 
+### When to reach for ExecJS
+
+In a **native** godom app you rarely need it — godom renders the DOM, so use ExecJS only for browser-only capabilities (viewport, clipboard, an imperative third-party library), and prefer the targeted `Client.Eval`/`Call` when the work is per-connection. Its broadcast nature is most at home in **injection** scenarios (godom injected into a third-party page via the browser extension), where you don't own the page's rendering and reaching into its DOM/JS via ExecJS is often the *only* way to drive it.
+
 ### Multiple browsers
 
 The callback fires once per connected browser. If 3 tabs are open, you get 3 callbacks. Each response contains that browser's own state.
@@ -787,6 +855,82 @@ Arguments are JSON-encoded. The server finds the island that has the method and 
 When `godom.call("MethodName", args...)` is sent, the server searches all registered islands for one that has `MethodName` as an exported method. The first match wins. If no island has the method, an error is logged.
 
 See the `examples/exec-and-call/` example for a working demo of both features.
+
+---
+
+## Connections and the Connection Environment
+
+A `*godom.Client` is **one connection** — one running instance of the page (one
+`bridge.js`/WebSocket). That's usually a browser **tab**, but equally a separate window, an
+`<iframe>` loading godom.js, or another device viewing the page over the network. It's also
+**per-socket**: a reconnecting tab is a *new* `*Client`. ("Tab" below is shorthand for "one
+connection" in this sense.) `eng.Clients()` returns the live roster (after `Run`); each client
+has an `ID()`, an `Env()` (browser timezone/locale/viewport), and the targeted-JS methods below.
+
+The browser reports its environment just after connect — data Go can't derive itself. Seed
+island state from it with the optional `OnConnect` hook:
+
+```go
+func (d *Dashboard) OnConnect(c *godom.Client) { // once per connecting tab, on the loop
+    d.TZ = c.Env().TimeZone
+    d.MarkRefresh("TZ")
+    d.Refresh()
+}
+```
+
+Seeding a *shared* field is last-writer-wins across tabs — fine for the single-user case; for
+divergent per-tab environments, scope by page or engine.
+
+## Targeting One Connection (Client.Eval / Call)
+
+> **⚠️ This steps outside godom's sync — use it deliberately.** godom's superpower is that the
+> Go-rendered view is broadcast *identically to every connection*, so they stay in sync.
+> Targeting one connection leaves that symmetry on purpose, operating on the **client-side-JS
+> layer godom does not replicate**. It does **not** desync the Go VDOM itself (still broadcast) —
+> the risk is only in the non-synced client layer, and in seeding *shared* island state from one
+> connection (last-writer-wins). Never target a DOM node godom manages — the next patch clobbers
+> it.
+>
+> One thing that surprises people: unlike VDOM patches (page-scoped — a connection ignores
+> islands it doesn't have), **a broadcast `ExecJS` runs on *every* connection unconditionally**.
+> That's why per-connection addressing exists.
+>
+> **The two use cases it was built for:**
+> - *Replicated widget* — a chart each page renders into its own canvas. The module ships to
+>   every page but its canvas/prereqs exist only where the tool is loaded, so `ClientsWith(name)`
+>   fans the call out to just the connections that declared a working widget. (A self-guarding
+>   broadcast works too; `ClientsWith` is cleaner and avoids spurious calls.)
+> - *Singleton authoritative bridge* — exactly one connection holds a privileged/stateful link
+>   (e.g. a live external-app session). Here targeting is **necessary**: send the privileged call
+>   to that one connection, never broadcast it; no client-side guard can tell which connection is
+>   *the* owner — only the server's `ClientsWith` can.
+
+`ExecJS` broadcasts to every connection. To target **one** — or to call a client-side JS module
+with typed args and replies — use the `*Client` methods. Register a module once; it ships to
+every connection as `window.godom.modules.<name>` and declares its capability when ready:
+
+```go
+//go:embed widget.js
+var widgetJS string
+eng.RegisterClientModule("widget", widgetJS)
+```
+
+```js
+// widget.js
+godom.modules.widget = { render: function(args) { /* ... */ } };
+godom.declareCapability('widget'); // so eng.ClientsWith("widget") finds this tab
+```
+
+```go
+// Fan out to capable tabs (replicated widget), or target a single owner.
+for _, c := range eng.ClientsWith("widget") {
+    c.CallAsync("widget.render", data, nil) // non-blocking, handler-safe
+}
+```
+
+`Eval`/`CallAsync` are non-blocking. The blocking `Call` (typed reply, JS throw → Go error)
+must run inside a `Task` (off the loop); a disconnect mid-call returns an error rather than
+hanging. Targeting is explicit — module state isn't part of godom's VDOM sync.
 
 ---
 

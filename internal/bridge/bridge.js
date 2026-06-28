@@ -127,6 +127,14 @@
                 firedOnConnect = true;
                 ns.onconnect();
             }
+            // §3: deliver connection environment (timezone, locale, viewport) to
+            // Go via the reserved godom.call method. Best-effort; never blocks.
+            sendClientEnv();
+            // §4: re-advertise any module capabilities declared this page load —
+            // a reconnect is a new server-side Client, so re-send the set.
+            for (var cap in declaredCaps) {
+                if (declaredCaps.hasOwnProperty(cap)) sendCapability(cap);
+            }
             // In embedded mode, scan for g-island targets immediately —
             // no SERVER_INIT will arrive to trigger it. In root mode, the
             // static HTML may contain unresolved template expressions
@@ -925,6 +933,56 @@
     // =========================================================================
     // godom.call — JS → Go method calls from arbitrary JavaScript
     // =========================================================================
+
+    // sendClientEnv reports this connection's browser environment to Go just
+    // after connect (§3 Client.Env). It rides the BROWSER_METHOD channel under a
+    // reserved method name, so no extra wire message type is needed.
+    function sendClientEnv() {
+        try {
+            var tz = "";
+            try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
+            var env = {
+                timeZone: tz,
+                locale: (navigator && navigator.language) || "",
+                viewport: { w: window.innerWidth || 0, h: window.innerHeight || 0 }
+            };
+            var json = textEncoder.encode(JSON.stringify(env));
+            var msg = Proto.BrowserMessage.encode({
+                kind: BK.BROWSER_METHOD,
+                nodeId: 0,
+                method: "__godom_env__",
+                args: [json]
+            }).finish();
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(msg);
+        } catch (e) {
+            if (window.GODOM_DEBUG) console.warn("[godom] sendClientEnv failed", e);
+        }
+    }
+
+    // §4: per-client module capability advertisement. A module calls
+    // godom.declareCapability('name') once it has successfully initialized on
+    // this tab (its JS loaded and its prerequisites are present). The set is
+    // remembered and re-advertised on reconnect (see ws.onopen).
+    var declaredCaps = {};
+    ns.declareCapability = function(name) {
+        name = String(name);
+        declaredCaps[name] = true;
+        sendCapability(name);
+    };
+    function sendCapability(name) {
+        try {
+            var json = textEncoder.encode(JSON.stringify(name));
+            var msg = Proto.BrowserMessage.encode({
+                kind: BK.BROWSER_METHOD,
+                nodeId: 0,
+                method: "__godom_capability__",
+                args: [json]
+            }).finish();
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(msg);
+        } catch (e) {
+            if (window.GODOM_DEBUG) console.warn("[godom] declareCapability failed", e);
+        }
+    }
 
     // ns.call(method, ...args) sends a MethodCall to Go.
     // The method is dispatched to the island that owns the calling context.
