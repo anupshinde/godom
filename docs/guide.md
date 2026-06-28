@@ -882,16 +882,24 @@ divergent per-tab environments, scope by page or engine.
 > **⚠️ This steps outside godom's sync — use it deliberately.** godom's superpower is that the
 > Go-rendered view is broadcast *identically to every connection*, so they stay in sync.
 > Targeting one connection leaves that symmetry on purpose, operating on the **client-side-JS
-> layer godom does not replicate**. It has real uses (below), but you should know what you're
-> getting into: use it only for genuinely **per-connection** concerns; to keep a *replicated*
-> widget in sync, fan out with `ClientsWith` rather than targeting one; never target a DOM node
-> godom manages (the next patch clobbers it). It does **not** desync the Go VDOM itself — only
-> the non-synced client-side layer.
+> layer godom does not replicate**. It does **not** desync the Go VDOM itself (still broadcast) —
+> the risk is only in the non-synced client layer, and in seeding *shared* island state from one
+> connection (last-writer-wins). Never target a DOM node godom manages — the next patch clobbers
+> it.
 >
-> **The two use cases it was built for:** a *replicated widget* (a chart each connection
-> renders — fan out to all capable connections) and a *singleton authoritative bridge* (exactly
-> one connection holds a privileged/stateful external link, e.g. a live broker session — target
-> that one, never broadcast a privileged call to the rest).
+> One thing that surprises people: unlike VDOM patches (page-scoped — a connection ignores
+> islands it doesn't have), **a broadcast `ExecJS` runs on *every* connection unconditionally**.
+> That's why per-connection addressing exists.
+>
+> **The two use cases it was built for:**
+> - *Replicated widget* — a chart each page renders into its own canvas. The module ships to
+>   every page but its canvas/prereqs exist only where the tool is loaded, so `ClientsWith(name)`
+>   fans the call out to just the connections that declared a working widget. (A self-guarding
+>   broadcast works too; `ClientsWith` is cleaner and avoids spurious calls.)
+> - *Singleton authoritative bridge* — exactly one connection holds a privileged/stateful link
+>   (a live broker session). Here targeting is **necessary**: send the privileged call to that
+>   one connection, never broadcast it; no client-side guard can tell which connection is *the*
+>   owner — only the server's `ClientsWith` can.
 
 `ExecJS` broadcasts to every connection. To target **one** — or to call a client-side JS module
 with typed args and replies — use the `*Client` methods. Register a module once; it ships to

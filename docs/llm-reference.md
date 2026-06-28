@@ -893,25 +893,34 @@ scope by page or engine.
 `ExecJS` broadcasts to every connection. To talk to **one** connection — or to a client-side JS
 module with typed args/replies — use the `*Client` methods.
 
+> **A key difference from VDOM updates.** godom's *rendered view* is page-scoped: a connection
+> only applies patches for islands it actually has, so different pages stay correctly isolated.
+> **JS calls are not scoped that way** — a broadcast `ExecJS` runs `eval` on *every* connected
+> bridge unconditionally, regardless of which page or island it has. That's why per-connection
+> addressing exists.
+
 > **⚠️ Use deliberately — this steps outside godom's sync.** godom's core guarantee is that
 > the Go-rendered view is broadcast **identically to every connection**, so they stay in sync.
 > Targeting one connection deliberately leaves that symmetry, operating on the **client-side-JS
-> layer godom does *not* replicate** (a JS widget's internal state, browser APIs). This has real
-> uses — but know what you're getting into:
-> - Use it only for genuinely **per-connection** concerns: a module only some connections own,
->   or a privileged link only one connection holds.
-> - To keep a *replicated* widget consistent, **fan out** with `ClientsWith` so every capable
->   connection gets the call — don't target just one and expect the others to follow.
-> - **Never** target a DOM node godom manages (the next patch will clobber it). Target browser
->   APIs and your own client-side widgets only.
-> - Targeting does **not** desync the Go VDOM itself — that's still broadcast. The risk is only
->   in the non-synced client-side layer, and in seeding *shared* island state from one
->   connection (last-writer-wins).
->
-> **What it's for (the two archetypes):** a *replicated widget* (e.g. a chart each connection
-> renders — fan out via `ClientsWith`), and a *singleton authoritative bridge* (exactly one
-> connection owns a privileged/stateful external link, e.g. a live broker session — target that
-> one connection, never broadcast a privileged call to the rest).
+> layer godom does *not* replicate** (a JS widget's internal state, browser APIs). It does
+> **not** desync the Go VDOM itself — that's still broadcast; the risk is only in the
+> non-synced client-side layer, and in seeding *shared* island state from one connection
+> (last-writer-wins). **Never** target a DOM node godom manages — the next patch clobbers it;
+> target browser APIs and your own client-side widgets only.
+
+The two use cases it was built for:
+
+- **Replicated widget** (e.g. a chart each page renders into its own canvas). A
+  `RegisterClientModule` ships to *every* page, but its prerequisites (the canvas, page-specific
+  setup) exist only where that tool is loaded. `ClientsWith(name)` fans the call out to exactly
+  the connections that declared a working widget — so you don't spray `render(...)` at pages
+  that lack the canvas. A self-guarding broadcast (`ExecJS` with a presence check) also works
+  here; `ClientsWith` is just cleaner, typed, and avoids the spurious calls.
+- **Singleton authoritative bridge** (exactly one connection holds a privileged, stateful link —
+  a live broker session, an authenticated order path). Here targeting is **necessary**, not just
+  nicer: you must send the privileged call to *that one* connection and never broadcast it to the
+  rest, and no client-side guard can answer "am I *the* owner?" — only the server's
+  `ClientsWith` (where only the owner declared the capability) can.
 
 **Register a module** (shipped to every connection as `window.godom.modules.<name>`):
 
