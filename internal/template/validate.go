@@ -143,9 +143,10 @@ func validateForExpr(expr string, ci *island.Info, loopVars map[string]*loopVarI
 
 func validateMethodRef(dirName, expr string, ci *island.Info, loopVars map[string]*loopVarInfo) error {
 	name, args := island.ParseCallExpr(expr)
-	if island.IsReservedBinding(name) {
-		return nil // engine-provided binding (e.g. Busy/Progress); arg is a loose string
-	}
+	// Reserved bindings (Busy/Progress/…) are value readers, not actions, so they
+	// are NOT accepted in event-handler directives — only in value contexts
+	// (validateFieldExpr). Using one as a g-click handler is a mistake worth
+	// reporting.
 	if !ci.HasMethod(name) {
 		return fmt.Errorf("%s references unknown method %q on %s", dirName, name, ci.Typ.Name())
 	}

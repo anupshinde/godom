@@ -191,3 +191,58 @@ func TestConnPool_RemoveCancelsPendingCalls(t *testing.T) {
 		t.Errorf("remove should cancel pending calls; callback err = %q", gotErr)
 	}
 }
+
+// CallAsync is the non-blocking typed call: it sends the module-call expression
+// and delivers the reply to the callback.
+func TestClient_CallAsync(t *testing.T) {
+	client, ws, _, _, cleanup := clientWithWS(t)
+	defer cleanup()
+
+	done := make(chan string, 1)
+	client.CallAsync("widget.render", map[string]int{"w": 8}, func(result []byte, errMsg string) {
+		done <- string(result) + "|" + errMsg
+	})
+
+	sm := readJSCall(t, ws)
+	if sm.Expr != `window.godom.modules.widget.render({"w":8})` {
+		t.Fatalf("CallAsync built wrong expr: %q", sm.Expr)
+	}
+	client.handleResult(sm.CallId, []byte(`"ok"`), "")
+	if got := <-done; got != `"ok"|` {
+		t.Errorf("CallAsync callback got %q", got)
+	}
+}
+
+// Un-marshalable args fail before any send, surfaced as an error (Call) or via
+// the callback (CallAsync) — not a panic.
+func TestClient_CallArgsMarshalError(t *testing.T) {
+	c := &Client{}
+	err := c.Call("m.fn", make(chan int), nil) // channels can't be JSON-marshaled
+	if err == nil || !strings.Contains(err.Error(), "marshal args") {
+		t.Errorf("Call with un-marshalable args should error on marshal, got %v", err)
+	}
+}
+
+func TestClient_CallAsyncArgsMarshalError(t *testing.T) {
+	c := &Client{}
+	var gotErr string
+	c.CallAsync("m.fn", make(chan int), func(r []byte, e string) { gotErr = e })
+	if !strings.Contains(gotErr, "marshal args") {
+		t.Errorf("CallAsync with un-marshalable args should report marshal error, got %q", gotErr)
+	}
+}
+
+// A reply that can't be unmarshaled into out is surfaced as an error.
+func TestClient_CallUnmarshalError(t *testing.T) {
+	client, ws, _, _, cleanup := clientWithWS(t)
+	defer cleanup()
+	go func() {
+		sm := readJSCall(t, ws)
+		client.handleResult(sm.CallId, []byte(`not-json`), "")
+	}()
+	var out struct{ X int }
+	err := client.Call("m.fn", nil, &out)
+	if err == nil || !strings.Contains(err.Error(), "unmarshal result") {
+		t.Errorf("Call should surface an unmarshal error, got %v", err)
+	}
+}

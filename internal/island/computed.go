@@ -168,9 +168,6 @@ func (ci *Info) RecomputeAll() {
 	}
 }
 
-// HasComputeds reports whether the island has any computed fields.
-func (ci *Info) HasComputeds() bool { return len(ci.computeds) > 0 }
-
 // ExpandAndRecompute expands marked field names to include every computed
 // transitively reachable from them, recomputes those computeds in dependency
 // order (assigning to their fields), and returns the expanded set so the

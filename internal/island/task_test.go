@@ -283,3 +283,23 @@ func itoa(i int) string {
 	}
 	return string(b)
 }
+
+// t.Context() exposes a live, cancellable context, and the reserved-binding
+// helpers are consistent with the constants.
+func TestTask_ContextAndReservedBindings(t *testing.T) {
+	tk := &Task{ci: &Info{}, name: "x", ctx: context.Background()}
+	if tk.Context() == nil {
+		t.Error("Context() must not be nil")
+	}
+	for _, n := range ReservedBindingNames {
+		if !IsReservedBinding(n) {
+			t.Errorf("%q should be reserved", n)
+		}
+	}
+	if IsReservedBinding("NotABinding") {
+		t.Error("an ordinary name must not be reserved")
+	}
+	if BindBusy != "Busy" || BindProgress != "Progress" || BindErr != "Err" || BindCrashed != "Crashed" {
+		t.Error("binding name constants drifted from their string values")
+	}
+}

@@ -262,3 +262,36 @@ func TestTaskEnv_MatchesReservedBindingNames(t *testing.T) {
 		}
 	}
 }
+
+// The taskEnv binding closures must read live task state. Defaults for an unknown
+// task, and the real value (including Err's error-text branch) for a known one.
+func TestTaskEnv_BindingClosuresReadState(t *testing.T) {
+	env := taskEnv(&island.Info{})
+	if env["Busy"].(func(string) bool)("x") {
+		t.Error("Busy default should be false")
+	}
+	if env["Progress"].(func(string) string)("x") != "" {
+		t.Error("Progress default should be empty")
+	}
+	if env["Crashed"].(func(string) bool)("x") {
+		t.Error("Crashed default should be false")
+	}
+	if env["Err"].(func(string) any)("x") != "" {
+		t.Error("Err default should be empty string")
+	}
+
+	// A failed task: Err returns the error text.
+	ci, stop := runTaskLoop(t)
+	defer stop()
+	ci.StartTask("e", func(tk *island.Task) { tk.Fail(errFromString("kaput")) })
+	waitBusy(t, ci, "e", false)
+	got := snapshotOnLoop(ci, func() any { return taskEnv(ci)["Err"].(func(string) any)("e") })
+	if got != "kaput" {
+		t.Errorf("Err binding should return the error text, got %v", got)
+	}
+}
+
+type errString string
+
+func (e errString) Error() string  { return string(e) }
+func errFromString(s string) error { return errString(s) }

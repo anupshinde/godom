@@ -26,3 +26,15 @@ func TestCompute_RegisterSeedsInitialValue(t *testing.T) {
 		t.Errorf("Compute+Register should seed Subtotal=10, got %d", app.Subtotal)
 	}
 }
+
+// The public task wrappers: WithRestart/WithQueue return options, and Task is a
+// safe no-op before the island is serving (nil ci / no event loop). The task
+// state machine itself is covered in internal/island and internal/server.
+func TestTaskPublicAPI_OptionsAndNoOpGuard(t *testing.T) {
+	if WithRestart() == nil || WithQueue() == nil {
+		t.Error("WithRestart/WithQueue must return non-nil options")
+	}
+	// Task on an unregistered island (ci == nil) must not run the body or panic.
+	app := &cartApp{}
+	app.Task("never", func(tk *Task) { t.Error("body must not run without a started loop") })
+}

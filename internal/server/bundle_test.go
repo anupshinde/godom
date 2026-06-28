@@ -52,3 +52,28 @@ func TestClientModulesJS_WrapsEachInTryCatch(t *testing.T) {
 		t.Error("module body must be present inside the wrapper")
 	}
 }
+
+// Plugins and flag markers are emitted, plugins before bridge, modules after.
+func TestAssembleBundle_PluginsAndFlags(t *testing.T) {
+	out := assembleBundle(bundleInputs{
+		protobufMinJS: "PROTOBUF;",
+		protocolJS:    "PROTOCOL;",
+		bridge:        "BRIDGE_MARKER;",
+		plugins:       map[string][]string{"p": {"PLUGIN_MARKER;"}},
+		modules:       map[string]string{"m": "MODULE_MARKER;"},
+		disableExecJS: true,
+		debug:         true,
+		hasRoot:       true,
+	})
+	for _, want := range []string{"PLUGIN_MARKER", "GODOM_DISABLE_EXEC", "GODOM_DEBUG", "GODOM_ROOT", "godom.register"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("bundle missing %q", want)
+		}
+	}
+	if i, j := strings.Index(out, "PLUGIN_MARKER"), strings.Index(out, "BRIDGE_MARKER"); i < 0 || i > j {
+		t.Error("plugins must be emitted before bridge")
+	}
+	if i, j := strings.Index(out, "BRIDGE_MARKER"), strings.Index(out, "MODULE_MARKER"); i > j {
+		t.Error("modules must be emitted after bridge")
+	}
+}

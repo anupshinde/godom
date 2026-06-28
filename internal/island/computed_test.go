@@ -143,3 +143,39 @@ func TestComputed_TypeMismatchLeavesFieldUnchanged(t *testing.T) {
 		t.Errorf("type-mismatch recompute changed the field to %d, want 42 (unchanged)", cart.Subtotal)
 	}
 }
+
+// A computed returning nil zeroes its field (not a panic).
+func TestComputed_NilResultZeroesField(t *testing.T) {
+	s := &cartState{SubtotalText: "stale"}
+	ci := computedCI(s)
+	if err := ci.RegisterComputed([]ComputedDef{
+		{Name: "SubtotalText", Fn: func() any { return nil }, Deps: []string{"Qty"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// RegisterComputed seeded once with nil → zero value.
+	if s.SubtotalText != "" {
+		t.Errorf("nil computed result should zero the field, got %q", s.SubtotalText)
+	}
+	s.SubtotalText = "again"
+	ci.RecomputeAll()
+	if s.SubtotalText != "" {
+		t.Errorf("nil computed result should zero the field on recompute, got %q", s.SubtotalText)
+	}
+}
+
+// A computed result that is convertible (but not directly assignable) to the
+// field type is converted, not dropped.
+func TestComputed_ConvertibleResultIsConverted(t *testing.T) {
+	type wide struct{ N int64 }
+	w := &wide{}
+	ci := computedCI(w)
+	if err := ci.RegisterComputed([]ComputedDef{
+		{Name: "N", Fn: func() any { return int32(7) }}, // int32 → int64: convertible, not assignable
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if w.N != 7 {
+		t.Errorf("convertible computed result should be converted to the field type, got %d", w.N)
+	}
+}
