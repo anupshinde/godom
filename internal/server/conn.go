@@ -33,6 +33,29 @@ type Client struct {
 	callMu  sync.Mutex
 	callID  int32
 	pending map[int32]func(result []byte, errMsg string)
+
+	// Per-client module capabilities (§4). A capability is a runtime, per-tab
+	// fact — the module's JS loaded and its prerequisites are present — declared
+	// by the bridge (godom.declareCapability) and re-advertised on reconnect.
+	capMu sync.RWMutex
+	caps  map[string]bool
+}
+
+// Has reports whether this client has advertised the named module capability.
+// Safe to call from any goroutine.
+func (c *Client) Has(capability string) bool {
+	c.capMu.RLock()
+	defer c.capMu.RUnlock()
+	return c.caps[capability]
+}
+
+func (c *Client) addCapability(name string) {
+	c.capMu.Lock()
+	if c.caps == nil {
+		c.caps = make(map[string]bool)
+	}
+	c.caps[name] = true
+	c.capMu.Unlock()
 }
 
 // ID returns the connection's stable, process-unique identifier.

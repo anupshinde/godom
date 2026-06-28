@@ -102,6 +102,15 @@ func (a *Engine) Clients() []*Client {
 // intended for application use.
 func (a *Engine) BindClients(cs server.ClientSource) { a.clients = cs }
 
+// ClientsWith returns the connected clients that have advertised the named
+// module capability (via godom.declareCapability in the module's JS). Use it to
+// fan a module call out only to the tabs that can actually handle it — keeping a
+// replicated widget in sync without erroring on tabs that lack the module's
+// prerequisites, or to find the single owner of a privileged capability.
+func (a *Engine) ClientsWith(capability string) []*Client {
+	return server.ClientsWith(a.Clients(), capability)
+}
+
 // RegisterClientModule ships a client-side JS module to every browser, exposed
 // as window.godom.modules.<name>. The module script is responsible for assigning
 // itself, e.g. `godom.modules.widget = { render: function(args){ ... } };`. Call

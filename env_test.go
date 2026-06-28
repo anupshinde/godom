@@ -22,9 +22,21 @@ func TestRegisterClientModule(t *testing.T) {
 // that never sends its env.
 func TestBridgeJS_DeliversConnectionEnv(t *testing.T) {
 	bridge, _, _ := NewEngine().EmbeddedJS()
-	for _, want := range []string{"sendClientEnv", "__godom_env__"} {
+	for _, want := range []string{
+		"sendClientEnv", "__godom_env__", // §3 env delivery
+		"declareCapability", "__godom_capability__", // §4 capability advertisement
+	} {
 		if !strings.Contains(bridge, want) {
-			t.Errorf("embedded bridge.js missing %q — env delivery not wired", want)
+			t.Errorf("embedded bridge.js missing %q", want)
 		}
+	}
+}
+
+// ClientsWith delegates to the bound roster; with no roster (pre-Run) it is
+// empty, never a panic.
+func TestEngineClientsWith_EmptyBeforeBind(t *testing.T) {
+	eng := NewEngine()
+	if got := eng.ClientsWith("widget"); len(got) != 0 {
+		t.Errorf("ClientsWith before bind should be empty, got %v", got)
 	}
 }

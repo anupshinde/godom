@@ -10,6 +10,37 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// clientCapMethod is the reserved godom.call method name the bridge uses to
+// advertise a per-client module capability. It rides the BROWSER_METHOD channel
+// (like the env handshake), can be sent any time a module initializes, and is
+// re-sent on reconnect.
+const clientCapMethod = "__godom_capability__"
+
+// applyClientCapability records a capability the bridge advertised for a client.
+// Runs on the connection read-loop goroutine.
+func applyClientCapability(client *Client, args [][]byte) {
+	if client == nil || len(args) == 0 {
+		return
+	}
+	var name string
+	if err := json.Unmarshal(args[0], &name); err != nil || name == "" {
+		return
+	}
+	client.addCapability(name)
+}
+
+// ClientsWith returns the clients from the given set that have advertised the
+// named capability. Engine.ClientsWith is a thin public wrapper over it.
+func ClientsWith(clients []*Client, capability string) []*Client {
+	var out []*Client
+	for _, c := range clients {
+		if c != nil && c.Has(capability) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // --- per-client pending-call registry -------------------------------------
 
 func (c *Client) nextCallID() int32 {

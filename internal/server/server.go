@@ -343,6 +343,11 @@ func Run(cfg EngineConfig) error {
 					applyClientEnv(wc.client, msg.Args, ctx.comps)
 					continue
 				}
+				// Per-client module capability advertisement (§4).
+				if msg.Method == clientCapMethod {
+					applyClientCapability(wc.client, msg.Args)
+					continue
+				}
 				if msg.NodeId == 0 {
 					// nodeId=0 means godom.call() from JS — find the component that has this method.
 					for _, ci := range ctx.comps {
