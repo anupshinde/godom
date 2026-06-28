@@ -804,8 +804,15 @@ a.ExecJS("document.title = 'Updated'", func(result []byte, err string) {})
 - Result is JSON-serialized automatically by the bridge
 - Can be disabled server-side: `eng.DisableExecJS = true`
 - Can be disabled browser-side: `window.GODOM_DISABLE_EXEC = true`
-- To target **one** tab instead of broadcasting, use `Client.Eval` / `Client.Call` — see
+- To target **one** connection instead of broadcasting, use `Client.Eval` / `Client.Call` — see
   [Targeted Client Bridge](#targeted-client-bridge-clienteval--call)
+
+**When to reach for ExecJS.** In a **native** godom app you rarely need it — godom renders the
+DOM for you, so use it only for browser-only capabilities (viewport/clipboard, an imperative
+third-party library API), and prefer `Client.Eval`/`Call` when the work is per-connection.
+ExecJS's broadcast nature is most at home in **injection** scenarios (godom injected into a
+third-party page via the browser extension), where you don't own the page's rendering and
+reaching into its DOM/JS via ExecJS is often the *only* way to drive it.
 
 ---
 

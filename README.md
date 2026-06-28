@@ -508,7 +508,7 @@ a.ExecJS("location.pathname", func(result []byte, err string) {
 })
 ```
 
-This is mainly for browser-only capabilities or one-off integrations. It can be disabled on the server with `eng.DisableExecJS = true` and on the page with `window.GODOM_DISABLE_EXEC = true`.
+In a native godom app you rarely need this — godom renders the DOM for you, so it's mainly for browser-only capabilities (viewport, clipboard) or driving an imperative third-party library. Its broadcast nature is most useful in **injection** scenarios (godom injected into a third-party page), where reaching into the host page's DOM/JS is often the only way. It can be disabled on the server with `eng.DisableExecJS = true` and on the page with `window.GODOM_DISABLE_EXEC = true`.
 
 To run JS on **one** tab instead of broadcasting, use `Client.Eval` / `Client.Call` — see [Connections and targeted JS](#connections-and-targeted-js) below.
 

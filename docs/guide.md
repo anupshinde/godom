@@ -788,6 +788,10 @@ func (a *App) NavigateTo(path string) {
 }
 ```
 
+### When to reach for ExecJS
+
+In a **native** godom app you rarely need it — godom renders the DOM, so use ExecJS only for browser-only capabilities (viewport, clipboard, an imperative third-party library), and prefer the targeted `Client.Eval`/`Call` when the work is per-connection. Its broadcast nature is most at home in **injection** scenarios (godom injected into a third-party page via the browser extension), where you don't own the page's rendering and reaching into its DOM/JS via ExecJS is often the *only* way to drive it.
+
 ### Multiple browsers
 
 The callback fires once per connected browser. If 3 tabs are open, you get 3 callbacks. Each response contains that browser's own state.
