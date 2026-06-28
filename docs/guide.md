@@ -856,9 +856,12 @@ See the `examples/exec-and-call/` example for a working demo of both features.
 
 ## Connections and the Connection Environment
 
-Each connected tab is a `*godom.Client`. `eng.Clients()` returns the live roster (after `Run`);
-each client has an `ID()`, an `Env()` (browser timezone/locale/viewport), and the targeted-JS
-methods below. A `*Client` is per-socket — a reconnecting tab is a new one.
+A `*godom.Client` is **one connection** — one running instance of the page (one
+`bridge.js`/WebSocket). That's usually a browser **tab**, but equally a separate window, an
+`<iframe>` loading godom.js, or another device viewing the page over the network. It's also
+**per-socket**: a reconnecting tab is a *new* `*Client`. ("Tab" below is shorthand for "one
+connection" in this sense.) `eng.Clients()` returns the live roster (after `Run`); each client
+has an `ID()`, an `Env()` (browser timezone/locale/viewport), and the targeted-JS methods below.
 
 The browser reports its environment just after connect — data Go can't derive itself. Seed
 island state from it with the optional `OnConnect` hook:
@@ -874,11 +877,25 @@ func (d *Dashboard) OnConnect(c *godom.Client) { // once per connecting tab, on 
 Seeding a *shared* field is last-writer-wins across tabs — fine for the single-user case; for
 divergent per-tab environments, scope by page or engine.
 
-## Targeting One Tab (Client.Eval / Call)
+## Targeting One Connection (Client.Eval / Call)
 
-`ExecJS` broadcasts to every tab. To target **one** tab — or to call a client-side JS module
+> **⚠️ This steps outside godom's sync — use it deliberately.** godom's superpower is that the
+> Go-rendered view is broadcast *identically to every connection*, so they stay in sync.
+> Targeting one connection leaves that symmetry on purpose, operating on the **client-side-JS
+> layer godom does not replicate**. It has real uses (below), but you should know what you're
+> getting into: use it only for genuinely **per-connection** concerns; to keep a *replicated*
+> widget in sync, fan out with `ClientsWith` rather than targeting one; never target a DOM node
+> godom manages (the next patch clobbers it). It does **not** desync the Go VDOM itself — only
+> the non-synced client-side layer.
+>
+> **The two use cases it was built for:** a *replicated widget* (a chart each connection
+> renders — fan out to all capable connections) and a *singleton authoritative bridge* (exactly
+> one connection holds a privileged/stateful external link, e.g. a live broker session — target
+> that one, never broadcast a privileged call to the rest).
+
+`ExecJS` broadcasts to every connection. To target **one** — or to call a client-side JS module
 with typed args and replies — use the `*Client` methods. Register a module once; it ships to
-every tab as `window.godom.modules.<name>` and declares its capability when ready:
+every connection as `window.godom.modules.<name>` and declares its capability when ready:
 
 ```go
 //go:embed widget.js

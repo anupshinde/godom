@@ -840,13 +840,18 @@ The server searches all registered islands for the method name. First match wins
 
 ## Connections (Client)
 
-Each connected browser tab is a `*godom.Client` — an addressable handle the engine exposes
-for per-connection features. `eng.Clients()` returns a snapshot of the live roster (nil before
-`Run`). A `*Client` is **per-socket**: a reconnecting tab is a new `*Client` with a new `ID()`.
+A `*godom.Client` is **one connection** — one running instance of the page, i.e. one
+`bridge.js`/WebSocket. That is usually a browser **tab**, but the same is true of a separate
+**window**, an **`<iframe>`** that loads godom.js, or **another device** viewing the page (godom
+works over a network — see the multi-device examples). It is also **per-socket**: if a
+connection drops and reconnects, that is a *new* `*Client` with a new `ID()`. Throughout these
+docs "tab" is shorthand for "one connection" in this sense.
+
+`eng.Clients()` returns a snapshot of the live roster (nil before `Run`):
 
 ```go
-for _, c := range eng.Clients() {
-    log.Printf("tab %s, tz=%s", c.ID(), c.Env().TimeZone)
+for _, c := range eng.Clients() { // each c = one connected view
+    log.Printf("conn %s, tz=%s", c.ID(), c.Env().TimeZone)
 }
 ```
 
@@ -854,13 +859,14 @@ for _, c := range eng.Clients() {
 |---|---|
 | `ID() string` | Stable, process-unique connection id |
 | `Env() Env` | Browser environment (timezone/locale/viewport) — see below |
-| `Has(capability string) bool` | Whether this tab advertised a module capability |
-| `Eval(expr string, cb)` | Run JS on this one tab — see [Targeted Client Bridge](#targeted-client-bridge-clienteval--call) |
+| `Has(capability string) bool` | Whether this connection advertised a module capability |
+| `Eval(expr string, cb)` | Run JS on this one connection — see [Targeted Client Bridge](#targeted-client-bridge-clienteval--call) |
 | `CallAsync(method string, args any, cb)` | Typed module call, non-blocking (handler-safe) |
 | `Call(method string, args, out any) error` | Typed module call, blocking — **off-loop only** (inside a Task) |
 
-> Reminder: an island has **one** shared VDOM replicated to all tabs. `*Client` lets you
-> *address* and *observe* connections; it does not fork the rendered view per tab.
+> An island has **one** shared VDOM replicated to every connection. `*Client` lets you
+> *address* and *observe* connections; it does **not** fork the rendered view per connection —
+> there is no per-connection render path.
 
 ### Connection environment (`Client.Env`)
 
@@ -884,10 +890,30 @@ scope by page or engine.
 
 ## Targeted Client Bridge (Client.Eval / Call)
 
-`ExecJS` broadcasts to every tab. To talk to **one** tab — or to a client-side JS module with
-typed args/replies — use the `*Client` methods.
+`ExecJS` broadcasts to every connection. To talk to **one** connection — or to a client-side JS
+module with typed args/replies — use the `*Client` methods.
 
-**Register a module** (shipped to every tab as `window.godom.modules.<name>`):
+> **⚠️ Use deliberately — this steps outside godom's sync.** godom's core guarantee is that
+> the Go-rendered view is broadcast **identically to every connection**, so they stay in sync.
+> Targeting one connection deliberately leaves that symmetry, operating on the **client-side-JS
+> layer godom does *not* replicate** (a JS widget's internal state, browser APIs). This has real
+> uses — but know what you're getting into:
+> - Use it only for genuinely **per-connection** concerns: a module only some connections own,
+>   or a privileged link only one connection holds.
+> - To keep a *replicated* widget consistent, **fan out** with `ClientsWith` so every capable
+>   connection gets the call — don't target just one and expect the others to follow.
+> - **Never** target a DOM node godom manages (the next patch will clobber it). Target browser
+>   APIs and your own client-side widgets only.
+> - Targeting does **not** desync the Go VDOM itself — that's still broadcast. The risk is only
+>   in the non-synced client-side layer, and in seeding *shared* island state from one
+>   connection (last-writer-wins).
+>
+> **What it's for (the two archetypes):** a *replicated widget* (e.g. a chart each connection
+> renders — fan out via `ClientsWith`), and a *singleton authoritative bridge* (exactly one
+> connection owns a privileged/stateful external link, e.g. a live broker session — target that
+> one connection, never broadcast a privileged call to the rest).
+
+**Register a module** (shipped to every connection as `window.godom.modules.<name>`):
 
 ```go
 //go:embed widget.js

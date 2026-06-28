@@ -539,16 +539,18 @@ Pending/progress/error bind without an app field: `g-disabled="Busy('search')"`,
 
 ### Connections and targeted JS
 
-Each tab is a `*godom.Client` (`eng.Clients()`), with browser environment (`c.Env()` — timezone/locale/viewport, seedable via an `OnConnect` hook) and targeted JS. Register a client-side module and call it on specific tabs with typed args:
+A `*godom.Client` is **one connection** — one running page instance (usually a tab, but also a window, iframe, or another device; per-socket, so a reconnect is a new one). `eng.Clients()` is the live roster; each has `c.Env()` (timezone/locale/viewport, seedable via an `OnConnect` hook) and targeted JS. Register a client-side module and call it on specific connections with typed args:
 
 ```go
 eng.RegisterClientModule("widget", widgetJS) // window.godom.modules.widget
-for _, c := range eng.ClientsWith("widget") { // only tabs that declared the capability
+for _, c := range eng.ClientsWith("widget") { // only connections that declared the capability
     c.CallAsync("widget.render", data, nil)
 }
 ```
 
-See the [guide](docs/guide.md#targeting-one-tab-clienteval--call) and the [AI reference](docs/llm-reference.md#targeted-client-bridge-clienteval--call).
+> ⚠️ Targeting one connection deliberately steps **outside godom's cross-connection sync** (it acts on the client-side-JS layer godom doesn't replicate). Use it only for genuinely per-connection concerns — a widget only some connections own, or a privileged link only one holds (e.g. a single live-broker tab). For a replicated widget, fan out via `ClientsWith`.
+
+See the [guide](docs/guide.md#targeting-one-connection-clienteval--call) and the [AI reference](docs/llm-reference.md#targeted-client-bridge-clienteval--call).
 
 ### Plugins
 
