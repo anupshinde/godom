@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
+	"sync"
 )
 
 // Task is the handle passed to an async-task closure. The closure runs off the
@@ -17,6 +18,13 @@ type Task struct {
 	name string
 	gen  uint64
 	ctx  context.Context
+
+	// Progress coalescing: a burst of Progress calls collapses to one queued
+	// apply that picks up the latest message, so a hot status loop doesn't enqueue
+	// (and re-render) once per tick.
+	progMu      sync.Mutex
+	progLatest  string
+	progPending bool
 }
 
 // Context returns the task's context, cancelled when the task is superseded
@@ -34,10 +42,25 @@ func (t *Task) Cancelled() bool { return t.ctx.Err() != nil }
 func (t *Task) Apply(fn func()) { t.enqueue(fn) }
 
 // Progress sets the task's status string, surfaced via the Progress(name)
-// binding.
+// binding. Rapid calls are coalesced latest-wins: only one apply is queued at a
+// time, and it applies whatever the most recent value was when it runs — so a
+// tight loop calling Progress does not enqueue (and refresh) once per iteration.
 func (t *Task) Progress(msg string) {
-	name := t.name
-	t.enqueue(func() { t.ci.setTaskProgress(name, msg) })
+	t.progMu.Lock()
+	t.progLatest = msg
+	alreadyQueued := t.progPending
+	t.progPending = true
+	t.progMu.Unlock()
+	if alreadyQueued {
+		return // an apply is already queued; it will pick up this latest value
+	}
+	t.enqueue(func() {
+		t.progMu.Lock()
+		latest := t.progLatest
+		t.progPending = false
+		t.progMu.Unlock()
+		t.ci.setTaskProgress(t.name, latest)
+	})
 }
 
 // Fail records an error for the task, surfaced via the Err(name) binding, and

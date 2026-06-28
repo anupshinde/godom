@@ -1,6 +1,7 @@
 package island
 
 import (
+	"context"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -234,4 +235,51 @@ func TestTask_NilEventChNoOp(t *testing.T) {
 	if ci.TaskBusy("x") || ci.TaskProgress("x") != "" || ci.TaskErr("x") != nil || ci.TaskCrashed("x") {
 		t.Errorf("no task should exist for a nil-EventCh island")
 	}
+}
+
+// A burst of Progress calls must coalesce to a single queued apply (not one per
+// call) and apply the latest value — otherwise a hot status loop re-renders once
+// per tick. This drains the channel manually (no loop) to count applies directly.
+func TestTask_ProgressCoalescesLatestWins(t *testing.T) {
+	ci := &Info{EventCh: make(chan Event, 256)}
+	ci.tasks = map[string]*taskState{"p": {gen: 1, running: true}}
+	tk := &Task{ci: ci, name: "p", gen: 1, ctx: context.Background()}
+
+	const N = 100
+	for i := 0; i < N; i++ {
+		tk.Progress(itoa(i)) // no drain happening, so all but the first should coalesce
+	}
+
+	// Count and run the queued applies.
+	applies := 0
+	for {
+		select {
+		case e := <-ci.EventCh:
+			applies++
+			if e.Apply != nil {
+				e.Apply()
+			}
+		default:
+			goto drained
+		}
+	}
+drained:
+	if applies == 0 || applies >= N {
+		t.Fatalf("expected Progress to coalesce to far fewer than %d applies, got %d", N, applies)
+	}
+	if got := ci.TaskProgress("p"); got != itoa(N-1) {
+		t.Errorf("coalesced progress should be the latest value %q, got %q", itoa(N-1), got)
+	}
+}
+
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	var b []byte
+	for i > 0 {
+		b = append([]byte{byte('0' + i%10)}, b...)
+		i /= 10
+	}
+	return string(b)
 }
