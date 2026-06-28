@@ -397,7 +397,7 @@ func (v *View) Search() {
 Pending/progress/error bind without an app field:
 
 ```html
-<button g-disabled="Busy('search')" g-text="Busy('search') ? 'Searching…' : 'Search'">Search</button>
+<button g-attr:disabled="Busy('search')" g-text="Busy('search') ? 'Searching…' : 'Search'">Search</button>
 <p g-show="Busy('search')" g-text="Progress('search')"></p>
 ```
 

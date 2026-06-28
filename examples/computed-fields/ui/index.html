@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>Computed Fields</title>
+    <style>
+        body:not(.g-ready) { visibility: hidden; }
+        html, body { background: #fff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 380px; margin: 60px auto; color: #222; }
+        h1 { font-size: 22px; }
+        .row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; }
+        .row label { color: #555; }
+        input { width: 70px; padding: 6px 8px; font-size: 15px; border: 1px solid #ccc; border-radius: 5px; text-align: right; }
+        hr { border: none; border-top: 1px solid #eee; margin: 12px 0; }
+        .total { font-weight: 700; border-top: 1px solid #ccc; padding-top: 10px; font-size: 18px; }
+        button { width: 100%; margin-top: 18px; padding: 12px; font-size: 16px; border: none; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+        button[disabled] { background: #cbd5e1; cursor: not-allowed; }
+        .note { margin-top: 18px; font-size: 13px; color: #777; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <h1>Cart</h1>
+
+    <div class="row"><label>Quantity</label><input type="number" min="0" g-bind="Qty"></div>
+    <div class="row"><label>Unit price ($)</label><input type="number" min="0" g-bind="UnitPrice"></div>
+
+    <hr>
+
+    <div class="row"><span>Subtotal</span><span g-text="SubtotalText"></span></div>
+    <div class="row"><span>Tax (8%)</span><span g-text="TaxText"></span></div>
+    <div class="row total"><span>Total</span><span g-text="TotalText"></span></div>
+
+    <button g-attr:disabled="!CheckoutEnabled" g-text="CheckoutEnabled ? 'Checkout' : 'Add an item to continue'"></button>
+
+    <p class="note">Subtotal, tax, total, and the button state are all <b>computed</b> from
+    Quantity and Unit price — edit either input and watch them follow. No handler recomputes
+    them; <code>Compute()</code> declares the derivations and the engine keeps them in sync.</p>
+</body>
+</html>

@@ -535,7 +535,7 @@ func (v *View) Search() {
 }
 ```
 
-Pending/progress/error bind without an app field: `g-disabled="Busy('search')"`, `g-text="Progress('search')"`. Re-entry policy via `WithRestart()` / `WithQueue()`; panics fail the task, not the process. See the [guide](docs/guide.md#async-tasks).
+Pending/progress/error bind without an app field: `g-attr:disabled="Busy('search')"`, `g-text="Progress('search')"`. Re-entry policy via `WithRestart()` / `WithQueue()`; panics fail the task, not the process. See the [guide](docs/guide.md#async-tasks).
 
 ### Connections and targeted JS
 
