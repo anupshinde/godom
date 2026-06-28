@@ -107,36 +107,46 @@ func TestConnPool_SendToReachesExactlyOneClient(t *testing.T) {
 	defer srv.Close()
 
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
+
+	// Connect the two clients SEQUENTIALLY so the server's accept order matches
+	// the client dial order — otherwise serverConns[0] may belong to either
+	// client and the test races (which is exactly what flaked in CI). After this,
+	// serverConns[0] is c0's server side and serverConns[1] is c1's.
+	waitConns := func(n int) {
+		t.Helper()
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			mu.Lock()
+			got := len(serverConns)
+			mu.Unlock()
+			if got == n {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("server accepted %d/%d connections", got, n)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+
 	c0, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c0.Close()
+	waitConns(1) // serverConns[0] is c0
+
 	c1, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c1.Close()
-
-	// Wait until the server has accepted both connections.
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		mu.Lock()
-		n := len(serverConns)
-		mu.Unlock()
-		if n == 2 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("server accepted %d/2 connections", n)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitConns(2) // serverConns[1] is c1
 
 	pool := &connPool{}
 	mu.Lock()
-	wc0 := pool.add(serverConns[0])
-	pool.add(serverConns[1])
+	wc0 := pool.add(serverConns[0]) // c0's server side
+	pool.add(serverConns[1])        // c1's server side
 	mu.Unlock()
 
 	if err := pool.sendTo(wc0.client, []byte{0xAA}); err != nil {
