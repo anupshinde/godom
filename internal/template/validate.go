@@ -270,8 +270,11 @@ func validateFieldExpr(expr string, ci *island.Info, loopVars map[string]*loopVa
 // containsOperator returns true if the expression contains comparison or
 // logical operators, indicating it should be handled by expr-lang.
 func containsOperator(expr string) bool {
-	// Check for comparison operators
-	for _, op := range []string{"==", "!=", ">=", "<=", ">", "<"} {
+	// Comparison and the ternary "?". None of these can appear in a Go
+	// identifier, so their presence means the expression is a full expr-lang
+	// expression (e.g. `Busy('x') ? 'a' : 'b'`), not a bare field/method
+	// reference — skip the field-name check and let expr-lang resolve it.
+	for _, op := range []string{"==", "!=", ">=", "<=", ">", "<", "?"} {
 		if strings.Contains(expr, op) {
 			return true
 		}

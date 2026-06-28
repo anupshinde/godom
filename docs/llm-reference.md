@@ -754,7 +754,7 @@ func (v *View) Run() {
 Pending/progress/error are bindable **without an app field**:
 
 ```html
-<button g-disabled="Busy('search')" g-text="Busy('search') ? 'Working…' : 'Run'">Run</button>
+<button g-attr:disabled="Busy('search')" g-text="Busy('search') ? 'Working…' : 'Run'">Run</button>
 <p g-show="Busy('search')" g-text="Progress('search')"></p>
 <p g-if="Crashed('search')">Something went wrong</p>
 ```
@@ -1435,6 +1435,8 @@ All examples are in the `examples/` directory. Run with `go run ./examples/<name
 |---------|-------------|
 | `counter` | Minimal app, g-click, g-bind, g-text |
 | `todolist` | g-for, g-checked, custom elements, g-keydown |
+| `computed-fields` | Computed (derived) fields via `Compute`, g-attr:disabled, ternary bindings |
+| `async-tasks` | Background `Task`, `Busy`/`Progress` bindings, `t.Apply`, `WithRestart` |
 | `clock` | Background goroutine, Refresh(), SVG, g-attr |
 | `progress-bar` | Goroutine, Refresh(), g-style:width |
 | `stock-ticker` | Fast updates, g-class, conditional styling, static file serving |

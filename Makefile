@@ -3,11 +3,13 @@
 # --- Example lists ---
 # Main-module examples (share the root go.mod)
 MAIN_EXAMPLES := \
+	async-tasks \
 	basic-form-builder \
 	breakout-game \
 	chart-plugins \
 	charts-without-plugin \
 	clock \
+	computed-fields \
 	counter \
 	crash-test \
 	drag-demo \

@@ -45,3 +45,23 @@ func TestIsReservedBinding(t *testing.T) {
 		t.Error("an ordinary method name must not be a reserved binding")
 	}
 }
+
+// Ternary expressions resolve at runtime via expr-lang, so the validator must
+// accept them instead of treating the whole string as a bare field name. The
+// §2 binding pattern `Busy('x') ? 'a' : 'b'` relies on this.
+func TestValidateDirectives_AcceptsTernary(t *testing.T) {
+	valid := []string{
+		`<span g-text="Visible ? 'yes' : 'no'"></span>`,
+		`<button g-text="Busy('search') ? 'Working' : 'Run'"></button>`,
+		`<button g-attr:disabled="Busy('search')"></button>`,
+	}
+	for _, html := range valid {
+		if err := ValidateDirectives(html, newValTestCI()); err != nil {
+			t.Errorf("should validate: %s\n  got: %v", html, err)
+		}
+	}
+	// A bare unknown field is still rejected (the fix didn't blanket-accept).
+	if err := ValidateDirectives(`<span g-text="Nope"></span>`, newValTestCI()); err == nil {
+		t.Error("an unknown bare field must still be rejected")
+	}
+}

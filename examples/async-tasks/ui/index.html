@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>Async Tasks</title>
+    <style>
+        html, body { background: #fff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 440px; margin: 60px auto; color: #222; }
+        h1 { font-size: 22px; }
+        .bar { display: flex; gap: 8px; }
+        input[type=text] { flex: 1; padding: 10px 12px; font-size: 15px; border: 1px solid #ccc; border-radius: 6px; }
+        button { padding: 10px 18px; font-size: 15px; border: none; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; white-space: nowrap; }
+        button[disabled] { background: #cbd5e1; cursor: not-allowed; }
+        .status { margin: 14px 2px; height: 20px; color: #2563eb; font-size: 14px; }
+        .status.error { color: #dc2626; }
+        ul { list-style: none; padding: 0; margin: 8px 0; }
+        li { padding: 9px 12px; border-bottom: 1px solid #eee; }
+        .note { margin-top: 22px; font-size: 13px; color: #777; line-height: 1.5; }
+        code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>Fruit search</h1>
+
+    <div class="bar">
+        <input type="text" g-bind="Query" placeholder="type a fruit… e.g. berry">
+        <button g-click="Search"
+                g-text="Busy('search') ? 'Searching… (click to restart)' : 'Search'"></button>
+    </div>
+
+    <p class="status" g-show="Busy('search')" g-text="Progress('search')"></p>
+    <p class="status error" g-if="Crashed('search')">Search failed — please retry.</p>
+
+    <ul g-show="not Busy('search')">
+        <li g-for="r in Results" g-text="r"></li>
+    </ul>
+
+    <p class="note">No <code>Loading</code> flag, no re-entry guard, no manual goroutine.
+    <code>Task("search", …)</code> runs the work off the event loop and marshals results back
+    with <code>t.Apply</code>. <code>Busy('search')</code> / <code>Progress('search')</code> drive
+    the button and status with no app field. The button stays clickable while running:
+    <code>WithRestart()</code> means a new search <b>cancels the one in flight</b> (try changing
+    the query and clicking again mid-search).</p>
+</body>
+</html>
