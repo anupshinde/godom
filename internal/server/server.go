@@ -210,26 +210,6 @@ func Run(cfg EngineConfig) error {
 		}
 	}
 
-	// Build the JS bundle once: protobuf, protocol, plugins, bridge.
-	var parts []string
-	parts = append(parts, protobufMinJS, protocolJS)
-	if len(plugins) > 0 {
-		parts = append(parts, "var godom=window[window.GODOM_NS||'godom']=window[window.GODOM_NS||'godom']||{};godom._plugins=godom._plugins||{};godom.register=function(n,h){godom._plugins[n]=h};")
-		for _, pluginScripts := range plugins {
-			parts = append(parts, pluginScripts...)
-		}
-	}
-	// Ship registered client modules (§4) so godom.modules.<name> is available
-	// for targeted client.Call/CallAsync.
-	if modsJS := clientModulesJS(cfg.ClientModules()); modsJS != "" {
-		parts = append(parts, modsJS)
-	}
-	if disableExecJS {
-		parts = append(parts, "window.GODOM_DISABLE_EXEC=true;")
-	}
-	if env.Debug {
-		parts = append(parts, "window.GODOM_DEBUG=true;")
-	}
 	hasRoot := false
 	for _, ci := range comps {
 		if ci.SlotName == "document.body" {
@@ -237,18 +217,18 @@ func Run(cfg EngineConfig) error {
 			break
 		}
 	}
-	if hasRoot {
-		parts = append(parts, "window.GODOM_ROOT=true;")
-	}
-	// Inject disconnect overlay HTML as a JSON-encoded string.
-	htmlJSON, _ := json.Marshal(disconnectHTML)
-	parts = append(parts, fmt.Sprintf("window.GODOM_DISCONNECT_HTML=%s;", htmlJSON))
-	badgeJSON, _ := json.Marshal(disconnectBadgeHTML)
-	parts = append(parts, fmt.Sprintf("window.GODOM_DISCONNECT_BADGE=%s;", badgeJSON))
-	parts = append(parts, bridge)
-	// Separate each part with \r\n and a semicolon to prevent
-	// minified scripts from being parsed as continuations.
-	bundleJS := strings.Join(parts, ";\r\n\n")
+	bundleJS := assembleBundle(bundleInputs{
+		protobufMinJS:       protobufMinJS,
+		protocolJS:          protocolJS,
+		bridge:              bridge,
+		plugins:             plugins,
+		modules:             cfg.ClientModules(),
+		disableExecJS:       disableExecJS,
+		debug:               env.Debug,
+		hasRoot:             hasRoot,
+		disconnectHTML:      disconnectHTML,
+		disconnectBadgeHTML: disconnectBadgeHTML,
+	})
 
 	// Serve default favicon unless the user already registered /favicon.ico.
 	faviconSVG := cfg.GetFaviconSVG()

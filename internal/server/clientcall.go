@@ -163,6 +163,55 @@ func (c *Client) Call(method string, args any, out any) error {
 
 // --- module bundle injection ----------------------------------------------
 
+// bundleInputs carries the pieces assembled into the served /godom.js bundle.
+type bundleInputs struct {
+	protobufMinJS, protocolJS, bridge   string
+	plugins                             map[string][]string
+	modules                             map[string]string
+	disableExecJS, debug, hasRoot       bool
+	disconnectHTML, disconnectBadgeHTML string
+}
+
+// assembleBundle concatenates the /godom.js bundle in dependency order. The
+// ordering invariant that matters: client modules are emitted AFTER bridge, so a
+// module that touches the godom API at load (e.g. godom.declareCapability) finds
+// it defined. Emitting modules before bridge made a throwing module abort the
+// whole bundle and prevent the bridge from initializing.
+func assembleBundle(in bundleInputs) string {
+	var parts []string
+	parts = append(parts, in.protobufMinJS, in.protocolJS)
+	if len(in.plugins) > 0 {
+		parts = append(parts, "var godom=window[window.GODOM_NS||'godom']=window[window.GODOM_NS||'godom']||{};godom._plugins=godom._plugins||{};godom.register=function(n,h){godom._plugins[n]=h};")
+		for _, pluginScripts := range in.plugins {
+			parts = append(parts, pluginScripts...)
+		}
+	}
+	if in.disableExecJS {
+		parts = append(parts, "window.GODOM_DISABLE_EXEC=true;")
+	}
+	if in.debug {
+		parts = append(parts, "window.GODOM_DEBUG=true;")
+	}
+	if in.hasRoot {
+		parts = append(parts, "window.GODOM_ROOT=true;")
+	}
+	htmlJSON, _ := json.Marshal(in.disconnectHTML)
+	parts = append(parts, fmt.Sprintf("window.GODOM_DISCONNECT_HTML=%s;", htmlJSON))
+	badgeJSON, _ := json.Marshal(in.disconnectBadgeHTML)
+	parts = append(parts, fmt.Sprintf("window.GODOM_DISCONNECT_BADGE=%s;", badgeJSON))
+
+	// Bridge defines the godom API (godom.call, declareCapability, …).
+	parts = append(parts, in.bridge)
+	// Client modules run AFTER bridge so they can use that API at load.
+	if modsJS := clientModulesJS(in.modules); modsJS != "" {
+		parts = append(parts, modsJS)
+	}
+
+	// Separate parts with \r\n and a semicolon so a minified script can't be
+	// parsed as a continuation of the previous one.
+	return strings.Join(parts, ";\r\n\n")
+}
+
 // clientModulesJS builds the JS that ships registered client modules to the
 // browser: it ensures the godom.modules namespace exists, then appends each
 // module's script (which assigns itself onto godom.modules). Returns "" when
@@ -180,8 +229,15 @@ func clientModulesJS(modules map[string]string) string {
 	var b strings.Builder
 	b.WriteString(";(function(){var g=window[window.GODOM_NS||'godom']=window[window.GODOM_NS||'godom']||{};g.modules=g.modules||{};})();\n")
 	for _, n := range names {
+		// Wrap each module so one that throws at load can't abort the bundle and
+		// take down the bridge (which is emitted before modules). The bridge API
+		// is available here because modules are appended after bridge.
+		nameJSON, _ := json.Marshal(n)
+		b.WriteString("try{\n")
 		b.WriteString(modules[n])
-		b.WriteString("\n")
+		b.WriteString("\n}catch(e){if(window.GODOM_DEBUG)console.error('[godom] client module',")
+		b.Write(nameJSON)
+		b.WriteString(",'failed to load',e);}\n")
 	}
 	return b.String()
 }
