@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -88,10 +89,26 @@ type wsConn struct {
 	client *Client
 }
 
+// writeTimeout bounds every frame write. Without it, a client that stops reading
+// (laptop asleep, suspended tab, a network link that dropped without closing)
+// fills its TCP send buffer and the write blocks forever while holding wmu — and
+// since broadcast writes to every connection in turn from the islands' event
+// loops, one dead client freezes every island and every other tab. A var so
+// tests can shorten it.
+var writeTimeout = 10 * time.Second
+
 func (wc *wsConn) writeBinary(data []byte) error {
 	wc.wmu.Lock()
 	defer wc.wmu.Unlock()
-	return wc.conn.WriteMessage(websocket.BinaryMessage, data)
+	_ = wc.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+	err := wc.conn.WriteMessage(websocket.BinaryMessage, data)
+	if err != nil {
+		// A failed or timed-out write leaves the websocket unusable. Close it: the
+		// connection's read loop then errors out and removes it from the pool (and
+		// fails its pending calls); the tab reconnects when it comes back.
+		wc.conn.Close()
+	}
+	return err
 }
 
 // connPool manages active WebSocket connections and provides thread-safe
@@ -162,6 +179,7 @@ func (p *connPool) broadcastClose(closeMsg []byte) {
 	p.mu.RUnlock()
 
 	for _, wc := range snapshot {
+		_ = wc.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 		wc.conn.WriteMessage(websocket.CloseMessage, closeMsg)
 		wc.conn.Close()
 	}

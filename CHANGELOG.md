@@ -4,6 +4,16 @@ All notable changes to godom are documented here. Versions follow [semantic
 versioning](https://semver.org/); while on the 0.x line, minor versions may
 include breaking changes (called out explicitly).
 
+## Unreleased
+
+### Fixes
+
+- **A stalled client no longer freezes every island.** Each WebSocket write now
+  has a 10s deadline; a client that stops reading (laptop asleep, suspended tab,
+  a link that dropped without closing) is closed instead of blocking
+  `broadcast` — and with it every island's event loop and every other tab —
+  indefinitely. The tab reconnects when it comes back.
+
 ## v0.2.0
 
 First tagged release since `v0.1.1`. A large, consolidating release: the
